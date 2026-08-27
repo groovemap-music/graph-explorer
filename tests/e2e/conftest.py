@@ -4,6 +4,6 @@ import pytest
 
 
 @pytest.fixture(scope="session")
-def explore_url() -> str:
+def explore_url(test_server: str) -> str:
     """Return the URL of the explore service for E2E tests."""
-    return "http://localhost:8006"
+    return test_server

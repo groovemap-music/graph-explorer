@@ -2,8 +2,8 @@
 
 import re
 
-from playwright.sync_api import Page, expect
 import pytest
+from playwright.sync_api import Page, expect
 
 
 def _switch_pane(page: Page, pane: str) -> None:

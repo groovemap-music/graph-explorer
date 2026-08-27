@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import re
 
-from playwright.sync_api import Page, expect
 import pytest
+from playwright.sync_api import Page, expect
 
 
 _MOCK_TOKEN = "mock-test-access-token-abc123"  # nosec B105

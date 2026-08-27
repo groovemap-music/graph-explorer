@@ -1,5 +1,6 @@
 """Test application factory for Explore service E2E tests."""
 
+import json
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -7,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Header, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 
@@ -106,7 +107,7 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
 def create_test_app() -> FastAPI:
     """Create a test instance of the Explore FastAPI app."""
     app = FastAPI(
-        title="Discogsography Explore Test",
+        title="GrooveMap Graph Explorer Test",
         version="0.1.0",
         default_response_class=JSONResponse,
         lifespan=lifespan,
@@ -151,7 +152,7 @@ def create_test_app() -> FastAPI:
         return JSONResponse(content={"detail": "Invalid credentials"}, status_code=401)
 
     @app.post("/api/auth/logout")
-    async def auth_logout(authorization: str | None = Header(default=None)) -> JSONResponse:  # noqa: ARG001
+    async def auth_logout(authorization: str | None = Header(default=None)) -> JSONResponse:
         """Accept any Bearer token and confirm logout."""
         return JSONResponse(content={"logged_out": True})
 
@@ -214,8 +215,8 @@ def create_test_app() -> FastAPI:
     @app.get("/api/user/collection")
     async def user_collection(
         authorization: str | None = Header(default=None),
-        limit: int = Query(50, ge=1, le=200),  # noqa: ARG001
-        offset: int = Query(0, ge=0),  # noqa: ARG001
+        limit: int = Query(50, ge=1, le=200),
+        offset: int = Query(0, ge=0),
     ) -> JSONResponse:
         """Return mock collection for any authenticated user."""
         if not authorization or not authorization.startswith("Bearer "):
@@ -225,8 +226,8 @@ def create_test_app() -> FastAPI:
     @app.get("/api/user/wantlist")
     async def user_wantlist(
         authorization: str | None = Header(default=None),
-        limit: int = Query(50, ge=1, le=200),  # noqa: ARG001
-        offset: int = Query(0, ge=0),  # noqa: ARG001
+        limit: int = Query(50, ge=1, le=200),
+        offset: int = Query(0, ge=0),
     ) -> JSONResponse:
         """Return mock wantlist for any authenticated user."""
         if not authorization or not authorization.startswith("Bearer "):
@@ -236,7 +237,7 @@ def create_test_app() -> FastAPI:
     @app.get("/api/user/recommendations")
     async def user_recommendations(
         authorization: str | None = Header(default=None),
-        limit: int = Query(20, ge=1, le=100),  # noqa: ARG001
+        limit: int = Query(20, ge=1, le=100),
     ) -> JSONResponse:
         """Return mock recommendations for any authenticated user."""
         if not authorization or not authorization.startswith("Bearer "):
@@ -253,7 +254,7 @@ def create_test_app() -> FastAPI:
     @app.get("/api/user/status")
     async def user_release_status(
         ids: str = Query(...),
-        authorization: str | None = Header(default=None),  # noqa: ARG001
+        authorization: str | None = Header(default=None),
     ) -> JSONResponse:
         """Return empty ownership status (works for authenticated and anonymous users)."""
         release_ids = [rid.strip() for rid in ids.split(",") if rid.strip()]
@@ -278,6 +279,35 @@ def create_test_app() -> FastAPI:
         return JSONResponse(content={"status": "idle", "last_sync": None})
 
     # ------------------------------------------------------------------ #
+    # Natural-language query endpoints
+    # ------------------------------------------------------------------ #
+
+    @app.get("/api/nlq/status")
+    async def nlq_status() -> JSONResponse:
+        return JSONResponse(content={"enabled": True})
+
+    @app.get("/api/nlq/suggestions")
+    async def nlq_suggestions() -> JSONResponse:
+        return JSONResponse(content={"suggestions": []})
+
+    @app.post("/api/nlq/query")
+    async def nlq_query(request: Request) -> Response:
+        query = (await request.json()).get("query", "")
+        actions = [
+            {
+                "type": "seed_graph",
+                "entities": [{"name": "Kraftwerk", "entity_type": "artist"}, {"name": "Kling Klang", "entity_type": "label"}],
+                "replace": True,
+            }
+        ]
+        if "biggest labels" in query.lower():
+            actions.insert(0, {"type": "switch_pane", "pane": "insights"})
+        payload = json.dumps({"actions": actions})
+        result = json.dumps({"summary": "Mock graph answer", "entities": [], "actions": actions})
+        body = f"event: actions\ndata: {payload}\n\nevent: result\ndata: {result}\n\n"
+        return Response(content=body, media_type="text/event-stream")
+
+    # ------------------------------------------------------------------ #
     # Existing explore/graph endpoints
     # ------------------------------------------------------------------ #
 
@@ -294,7 +324,7 @@ def create_test_app() -> FastAPI:
 
     @app.get("/api/explore")
     async def explore(
-        name: str = Query(...),  # noqa: ARG001
+        name: str = Query(...),
         type: str = Query("artist"),
     ) -> JSONResponse:
         entity_type = type.lower()
@@ -302,9 +332,24 @@ def create_test_app() -> FastAPI:
         if not result:
             return JSONResponse(content={"error": "Not found"}, status_code=404)
 
-        from api.routers.explore import _build_categories
-
-        categories = _build_categories(entity_type, result)
+        categories_by_type = {
+            "artist": [
+                ("releases", "Releases", "release_count"),
+                ("labels", "Labels", "label_count"),
+                ("aliases", "Aliases & Members", "alias_count"),
+            ],
+            "genre": [
+                ("releases", "Releases", "release_count"),
+                ("artists", "Artists", "artist_count"),
+                ("labels", "Labels", "label_count"),
+                ("styles", "Styles", "style_count"),
+            ],
+            "label": [("releases", "Releases", "release_count"), ("artists", "Artists", "artist_count"), ("genres", "Genres", "genre_count")],
+        }
+        categories = [
+            {"id": f"cat-{category}", "name": label, "category": category, "count": result.get(count_key, 0)}
+            for category, label, count_key in categories_by_type.get(entity_type, [])
+        ]
         return JSONResponse(
             content={
                 "center": {"id": str(result["id"]), "name": result["name"], "type": entity_type},
@@ -314,10 +359,10 @@ def create_test_app() -> FastAPI:
 
     @app.get("/api/expand")
     async def expand(
-        node_id: str = Query(...),  # noqa: ARG001
-        type: str = Query(...),  # noqa: ARG001
-        category: str = Query(...),  # noqa: ARG001
-        limit: int = Query(50, ge=1, le=200),  # noqa: ARG001
+        node_id: str = Query(...),
+        type: str = Query(...),
+        category: str = Query(...),
+        limit: int = Query(50, ge=1, le=200),
     ) -> JSONResponse:
         return JSONResponse(
             content={
@@ -331,7 +376,7 @@ def create_test_app() -> FastAPI:
     @app.get("/api/node/{node_id}")
     async def get_node_details(
         node_id: str,
-        type: str = Query("artist"),  # noqa: ARG001
+        type: str = Query("artist"),
     ) -> JSONResponse:
         return JSONResponse(
             content={
@@ -366,7 +411,7 @@ def create_test_app() -> FastAPI:
     @app.get("/api/collaborators/{artist_id}")
     async def get_collaborators(
         artist_id: str,
-        limit: int = Query(20, ge=1, le=100),  # noqa: ARG001
+        limit: int = Query(20, ge=1, le=100),
     ) -> JSONResponse:
         return JSONResponse(
             content={
@@ -427,7 +472,7 @@ def create_test_app() -> FastAPI:
         )
 
     # Serve static files from explore module (html=True serves index.html at root)
-    static_dir = Path(__file__).parent.parent.parent / "explore" / "static"
+    static_dir = Path(__file__).parent.parent / "explore" / "static"
     app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
 
     return app

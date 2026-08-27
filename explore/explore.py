@@ -1,27 +1,26 @@
 #!/usr/bin/env python3
-"""Explore service for interactive graph exploration of Discogs data."""
+"""GrooveMap's public graph exploration web application and Catalog API proxy."""
 
 import asyncio
+import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-import os
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response, StreamingResponse
-from fastapi.staticfiles import StaticFiles
 import httpx
 import structlog
 import uvicorn
-
 from common import (
     HealthServer,
     describe_exception,
     setup_logging,
 )
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, Response, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 
 logger = structlog.get_logger(__name__)
@@ -69,7 +68,7 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
 
 
 app = FastAPI(
-    title="Discogsography Explore",
+    title="GrooveMap Graph Explorer",
     version="0.1.0",
     default_response_class=JSONResponse,
     lifespan=lifespan,
@@ -245,19 +244,7 @@ def main() -> None:  # pragma: no cover
     """Entry point for the Explore service."""
     setup_logging("explore", log_file=Path("/logs/explore.log"))
     # fmt: off
-    print("██████╗ ██╗███████╗ ██████╗ ██████╗  ██████╗ ███████╗               ")
-    print("██╔══██╗██║██╔════╝██╔════╝██╔═══██╗██╔════╝ ██╔════╝               ")
-    print("██║  ██║██║███████╗██║     ██║   ██║██║  ███╗███████╗               ")
-    print("██║  ██║██║╚════██║██║     ██║   ██║██║   ██║╚════██║               ")
-    print("██████╔╝██║███████║╚██████╗╚██████╔╝╚██████╔╝███████║               ")
-    print("╚═════╝ ╚═╝╚══════╝ ╚═════╝ ╚═════╝  ╚═════╝ ╚══════╝               ")
-    print("                                                                     ")
-    print("███████╗██╗  ██╗██████╗ ██╗      ██████╗ ██████╗ ███████╗            ")
-    print("██╔════╝╚██╗██╔╝██╔══██╗██║     ██╔═══██╗██╔══██╗██╔════╝            ")
-    print("█████╗   ╚███╔╝ ██████╔╝██║     ██║   ██║██████╔╝█████╗              ")
-    print("██╔══╝   ██╔██╗ ██╔═══╝ ██║     ██║   ██║██╔══██╗██╔══╝              ")
-    print("███████╗██╔╝ ██╗██║     ███████╗╚██████╔╝██║  ██║███████╗            ")
-    print("╚══════╝╚═╝  ╚═╝╚═╝     ╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝            ")
+    print("GrooveMap Graph Explorer")
     print()
     # fmt: on
     uvicorn.run(

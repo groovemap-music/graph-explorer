@@ -1,25 +1,38 @@
 {
-  "dependencies": {
-    "dompurify": "^3.4.14",
-    "marked": "^18.0.10"
-  },
-  "devDependencies": {
-    "@testing-library/dom": "^10.4.1",
-    "@vitest/coverage-v8": "^4.1.9",
-    "istanbul-lib-instrument": "^6.0.3",
-    "jsdom": "^30.0.1",
-    "monocart-coverage-reports": "^2.13.0",
-    "vitest": "^4.1.0"
-  },
-  "engines": {
-    "node": ">=26.0.0"
-  },
-  "name": "discogsography-explore-tests",
+  "name": "groovemap-graph-explorer-web",
+  "version": "0.1.0",
   "private": true,
+  "type": "module",
+  "packageManager": "npm@11.19.0",
+  "engines": {"node": "26.7.0"},
   "scripts": {
+    "build:css": "tailwindcss --input tailwind.input.css --output static/tailwind.css --minify",
+    "build:vendor": "bash ../scripts/build-web-assets.sh",
+    "build:web": "npm run build:vendor && npm run build:css",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest"
   },
-  "type": "module"
+  "dependencies": {
+    "@fontsource/inter": "5.3.0",
+    "@fontsource/jetbrains-mono": "5.3.0",
+    "@fontsource/space-grotesk": "5.3.0",
+    "alpinejs": "3.15.8",
+    "d3": "7.9.0",
+    "dompurify": "3.4.14",
+    "marked": "18.0.10",
+    "material-symbols": "0.47.0",
+    "plotly.js-dist-min": "2.27.0",
+    "qrcodejs": "1.0.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "4.3.3",
+    "@tailwindcss/forms": "0.5.11",
+    "@testing-library/dom": "10.4.1",
+    "@vitest/coverage-v8": "4.1.11",
+    "istanbul-lib-instrument": "6.0.3",
+    "jsdom": "30.0.1",
+    "monocart-coverage-reports": "2.13.0",
+    "vitest": "4.1.11"
+  }
 }

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from playwright.sync_api import Page, expect
 import pytest
+from playwright.sync_api import Page, expect
 
 
 @pytest.mark.e2e
@@ -14,7 +14,7 @@ def test_ask_switch_pane_to_insights(page: Page, explore_url: str) -> None:
     input_el.fill("Show me the biggest labels of 2024")
     input_el.press("Enter")
 
-    expect(page.locator('[data-testid="nlq-strip"]')).to_be_visible(timeout=15_000)
+    expect(page.locator('[data-testid="nlq-pill-answer"]')).to_be_visible(timeout=15_000)
 
     insights_link = page.locator('.nav-link[data-pane="insights"].active')
     expect(insights_link).to_be_visible(timeout=5_000)
