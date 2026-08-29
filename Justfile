@@ -14,12 +14,13 @@ source-check:
     python scripts/check-brand.py
     npm --prefix explore ci --ignore-scripts
     npm --prefix explore run build:web
+    node explore/scripts/vendor-licenses.mjs check
     npm --prefix explore test
     test -s explore/static/tailwind.css
     gitleaks git --redact --no-banner
     gitleaks dir . --redact --no-banner
 
-check: source-check typecheck test build install-check license-check bump-preview
+check: source-check typecheck test build artifact-check install-check license-check bump-preview
 
 format:
     uv run ruff format .
@@ -47,6 +48,9 @@ web-build:
 
 build: web-build
     uv build --out-dir dist --clear
+
+artifact-check:
+    python scripts/check-vendor-artifacts.py dist/*.whl
 
 install-check: build
     bash scripts/install-check.sh
