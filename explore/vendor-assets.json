@@ -1,0 +1,202 @@
+{
+  "schema": 1,
+  "assets": [
+    {
+      "id": "d3",
+      "name": "D3",
+      "package": "d3",
+      "version": "7.9.0",
+      "declared_license": "ISC",
+      "selected_license": "ISC",
+      "homepage": "https://d3js.org",
+      "license_source": {
+        "scope": "package",
+        "path": "LICENSE",
+        "sha256": "3e6849627f74ff73c257a3ae1efb574015d94fc1035c05ec3c15805165efcbc4"
+      },
+      "license_destination": "licenses/d3-7.9.0-ISC.txt",
+      "outputs": ["d3.min.js"]
+    },
+    {
+      "id": "plotly",
+      "name": "Plotly.js",
+      "package": "plotly.js-dist-min",
+      "version": "2.27.0",
+      "declared_license": "MIT",
+      "selected_license": "MIT",
+      "homepage": "https://plotly.com/javascript/",
+      "license_source": {
+        "scope": "package",
+        "path": "LICENSE",
+        "sha256": "67a26cf80f03ff388f26945dfc1f6caed1a0746ff43871190339b3aee49b94bb"
+      },
+      "license_destination": "licenses/plotly.js-dist-min-2.27.0-MIT.txt",
+      "outputs": ["plotly.min.js"]
+    },
+    {
+      "id": "alpinejs",
+      "name": "Alpine.js",
+      "package": "alpinejs",
+      "version": "3.15.8",
+      "declared_license": "MIT",
+      "selected_license": "MIT",
+      "homepage": "https://alpinejs.dev",
+      "license_source": {
+        "scope": "repository",
+        "path": "third_party/licenses/alpinejs-3.15.8-MIT.md",
+        "sha256": "08b7502da6e7aa1d0bbdc97d220fbf669b9366c61bd0f072238283c89bc4773a",
+        "url": "https://github.com/alpinejs/alpine/blob/v3.15.8/LICENSE.md"
+      },
+      "license_destination": "licenses/alpinejs-3.15.8-MIT.md",
+      "outputs": ["alpine.min.js"]
+    },
+    {
+      "id": "qrcodejs",
+      "name": "QRCode.js",
+      "package": "qrcodejs",
+      "version": "1.0.0",
+      "declared_license": "MIT",
+      "selected_license": "MIT",
+      "homepage": "https://github.com/davidshimjs/qrcodejs",
+      "license_source": {
+        "scope": "package",
+        "path": "LICENSE",
+        "sha256": "036eb2ba30ccb140d99a9acab6e077a76bbc492ddc21c041a85103ea6769fc83"
+      },
+      "license_destination": "licenses/qrcodejs-1.0.0-MIT.txt",
+      "outputs": ["qrcode.min.js"]
+    },
+    {
+      "id": "dompurify",
+      "name": "DOMPurify",
+      "package": "dompurify",
+      "version": "3.4.14",
+      "declared_license": "(MPL-2.0 OR Apache-2.0)",
+      "selected_license": "Apache-2.0",
+      "homepage": "https://github.com/cure53/DOMPurify",
+      "license_source": {
+        "scope": "package",
+        "path": "LICENSE",
+        "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+      },
+      "license_destination": "licenses/dompurify-3.4.14-Apache-2.0.txt",
+      "outputs": ["dompurify.mjs"]
+    },
+    {
+      "id": "marked",
+      "name": "Marked",
+      "package": "marked",
+      "version": "18.0.10",
+      "declared_license": "MIT",
+      "selected_license": "MIT",
+      "homepage": "https://marked.js.org",
+      "license_source": {
+        "scope": "package",
+        "path": "LICENSE",
+        "sha256": "8e3a3f82f59a60958f56ca08f445647c32a4733dc7ca6c2c46f6eb898471ab9c"
+      },
+      "license_destination": "licenses/marked-18.0.10-MIT.txt",
+      "outputs": ["marked.mjs"]
+    },
+    {
+      "id": "inter",
+      "name": "Inter",
+      "package": "@fontsource/inter",
+      "version": "5.3.0",
+      "declared_license": "OFL-1.1",
+      "selected_license": "OFL-1.1",
+      "homepage": "https://fontsource.org/fonts/inter",
+      "license_source": {
+        "scope": "package",
+        "path": "LICENSE",
+        "sha256": "3b0a5fca3d17942cde889069889dedbbbd075e9b599968c82a95f4d944e9b345"
+      },
+      "license_destination": "licenses/inter-5.3.0-OFL-1.1.txt",
+      "outputs": [
+        "fonts/inter/latin-400.css",
+        "fonts/inter/latin-500.css",
+        "fonts/inter/latin-600.css",
+        "fonts/inter/latin-700.css",
+        "fonts/inter/files/inter-latin-400-normal.woff",
+        "fonts/inter/files/inter-latin-400-normal.woff2",
+        "fonts/inter/files/inter-latin-500-normal.woff",
+        "fonts/inter/files/inter-latin-500-normal.woff2",
+        "fonts/inter/files/inter-latin-600-normal.woff",
+        "fonts/inter/files/inter-latin-600-normal.woff2",
+        "fonts/inter/files/inter-latin-700-normal.woff",
+        "fonts/inter/files/inter-latin-700-normal.woff2"
+      ]
+    },
+    {
+      "id": "jetbrains-mono",
+      "name": "JetBrains Mono",
+      "package": "@fontsource/jetbrains-mono",
+      "version": "5.3.0",
+      "declared_license": "OFL-1.1",
+      "selected_license": "OFL-1.1",
+      "homepage": "https://fontsource.org/fonts/jetbrains-mono",
+      "license_source": {
+        "scope": "package",
+        "path": "LICENSE",
+        "sha256": "403581b69dac5cff4079205e01c6b467e56af449ecbd7247693ddb1baafa005b"
+      },
+      "license_destination": "licenses/jetbrains-mono-5.3.0-OFL-1.1.txt",
+      "outputs": [
+        "fonts/jetbrains-mono/latin-400.css",
+        "fonts/jetbrains-mono/latin-500.css",
+        "fonts/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff",
+        "fonts/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2",
+        "fonts/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff",
+        "fonts/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2"
+      ]
+    },
+    {
+      "id": "space-grotesk",
+      "name": "Space Grotesk",
+      "package": "@fontsource/space-grotesk",
+      "version": "5.3.0",
+      "declared_license": "OFL-1.1",
+      "selected_license": "OFL-1.1",
+      "homepage": "https://fontsource.org/fonts/space-grotesk",
+      "license_source": {
+        "scope": "package",
+        "path": "LICENSE",
+        "sha256": "18a4de52385f6b988782639d5d0cc1326e5a8c2de9a7f01d7b20d9aedcc60943"
+      },
+      "license_destination": "licenses/space-grotesk-5.3.0-OFL-1.1.txt",
+      "outputs": [
+        "fonts/space-grotesk/latin-400.css",
+        "fonts/space-grotesk/latin-500.css",
+        "fonts/space-grotesk/latin-600.css",
+        "fonts/space-grotesk/latin-700.css",
+        "fonts/space-grotesk/files/space-grotesk-latin-400-normal.woff",
+        "fonts/space-grotesk/files/space-grotesk-latin-400-normal.woff2",
+        "fonts/space-grotesk/files/space-grotesk-latin-500-normal.woff",
+        "fonts/space-grotesk/files/space-grotesk-latin-500-normal.woff2",
+        "fonts/space-grotesk/files/space-grotesk-latin-600-normal.woff",
+        "fonts/space-grotesk/files/space-grotesk-latin-600-normal.woff2",
+        "fonts/space-grotesk/files/space-grotesk-latin-700-normal.woff",
+        "fonts/space-grotesk/files/space-grotesk-latin-700-normal.woff2"
+      ]
+    },
+    {
+      "id": "material-symbols",
+      "name": "Material Symbols",
+      "package": "material-symbols",
+      "version": "0.47.0",
+      "declared_license": "Apache-2.0",
+      "selected_license": "Apache-2.0",
+      "homepage": "https://marella.github.io/material-symbols/demo/",
+      "license_source": {
+        "scope": "package",
+        "path": "LICENSE",
+        "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+      },
+      "license_destination": "licenses/material-symbols-0.47.0-Apache-2.0.txt",
+      "outputs": [
+        "fonts/material-symbols/outlined.css",
+        "fonts/material-symbols/material-symbols-outlined.woff2"
+      ]
+    }
+  ]
+}
