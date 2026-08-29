@@ -25,6 +25,15 @@ from fastapi.staticfiles import StaticFiles
 
 logger = structlog.get_logger(__name__)
 
+STARTUP_BANNER = r"""
+                    _                    _
+ __ _ _ _ __ _ _ __| |_ ___ _____ ___ __| |___ _ _ ___ _ _
+/ _` | '_/ _` | '_ \ ' \___/ -_) \ / '_ \ / _ \ '_/ -_) '_|
+\__, |_| \__,_| .__/_||_|  \___/_\_\ .__/_\___/_| \___|_|
+|___/         |_|                  |_|
+                         graph-explorer
+""".strip("\n")
+
 # CORS origins configurable via environment variable (comma-separated list)
 _cors_origins_raw = os.environ.get("CORS_ORIGINS", "")
 _cors_origins = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()] if _cors_origins_raw else None
@@ -243,10 +252,7 @@ app.mount("/", StaticFiles(directory=Path(__file__).parent / "static", html=True
 def main() -> None:  # pragma: no cover
     """Entry point for the Explore service."""
     setup_logging("explore", log_file=Path("/logs/explore.log"))
-    # fmt: off
-    print("GrooveMap Graph Explorer")
-    print()
-    # fmt: on
+    print(STARTUP_BANNER)
     uvicorn.run(
         "explore.explore:app",
         host="0.0.0.0",  # noqa: S104  # nosec B104

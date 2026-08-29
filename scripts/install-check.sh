@@ -5,4 +5,4 @@ install_tmp="$(mktemp -d)"
 trap 'rm -rf "${install_tmp}"' EXIT
 uv venv "${install_tmp}/venv"
 uv pip install --python "${install_tmp}/venv/bin/python" --find-links .build/runtime dist/*.whl
-"${install_tmp}/venv/bin/python" -c 'import explore.explore; import explore.config'
+"${install_tmp}/venv/bin/python" -c 'import explore.explore'

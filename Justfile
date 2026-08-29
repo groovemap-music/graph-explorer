@@ -29,7 +29,7 @@ typecheck:
     uv run mypy
 
 test:
-    uv run pytest -m 'not e2e' --cov=explore --cov-report=term-missing
+    uv run pytest -m 'not e2e' --cov=explore --cov-report=term-missing --cov-report=xml
 
 js-test:
     npm --prefix explore test

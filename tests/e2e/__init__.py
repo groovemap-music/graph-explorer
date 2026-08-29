@@ -1,1 +1,1 @@
-"""End-to-end browser tests for Discogsography."""
+"""End-to-end browser tests for GrooveMap."""

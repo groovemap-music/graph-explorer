@@ -43,4 +43,5 @@ Canonical editable branding belongs to `infra/brand`; `explore/static/brand/` co
 
 This independently deployable application is versioned from PEP 621 metadata using Commitizen and annotated `v$version` tags. Migration verification does not publish images, packages, tags, or releases. A publishing workflow remains disabled until an approved registry identity and release policy exist.
 
-See [docs/extraction.md](docs/extraction.md) for retained-history provenance.
+See the [documentation index](docs/README.md) for UI design records, integrations, and
+source-history provenance.

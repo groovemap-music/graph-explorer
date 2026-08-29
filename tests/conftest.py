@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -67,3 +69,21 @@ def browser_context_args() -> dict[str, Any]:
 def browser_type_launch_args() -> dict[str, Any]:
     """Run browsers headlessly in local and CI containers."""
     return {"headless": True, "args": ["--no-sandbox", "--disable-gpu"]}
+
+
+def pytest_runtest_teardown(item: pytest.Item) -> None:
+    """Persist Istanbul data while Playwright's page fixture is still alive."""
+    if not item.get_closest_marker("e2e"):
+        return
+    try:
+        page = item.funcargs.get("page")
+        if page is None:
+            return
+        coverage = page.evaluate("() => window.__coverage__")
+    except Exception:
+        return
+    if coverage:
+        output_dir = Path(".nyc_output")
+        output_dir.mkdir(exist_ok=True)
+        safe_name = item.nodeid.replace("/", "_").replace("::", "_")
+        (output_dir / f"{safe_name}.json").write_text(json.dumps(coverage))

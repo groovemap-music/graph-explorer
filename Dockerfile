@@ -32,7 +32,7 @@ FROM ${PYTHON_IMAGE}
 ARG BUILD_DATE
 ARG BUILD_VERSION=0.1.0
 ARG VCS_REF
-LABEL org.opencontainers.image.title="GrooveMap Graph Explorer" \
+LABEL org.opencontainers.image.title="graph-explorer" \
       org.opencontainers.image.description="Public graph exploration application and Catalog API proxy" \
       org.opencontainers.image.authors="Robert Wlodarczyk <robert@simplicityguy.com>" \
       org.opencontainers.image.url="https://groovemap.music" \
