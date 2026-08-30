@@ -88,7 +88,7 @@ describe('initNlq orchestrator', () => {
             expect.any(Function),
             expect.any(Function),
             expect.any(Function),
-            // onActions — actions arrive on their own SSE frame (discogsography-ebgz)
+            // onActions — actions arrive on their own SSE frame (migration-regression-ebgz)
             expect.any(Function),
         );
         expect(app._switchPane).toHaveBeenCalledWith('trends');
@@ -195,7 +195,7 @@ describe('initNlq orchestrator', () => {
         }
     });
 
-    it('does not show a sanitizer-rejected action as "✓ applied" or offer Undo for it (regression discogsography-cu2.39)', async () => {
+    it('does not show a sanitizer-rejected action as "✓ applied" or offer Undo for it (regression migration-regression-cu2.39)', async () => {
         const apiClient = makeApiClient({
             enabled: true,
             streamMode: 'result',

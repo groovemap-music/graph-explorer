@@ -198,7 +198,7 @@ describe('UserPanes', () => {
             expect(body.textContent).not.toContain('First Page');
         });
 
-        it('renders the failure state (not a blank pane) on a network-level fetch rejection (regression discogsography-cmw0)', async () => {
+        it('renders the failure state (not a blank pane) on a network-level fetch rejection (regression migration-regression-cmw0)', async () => {
             window.apiClient.getUserCollection.mockRejectedValue(new TypeError('Failed to fetch'));
             const loading = document.getElementById('collectionLoading');
 
@@ -287,7 +287,7 @@ describe('UserPanes', () => {
             expect(body.textContent).not.toContain('First Page');
         });
 
-        it('renders the failure state (not a blank pane) on a network-level fetch rejection (regression discogsography-cmw0)', async () => {
+        it('renders the failure state (not a blank pane) on a network-level fetch rejection (regression migration-regression-cmw0)', async () => {
             window.apiClient.getUserWantlist.mockRejectedValue(new TypeError('Failed to fetch'));
             const loading = document.getElementById('wantlistLoading');
 
@@ -330,7 +330,7 @@ describe('UserPanes', () => {
             expect(body.textContent).not.toContain('No recommendations yet');
         });
 
-        it('renders the same error state on a network-level fetch rejection (regression discogsography-cmw0)', async () => {
+        it('renders the same error state on a network-level fetch rejection (regression migration-regression-cmw0)', async () => {
             window.apiClient.getUserRecommendations.mockRejectedValue(new TypeError('Failed to fetch'));
             const loading = document.getElementById('recommendationsLoading');
 
@@ -942,7 +942,7 @@ describe('UserPanes', () => {
             expect(el.querySelectorAll('.stat-card').length).toBe(4);
         });
 
-        it('should not throw an unhandled rejection on a network-level fetch failure (regression discogsography-cmw0)', async () => {
+        it('should not throw an unhandled rejection on a network-level fetch failure (regression migration-regression-cmw0)', async () => {
             window.apiClient.getUserCollectionStats.mockRejectedValue(new TypeError('Failed to fetch'));
 
             await expect(userPanes.loadCollectionStats()).resolves.toBeUndefined();
@@ -1434,7 +1434,7 @@ describe('UserPanes', () => {
             expect(body.textContent).not.toContain('First Page Release');
         });
 
-        it('renders the failure state (not a blank pane) on a network-level fetch rejection (regression discogsography-cmw0)', async () => {
+        it('renders the failure state (not a blank pane) on a network-level fetch rejection (regression migration-regression-cmw0)', async () => {
             window.apiClient.getCollectionGaps.mockRejectedValue(new TypeError('Failed to fetch'));
             const loading = document.getElementById('gapsLoading');
 
@@ -1500,7 +1500,7 @@ describe('UserPanes', () => {
             document.createElement.mockRestore();
         });
 
-        it('resets the button instead of leaving it stuck on "Downloading..." on a network-level fetch rejection (regression discogsography-cmw0)', async () => {
+        it('resets the button instead of leaving it stuck on "Downloading..." on a network-level fetch rejection (regression migration-regression-cmw0)', async () => {
             vi.useFakeTimers();
             window.apiClient.getTasteCard.mockRejectedValue(new TypeError('Failed to fetch'));
             const btn = document.createElement('button');

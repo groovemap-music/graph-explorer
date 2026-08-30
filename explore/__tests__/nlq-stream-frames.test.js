@@ -1,5 +1,5 @@
 /**
- * Regression tests for discogsography-ebgz.
+ * Regression tests for migration-regression-ebgz.
  *
  * The SSE stream parser dispatched only `status` and `result` frames:
  *
@@ -12,7 +12,7 @@
  *
  * These tests pin all four frame types plus the "closed without a result"
  * case, and the orchestrator's apply-exactly-once behavior now that actions
- * ride on both the sideband frame and the result frame (discogsography-l6fm).
+ * ride on both the sideband frame and the result frame (migration-regression-l6fm).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 

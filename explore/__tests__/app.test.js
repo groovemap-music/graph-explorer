@@ -1622,7 +1622,7 @@ describe('ExploreApp helper methods', () => {
             expect(app.primaryTrendsData).toBeNull();
         });
 
-        it('should discard a stale trends response that resolves after a newer request (discogsography-5fg0)', async () => {
+        it('should discard a stale trends response that resolves after a newer request (migration-regression-5fg0)', async () => {
             // User selects Miles Davis, then quickly Radiohead. If the Miles
             // Davis response arrives after Radiohead's, it must not
             // overwrite the chart.
@@ -1823,7 +1823,7 @@ describe('ExploreApp helper methods', () => {
             expect(document.getElementById('loginSubmitBtn').disabled).toBe(false);
         });
 
-        it('should show network-error feedback and re-enable the button on a rejected fetch (regression discogsography-cmw0)', async () => {
+        it('should show network-error feedback and re-enable the button on a rejected fetch (regression migration-regression-cmw0)', async () => {
             document.getElementById('loginEmail').value = 'test@test.com';
             document.getElementById('loginPassword').value = 'password123';
             window.apiClient.login.mockRejectedValue(new TypeError('Failed to fetch'));
@@ -1871,7 +1871,7 @@ describe('ExploreApp helper methods', () => {
             expect(document.getElementById('registerSubmitBtn').disabled).toBe(false);
         });
 
-        it('should show network-error feedback and re-enable the button on a rejected fetch (regression discogsography-cmw0)', async () => {
+        it('should show network-error feedback and re-enable the button on a rejected fetch (regression migration-regression-cmw0)', async () => {
             document.getElementById('registerEmail').value = 'new@test.com';
             document.getElementById('registerPassword').value = 'password123';
             window.apiClient.register.mockRejectedValue(new TypeError('Failed to fetch'));
@@ -2025,7 +2025,7 @@ describe('ExploreApp helper methods', () => {
             expect(result).toBe(true);
         });
 
-        it('should still call _restoreFromUrl (not strand it) if _initAuth rejects for an unrelated reason (regression discogsography-ponr)', async () => {
+        it('should still call _restoreFromUrl (not strand it) if _initAuth rejects for an unrelated reason (regression migration-regression-ponr)', async () => {
             history.replaceState(null, '', '/');
             const restoreSpy = vi.spyOn(ExploreApp.prototype, '_restoreFromUrl').mockResolvedValue(undefined);
             // authManager.init() itself now catches network rejections
@@ -2116,7 +2116,7 @@ describe('ExploreApp helper methods', () => {
             expect(window.apiClient.getUserStatus).toHaveBeenCalled();
         });
 
-        it('should discard a stale explore response that resolves after a newer request (discogsography-5fg0)', async () => {
+        it('should discard a stale explore response that resolves after a newer request (migration-regression-5fg0)', async () => {
             // User selects artist A, then quickly artist B. A's response
             // arrives after B's — the graph must end up showing B, not A.
             let resolveA;
@@ -2268,7 +2268,7 @@ describe('ExploreApp helper methods', () => {
             expect(app.graph.g.selectAll).toHaveBeenCalledWith('g');
         });
 
-        it('should not throw on undated container <g> elements and should still highlight matching nodes (regression discogsography-cu2.36)', () => {
+        it('should not throw on undated container <g> elements and should still highlight matching nodes (regression migration-regression-cu2.36)', () => {
             const app = new ExploreApp();
             const classedSpy = vi.fn();
 
@@ -2822,7 +2822,7 @@ describe('ExploreApp - password reset and 2FA UI handlers', () => {
             expect(document.getElementById('resetRequestError').textContent).toBeTruthy();
         });
 
-        it('should show error feedback (not throw unhandled) on a rejected fetch (regression discogsography-cmw0)', async () => {
+        it('should show error feedback (not throw unhandled) on a rejected fetch (regression migration-regression-cmw0)', async () => {
             new ExploreApp();
             document.getElementById('resetEmail').value = 'user@example.com';
             window.apiClient.resetRequest = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
@@ -2949,7 +2949,7 @@ describe('ExploreApp - password reset and 2FA UI handlers', () => {
             expect(document.getElementById('resetConfirmError').textContent).toContain('Token expired');
         });
 
-        it('should show error feedback (not throw unhandled) on a rejected fetch (regression discogsography-cmw0)', async () => {
+        it('should show error feedback (not throw unhandled) on a rejected fetch (regression migration-regression-cmw0)', async () => {
             new ExploreApp();
             document.getElementById('newPassword').value = 'newpassword123';
             document.getElementById('confirmNewPassword').value = 'newpassword123';

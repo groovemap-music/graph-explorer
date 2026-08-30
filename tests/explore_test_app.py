@@ -1,4 +1,4 @@
-"""Test application factory for Explore service E2E tests."""
+"""Test application factory for graph-explorer E2E tests."""
 
 import json
 from collections.abc import AsyncGenerator
@@ -118,7 +118,7 @@ def create_test_app() -> FastAPI:
         return JSONResponse(
             content={
                 "status": "healthy",
-                "service": "explore",
+                "service": "graph-explorer",
                 "timestamp": datetime.now(UTC).isoformat(),
             }
         )

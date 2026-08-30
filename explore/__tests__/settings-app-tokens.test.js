@@ -196,7 +196,7 @@ describe('SettingsPane — App Tokens card', () => {
             expect(container.querySelector('#appTokenPlaintext')).toBeNull();
         });
 
-        it('shows a network-error message on a network-level fetch rejection (regression discogsography-cmw0)', async () => {
+        it('shows a network-error message on a network-level fetch rejection (regression migration-regression-cmw0)', async () => {
             window.apiClient.mintAppToken.mockRejectedValue(new TypeError('Failed to fetch'));
             window.settingsPane.init();
             await flush();
@@ -250,7 +250,7 @@ describe('SettingsPane — App Tokens card', () => {
             expect(window.apiClient.mintAppToken).not.toHaveBeenCalled();
         });
 
-        it('preserves an in-progress mint form across pane re-activation (regression discogsography-3vz8)', async () => {
+        it('preserves an in-progress mint form across pane re-activation (regression migration-regression-3vz8)', async () => {
             window.settingsPane.init();
             await flush();
             container.querySelector('#appTokenMintBtn').click();
@@ -406,7 +406,7 @@ describe('SettingsPane — App Tokens card', () => {
             expect(window.apiClient.revokeAppToken).not.toHaveBeenCalled();
         });
 
-        it('alerts the user and still refreshes the list on a network-level fetch rejection (regression discogsography-cmw0)', async () => {
+        it('alerts the user and still refreshes the list on a network-level fetch rejection (regression migration-regression-cmw0)', async () => {
             window.apiClient.listAppTokens.mockResolvedValue({
                 active: [{ id: 'tok-a', name: 'kiosk', scopes: ['collection:read'], created_at: null, last_used_at: null }],
                 revoked: [],

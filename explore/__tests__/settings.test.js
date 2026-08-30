@@ -189,7 +189,7 @@ describe('SettingsPane', () => {
             expect(document.getElementById('settingsEmail').textContent).toBe('');
         });
 
-        describe('transient 2FA flow preservation (regression discogsography-cu2.40)', () => {
+        describe('transient 2FA flow preservation (regression migration-regression-cu2.40)', () => {
             it('should NOT clobber the recovery state on re-activation, even once totp_enabled flips true', () => {
                 window.settingsPane.init();
                 window.settingsPane._twoFaState = 'recovery';

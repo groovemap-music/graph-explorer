@@ -2,6 +2,14 @@
 
 The public-facing graph exploration application for GrooveMap. It serves a static Tailwind/Alpine/D3/Plotly interface and proxies browser requests to the separately deployed `catalog-api`, including streamed natural-language query responses.
 
+```mermaid
+flowchart LR
+    Browser[Web browser] --> Explorer[graph-explorer]
+    Explorer --> Static[Versioned static UI]
+    Explorer --> Proxy[Catalog API proxy]
+    Proxy --> Catalog[catalog-api]
+```
+
 This project is licensed under the [GNU Affero General Public License v3.0 only](LICENSE). Commercial use is permitted under the AGPL when its terms are followed; [alternative commercial terms may be negotiated](COMMERCIAL-LICENSING.md).
 
 External contributions are temporarily paused until a relicensing-capable contributor agreement is approved. See [CONTRIBUTING.md](CONTRIBUTING.md) before proposing changes.
@@ -21,7 +29,7 @@ The repository interface is:
 - `just setup` — install locked Python and Node environments.
 - `just check` — run the authoritative pre-merge gate.
 - `just test` / `just js-test` — run Python proxy and JavaScript unit suites.
-- `just e2e-setup` / `just e2e` — install Chromium and run the browser gate against the self-contained mock Catalog API.
+- `just e2e-setup` / `just e2e` — install and run the Chromium, Firefox, WebKit, iPhone, and iPad browser matrix against the self-contained mock Catalog API, retaining coverage and failure artifacts.
 - `just build` — generate CSS and build the wheel/source distribution.
 - `just image` — build and inspect the non-root production image.
 - `just release-dry-run` — generate checksums, SBOM, notices, and provenance without publishing.
@@ -50,7 +58,7 @@ Canonical editable branding belongs to the public [`groovemap-music/design`](htt
 
 ## Releases
 
-This independently deployable application is versioned from PEP 621 metadata using Commitizen and annotated `v$version` tags. Migration verification does not publish images, packages, tags, or releases. A publishing workflow remains disabled until an approved registry identity and release policy exist.
+This independently deployable application is versioned from PEP 621 metadata using Commitizen and annotated `v$version` tags. Migration verification does not publish images, packages, tags, or releases. The active release workflow runs only when an explicitly approved `v*` tag is pushed; it then validates the release candidate and publishes the repository-named image to GHCR.
 
-See the [documentation index](docs/README.md) for UI design records, integrations, and
-source-history provenance.
+See the [documentation index](docs/README.md) for the architecture, release boundary, public
+decisions, and source-history sanitization gate.

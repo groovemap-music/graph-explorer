@@ -386,7 +386,7 @@ describe('InsightsPanel', () => {
             expect(chip2.classList.contains('active')).toBe(false);
         });
 
-        it('should discard a stale response for a genre the user has since navigated away from (discogsography-5fg0)', async () => {
+        it('should discard a stale response for a genre the user has since navigated away from (migration-regression-5fg0)', async () => {
             // A slower request for the previously-clicked genre ('Jazz')
             // resolves AFTER a faster request for the newly-clicked genre
             // ('Classical'). The stale response must not overwrite the chart.

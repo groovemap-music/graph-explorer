@@ -366,7 +366,7 @@ class ExploreApp {
         // Request counter for preventing stale node-click responses
         this._nodeClickRequestId = 0;
         // Request counters for preventing stale explore/trends responses
-        // (mirrors _nodeClickRequestId — see discogsography-5fg0)
+        // (mirrors _nodeClickRequestId — see migration-regression-5fg0)
         this._exploreRequestId = 0;
         this._trendsRequestId = 0;
 
@@ -392,7 +392,7 @@ class ExploreApp {
 
         this._bindEvents();
         // authManager.init() now catches its own network-level rejections
-        // (discogsography-ponr), but this .catch() is kept as a backstop so
+        // (migration-regression-ponr), but this .catch() is kept as a backstop so
         // an unrelated failure in _updateAuthUI()/_initAuth() can never skip
         // _restoreFromUrl() and strand any node/search state encoded in the URL.
         this._initAuth().then(() => this._restoreFromUrl()).catch((err) => {
@@ -989,7 +989,7 @@ class ExploreApp {
 
     async _loadExplore(name, type) {
         // Guard against out-of-order responses: mirrors the _nodeClickRequestId
-        // pattern (discogsography-5fg0) so a slower earlier explore load can
+        // pattern (migration-regression-5fg0) so a slower earlier explore load can
         // never clobber a faster, more recent one.
         const requestId = ++this._exploreRequestId;
         const loading = document.getElementById('graphLoading');
@@ -1125,7 +1125,7 @@ class ExploreApp {
     }
 
     async _loadTrends(name, type) {
-        // Guard against out-of-order responses (discogsography-5fg0): mirrors
+        // Guard against out-of-order responses (migration-regression-5fg0): mirrors
         // _nodeClickRequestId — bail before touching the chart if a newer
         // trends request has since been issued.
         const requestId = ++this._trendsRequestId;
