@@ -20,3 +20,4 @@ cp "${repo_root}"/explore/node_modules/@fontsource/space-grotesk/files/space-gro
 cp "${repo_root}/explore/node_modules/material-symbols/outlined.css" "${vendor}/fonts/material-symbols/"
 cp "${repo_root}/explore/node_modules/material-symbols/material-symbols-outlined.woff2" "${vendor}/fonts/material-symbols/"
 test "$(find "${vendor}" -maxdepth 1 -type f | wc -l | tr -d ' ')" = "6"
+node "${repo_root}/explore/scripts/vendor-licenses.mjs" build

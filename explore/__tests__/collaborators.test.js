@@ -202,7 +202,7 @@ describe('CollaboratorsPanel', () => {
             expect(container.querySelectorAll('.collaborator-item').length).toBe(2);
         });
 
-        it('replaces the "Loading..." placeholder with an error message when API returns null (regression discogsography-cmw0)', async () => {
+        it('replaces the "Loading..." placeholder with an error message when API returns null (regression migration-regression-cmw0)', async () => {
             window.apiClient.getCollaborators.mockResolvedValue(null);
             const container = document.getElementById('collaboratorsContainer');
             const loadingText = document.createElement('p');
@@ -217,7 +217,7 @@ describe('CollaboratorsPanel', () => {
             expect(container.textContent).toContain('Failed to load collaborators');
         });
 
-        it('replaces the "Loading..." placeholder with an error message on a network-level fetch rejection (regression discogsography-cmw0)', async () => {
+        it('replaces the "Loading..." placeholder with an error message on a network-level fetch rejection (regression migration-regression-cmw0)', async () => {
             window.apiClient.getCollaborators.mockRejectedValue(new TypeError('Failed to fetch'));
             const container = document.getElementById('collaboratorsContainer');
             const loadingText = document.createElement('p');

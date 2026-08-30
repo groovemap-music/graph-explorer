@@ -1,5 +1,5 @@
 /**
- * API client for the Explore service.
+ * API client for graph-explorer.
  */
 class ApiClient {
     /**
@@ -7,7 +7,7 @@ class ApiClient {
      * reconcile client-side auth state immediately, instead of silently
      * collapsing it into the same "return null" path as any other error —
      * which otherwise leaves the nav showing a stale logged-in user while
-     * every authenticated feature quietly goes dead (discogsography-ponr).
+     * every authenticated feature quietly goes dead (migration-regression-ponr).
      * @param {Response} response
      */
     _checkAuthResponse(response) {
@@ -656,7 +656,7 @@ class ApiClient {
      * Every one of them must be dispatched — an unhandled frame is not merely
      * ignored, it strands the caller: dropping `actions` silently no-ops the
      * agent's graph actions, and dropping `error` leaves the pill spinning
-     * forever because the stream closes with HTTP 200. See discogsography-ebgz.
+     * forever because the stream closes with HTTP 200. See migration-regression-ebgz.
      *
      * The stream is settled exactly once: the first of result / error / a close
      * with no result frame wins, so a caller can never be called back twice nor

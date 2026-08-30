@@ -1427,7 +1427,7 @@ describe('ApiClient', () => {
         });
     });
 
-    describe('_checkAuthResponse (regression discogsography-ponr)', () => {
+    describe('_checkAuthResponse (regression migration-regression-ponr)', () => {
         beforeEach(() => {
             window.authManager = {
                 isLoggedIn: vi.fn().mockReturnValue(true),

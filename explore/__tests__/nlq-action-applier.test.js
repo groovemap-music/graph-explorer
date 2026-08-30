@@ -81,7 +81,7 @@ describe('NlqActionApplier', () => {
         expect(result.applied).toBe(1);
     });
 
-    describe('appliedTypes (regression discogsography-cu2.39)', () => {
+    describe('appliedTypes (regression migration-regression-cu2.39)', () => {
         it('includes only genuinely-applied action types, not sanitizer-rejected ones', () => {
             const handlers = mockHandlers();
             const applier = new NlqActionApplier({ handlers, snapshotter: mockSnapshotter() });

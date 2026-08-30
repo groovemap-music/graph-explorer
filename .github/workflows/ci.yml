@@ -4,26 +4,50 @@ on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    - cron: "0 1 * * 6"
+    - cron: "0 4 * * 1"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  ci:
-    uses: groovemap-music/.github/.github/workflows/reusable-ci.yml@main
+  required:
+    uses: groovemap-music/automation/.github/workflows/reusable-ci.yml@5e52f14885e70f39c7f588d89fc2a1316d4c4b13
     with:
       runner: ubuntu-24.04
-      requires-private-library: true
+      language: mixed
       setup-command: just setup
       check-command: just check
-      fallback-command: just source-check
+      coverage-command: just coverage
       audit-command: just audit
+      license-command: just license-check
+      secret-scan-command: just security
+      package-command: just build
+      install-command: just install-check
       image-command: just image
-      coverage-command: npm --prefix explore run test:coverage
-      e2e-setup-command: uv run playwright install --with-deps chromium
-      e2e-instrument-command: node explore/scripts/instrument-coverage.mjs
-      e2e-command: just e2e
-      e2e-post-command: node explore/scripts/generate-coverage-report.mjs
+      e2e-setup-command: just e2e-setup
+      e2e-instrument-command: just e2e-instrument
+      e2e-command: just e2e-run
+      e2e-post-command: just e2e-post
+      coverage-files: |
+        coverage.xml
+        explore/coverage/lcov.info
+        coverage/e2e/lcov.info
       coverage-flags: python,javascript,e2e,explorer
-    secrets: inherit
+      browser-coverage-mapping: >-
+        [
+          {"project":"chromium","lcov":"coverage/e2e/chromium/lcov.info","artifacts":["test-results/chromium","coverage/e2e/raw/chromium"]},
+          {"project":"firefox","lcov":"coverage/e2e/firefox/lcov.info","artifacts":["test-results/firefox","coverage/e2e/raw/firefox"]},
+          {"project":"webkit","lcov":"coverage/e2e/webkit/lcov.info","artifacts":["test-results/webkit","coverage/e2e/raw/webkit"]},
+          {"project":"iphone","lcov":"coverage/e2e/iphone/lcov.info","artifacts":["test-results/iphone","coverage/e2e/raw/iphone"]},
+          {"project":"ipad","lcov":"coverage/e2e/ipad/lcov.info","artifacts":["test-results/ipad","coverage/e2e/raw/ipad"]}
+        ]
+      upload-codecov: true
+      requires-private-library: true
+      private-library-client-id: ${{ vars.GROOVEMAP_CI_APP_CLIENT_ID }}
+      private-library-revision: 28fa329702bc76896cc54ab8d05ec5b1bd3d929e
+    secrets:
+      PRIVATE_LIBRARY_PRIVATE_KEY: ${{ secrets.GROOVEMAP_CI_APP_PRIVATE_KEY }}
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

@@ -14,7 +14,7 @@ class Autocomplete {
         this.results = [];
         this.onSelect = null;
         // Request counter guarding against out-of-order responses — mirrors
-        // search.js's searchRequestId (discogsography-5fg0): the 300ms
+        // search.js's searchRequestId (migration-regression-5fg0): the 300ms
         // debounce only cancels the pending timer, not an already-dispatched
         // fetch, so two queries can be in flight and resolve out of order.
         this._reqId = 0;

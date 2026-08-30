@@ -222,7 +222,7 @@ describe('ApiClient NLQ', () => {
             expect(onResult).not.toHaveBeenCalled();
             // ...but the caller must not be stranded either: an unusable result
             // frame ends the stream with no result, which now settles as an
-            // error rather than leaving the pill spinning (discogsography-ebgz).
+            // error rather than leaving the pill spinning (migration-regression-ebgz).
             expect(onError).toHaveBeenCalledTimes(1);
             expect(onError.mock.calls[0][0].message).toBe('stream closed without a result');
         });

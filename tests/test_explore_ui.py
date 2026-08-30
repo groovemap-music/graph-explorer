@@ -1,4 +1,4 @@
-"""E2E browser tests for the Explore service UI."""
+"""E2E browser tests for the graph-explorer UI."""
 
 import re
 
@@ -45,7 +45,7 @@ def _goto_ready(page: Page, url: str) -> None:
 @pytest.mark.e2e
 @pytest.mark.usefixtures("test_server")
 class TestExploreUI:
-    """End-to-end tests for the Explore service web interface."""
+    """End-to-end tests for the graph-explorer web interface."""
 
     def test_page_loads(self, page: Page, test_server: str) -> None:
         """Test that the explore page loads successfully."""
@@ -108,7 +108,7 @@ class TestExploreUI:
         response = page.request.get(f"{test_server}/health")
         assert response.ok
         data = response.json()
-        assert data["service"] == "explore"
+        assert data["service"] == "graph-explorer"
         assert data["status"] == "healthy"
 
     def test_responsive_layout(self, page: Page, test_server: str) -> None:
@@ -123,6 +123,19 @@ class TestExploreUI:
         # Mobile viewport
         page.set_viewport_size({"width": 375, "height": 667})
         expect(search_input).to_be_visible(timeout=5000)
+
+    def test_source_and_legal_links_are_visible(self, page: Page, test_server: str) -> None:
+        """The network-facing application identifies its source and legal terms."""
+        page.goto(test_server, wait_until="domcontentloaded", timeout=30000)
+
+        footer = page.get_by_role("contentinfo", name="Source and legal information")
+        expect(footer).to_be_visible(timeout=5000)
+        source = footer.get_by_role("link", name="Source code")
+        expect(source).to_be_visible()
+        expect(source).to_have_attribute("href", "https://github.com/groovemap-music/graph-explorer")
+        expect(footer.get_by_role("link", name="AGPL-3.0-only")).to_be_visible()
+        expect(footer.get_by_role("link", name="Third-party notices")).to_be_visible()
+        expect(footer.get_by_role("link", name="Trademark use")).to_be_visible()
 
     def test_info_panel_hidden_by_default(self, page: Page, test_server: str) -> None:
         """Test that the info panel is hidden before any node is clicked."""

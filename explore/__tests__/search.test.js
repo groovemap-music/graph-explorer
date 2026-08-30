@@ -170,7 +170,7 @@ describe('search pane', () => {
             expect(resultsEl.textContent).toContain('error occurred');
         });
 
-        it('should hide the loading overlay and render the error state on a network-level fetch rejection (regression discogsography-cmw0)', async () => {
+        it('should hide the loading overlay and render the error state on a network-level fetch rejection (regression migration-regression-cmw0)', async () => {
             window.apiClient.search.mockRejectedValue(new TypeError('Failed to fetch'));
 
             const input = document.getElementById('searchPaneInput');
@@ -496,7 +496,7 @@ describe('search pane', () => {
             expect(mockExploreApp._loadExplore).not.toHaveBeenCalled();
         });
 
-        it('should call window.exploreApp._showToast (not the undefined window.app) for non-explorable types (regression discogsography-oi02)', async () => {
+        it('should call window.exploreApp._showToast (not the undefined window.app) for non-explorable types (regression migration-regression-oi02)', async () => {
             const mockExploreApp = {
                 _setSearchType: vi.fn(),
                 _switchPane: vi.fn(),
@@ -531,7 +531,7 @@ describe('search pane', () => {
             );
         });
 
-        it('should call window.exploreApp._showToast for master type too (regression discogsography-oi02)', async () => {
+        it('should call window.exploreApp._showToast for master type too (regression migration-regression-oi02)', async () => {
             const mockExploreApp = {
                 _setSearchType: vi.fn(),
                 _switchPane: vi.fn(),

@@ -199,7 +199,7 @@ describe('GenreTreeView', () => {
             expect(window.exploreApp._onSearch).toHaveBeenCalledWith('Alternative Rock');
         });
 
-        it('should switch to the explore pane BEFORE calling _onSearch (regression discogsography-cu2.37)', () => {
+        it('should switch to the explore pane BEFORE calling _onSearch (regression migration-regression-cu2.37)', () => {
             // _onSearch is pane-sensitive: it loads Trends unless activePane
             // is already 'explore' at the moment it runs. Calling it before
             // _switchPane('explore') silently routes the click into the

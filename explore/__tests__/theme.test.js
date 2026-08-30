@@ -214,7 +214,7 @@ describe('theme toggle markup', () => {
     });
 });
 
-describe('light palette (regression discogsography-68oe)', () => {
+describe('light palette (regression migration-regression-68oe)', () => {
     /**
      * Extract `--name: value;` custom-property declarations out of the FIRST
      * top-level block matching `selector`, e.g. the bare `:root { ... }`

@@ -13,7 +13,7 @@ class AuthManager {
         // Sync auth state across tabs: a logout (or token change) in one tab
         // only clears that tab's localStorage/memory (see clear()) — without
         // this, a second open tab keeps its stale in-memory token and shows
-        // the user as logged in indefinitely (discogsography-ponr).
+        // the user as logged in indefinitely (migration-regression-ponr).
         if (typeof window !== 'undefined' && window.addEventListener) {
             window.addEventListener('storage', (e) => this._onStorageEvent(e));
         }
@@ -124,7 +124,7 @@ class AuthManager {
             // DNS/CORS, server restart) — api-client only converts HTTP error
             // statuses to null, so this is the ONLY place such a rejection
             // would otherwise escape init() uncaught, aborting page-load auth
-            // restore (discogsography-ponr). Treat it like an invalid session
+            // restore (migration-regression-ponr). Treat it like an invalid session
             // rather than letting the caller's page-load chain reject.
             this.clear();
             return false;

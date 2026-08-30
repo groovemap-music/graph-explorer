@@ -1,6 +1,7 @@
 {
   "name": "groovemap-graph-explorer-web",
   "version": "0.1.0",
+  "license": "AGPL-3.0-only",
   "private": true,
   "type": "module",
   "packageManager": "npm@11.19.0",
@@ -30,9 +31,11 @@
     "@tailwindcss/forms": "0.5.11",
     "@testing-library/dom": "10.4.1",
     "@vitest/coverage-v8": "4.1.11",
+    "istanbul-lib-coverage": "3.2.2",
     "istanbul-lib-instrument": "6.0.3",
+    "istanbul-lib-report": "3.0.1",
+    "istanbul-reports": "3.2.0",
     "jsdom": "30.0.1",
-    "monocart-coverage-reports": "2.13.0",
     "vitest": "4.1.11"
   }
 }
