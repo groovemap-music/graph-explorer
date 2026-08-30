@@ -124,6 +124,19 @@ class TestExploreUI:
         page.set_viewport_size({"width": 375, "height": 667})
         expect(search_input).to_be_visible(timeout=5000)
 
+    def test_source_and_legal_links_are_visible(self, page: Page, test_server: str) -> None:
+        """The network-facing application identifies its source and legal terms."""
+        page.goto(test_server, wait_until="domcontentloaded", timeout=30000)
+
+        footer = page.get_by_role("contentinfo", name="Source and legal information")
+        expect(footer).to_be_visible(timeout=5000)
+        source = footer.get_by_role("link", name="Source code")
+        expect(source).to_be_visible()
+        expect(source).to_have_attribute("href", "https://github.com/groovemap-music/graph-explorer")
+        expect(footer.get_by_role("link", name="AGPL-3.0-only")).to_be_visible()
+        expect(footer.get_by_role("link", name="Third-party notices")).to_be_visible()
+        expect(footer.get_by_role("link", name="Trademark use")).to_be_visible()
+
     def test_info_panel_hidden_by_default(self, page: Page, test_server: str) -> None:
         """Test that the info panel is hidden before any node is clicked."""
         page.goto(test_server, wait_until="domcontentloaded", timeout=30000)

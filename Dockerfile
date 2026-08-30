@@ -19,7 +19,7 @@ FROM ${PYTHON_IMAGE} AS builder
 RUN pip install --no-cache-dir uv==0.12.5
 WORKDIR /app
 COPY .build/runtime/*.whl /wheels/
-COPY pyproject.toml README.md LICENSE ./
+COPY pyproject.toml README.md LICENSE NOTICE COMMERCIAL-LICENSING.md BRAND-NOTICE.md ./
 COPY explore/ ./explore/
 COPY --from=css-builder /build/explore/static/tailwind.css ./explore/static/tailwind.css
 COPY --from=css-builder /build/explore/static/vendor/ ./explore/static/vendor/
@@ -42,7 +42,7 @@ LABEL org.opencontainers.image.title="graph-explorer" \
       org.opencontainers.image.documentation="https://github.com/groovemap-music/graph-explorer/blob/main/README.md" \
       org.opencontainers.image.source="https://github.com/groovemap-music/graph-explorer" \
       org.opencontainers.image.vendor="GrooveMap" \
-      org.opencontainers.image.licenses="PolyForm-Noncommercial-1.0.0" \
+      org.opencontainers.image.licenses="AGPL-3.0-only" \
       org.opencontainers.image.version="${BUILD_VERSION}" \
       org.opencontainers.image.revision="${VCS_REF}" \
       org.opencontainers.image.created="${BUILD_DATE}" \
@@ -52,6 +52,7 @@ RUN groupadd --gid 1000 groovemap && \
     mkdir -p /app /logs && chown -R 1000:1000 /app /logs
 WORKDIR /app
 COPY --from=builder --chown=1000:1000 /app/.venv /app/.venv
+COPY --chown=1000:1000 LICENSE NOTICE COMMERCIAL-LICENSING.md BRAND-NOTICE.md /usr/share/doc/graph-explorer/
 ENV API_BASE_URL="http://api:8004" \
     HOME=/home/groovemap \
     PYTHONUNBUFFERED=1 \

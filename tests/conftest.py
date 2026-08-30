@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import socket
 import subprocess
 import sys
 import time
@@ -20,7 +21,9 @@ if TYPE_CHECKING:
 @pytest.fixture(scope="session")
 def test_server() -> Generator[str]:
     """Start the consumer-owned UI with an in-process mock Catalog API."""
-    port = 8006
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
     server_url = f"http://127.0.0.1:{port}"
     process = subprocess.Popen(  # noqa: S603
         [
@@ -33,6 +36,9 @@ def test_server() -> Generator[str]:
             "127.0.0.1",
             "--port",
             str(port),
+            "--log-level",
+            "warning",
+            "--no-access-log",
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
