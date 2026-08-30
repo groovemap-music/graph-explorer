@@ -1,6 +1,7 @@
 """Unit tests for the standalone Graph Explorer proxy service."""
 
 from datetime import datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -40,8 +41,16 @@ def _buffered_client(
 def test_health_data_is_service_specific() -> None:
     data = service.get_health_data()
     assert data["status"] == "healthy"
-    assert data["service"] == "explore"
+    assert data["service"] == "graph-explorer"
     datetime.fromisoformat(data["timestamp"])
+
+
+def test_startup_identity_is_repository_specific() -> None:
+    assert service.SERVICE_NAME == "graph-explorer"
+    assert "graph-explorer" in service.STARTUP_BANNER
+    source = Path(service.__file__).read_text()
+    assert "GrooveMap graph-explorer" in source
+    assert 'setup_logging(SERVICE_NAME, log_file=Path("/logs/graph-explorer.log"))' in source
 
 
 @pytest.mark.parametrize(("path", "expected"), [("nlq/query", True), ("/nlq/query/", True), ("search", False)])

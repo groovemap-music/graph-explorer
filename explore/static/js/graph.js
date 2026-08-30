@@ -22,7 +22,7 @@ class GraphVisualization {
         // setBeforeYear, setCompareYears). In-flight async expand/fetch calls
         // capture the generation at start and re-check it after every await,
         // discarding stale work instead of mutating state that belongs to a
-        // newer session (discogsography-5fg0).
+        // newer session (migration-regression-5fg0).
         this._generation = 0;
 
         // Track per-category pagination state: categoryId → {offset, limit, total, parentName, parentType, category}
@@ -198,7 +198,7 @@ class GraphVisualization {
         this._categoryMeta.clear();
         // A fresh explore session must not inherit a timeline scrub from the
         // previous session — timeline.init() resets the UI label to 'All'
-        // but does not itself clear graph state (discogsography-cu2.38).
+        // but does not itself clear graph state (migration-regression-cu2.38).
         this.beforeYear = null;
 
         // Reset zoom to identity
@@ -643,7 +643,7 @@ class GraphVisualization {
         this.expandedCategories.clear();
         this._pendingExpands = 0;
         this._categoryMeta.clear();
-        // Same stale-filter leak as setExploreData (discogsography-cu2.38):
+        // Same stale-filter leak as setExploreData (migration-regression-cu2.38):
         // a snapshot restore must not carry over a beforeYear scrubbed
         // during the prior session.
         this.beforeYear = null;

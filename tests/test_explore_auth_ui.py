@@ -1,4 +1,4 @@
-"""E2E browser tests for the Explore service auth UI and user panes."""
+"""E2E browser tests for the graph-explorer auth UI and user panes."""
 
 from __future__ import annotations
 

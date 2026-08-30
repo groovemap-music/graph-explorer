@@ -1,1 +1,1 @@
-"""Tests for the Explore service."""
+"""Tests for GrooveMap graph-explorer."""

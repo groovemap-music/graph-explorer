@@ -85,7 +85,7 @@ describe('NlqSuggestions', () => {
         expect(rows.length).toBe(0);
     });
 
-    describe('addRecent storage failure resilience (regression discogsography-cu2.64)', () => {
+    describe('addRecent storage failure resilience (regression migration-regression-cu2.64)', () => {
         it('does not throw when localStorage.setItem raises QuotaExceededError', () => {
             const setItemSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
                 throw new DOMException('quota exceeded', 'QuotaExceededError');

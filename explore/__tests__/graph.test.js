@@ -222,7 +222,7 @@ describe('GraphVisualization', () => {
             expect(window.apiClient.expand).toHaveBeenCalledWith('Radiohead', 'artist', 'releases', 30, 0, null);
         });
 
-        it('should reset a stale beforeYear from a prior timeline scrub (regression discogsography-cu2.38)', async () => {
+        it('should reset a stale beforeYear from a prior timeline scrub (regression migration-regression-cu2.38)', async () => {
             graph.beforeYear = 1980;
 
             const dataWithCount = {
@@ -241,7 +241,7 @@ describe('GraphVisualization', () => {
             expect(window.apiClient.expand).toHaveBeenCalledWith('Radiohead', 'artist', 'releases', 30, 0, null);
         });
 
-        it('should discard a stale category expansion from a superseded search (discogsography-5fg0)', async () => {
+        it('should discard a stale category expansion from a superseded search (migration-regression-5fg0)', async () => {
             // Search #1 (Rock) starts expanding cat-releases; before that
             // network call resolves, the user starts search #2 (Prince),
             // which does NOT have a cat-releases category with the same id
@@ -402,7 +402,7 @@ describe('GraphVisualization', () => {
             expect(placeholder.classList.contains('hidden')).toBe(true);
         });
 
-        it('should reset a stale beforeYear from a prior timeline scrub (regression discogsography-cu2.38)', () => {
+        it('should reset a stale beforeYear from a prior timeline scrub (regression migration-regression-cu2.38)', () => {
             graph.beforeYear = 1980;
 
             graph.restoreSnapshot([{ id: 'Radiohead', type: 'artist' }], { id: 'Radiohead', type: 'artist' });

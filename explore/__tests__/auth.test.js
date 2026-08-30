@@ -186,7 +186,7 @@ describe('AuthManager', () => {
             expect(localStorage.getItem('auth_token')).toBeNull();
         });
 
-        it('should not throw and should clear state on a network-level fetch rejection (regression discogsography-ponr)', async () => {
+        it('should not throw and should clear state on a network-level fetch rejection (regression migration-regression-ponr)', async () => {
             localStorage.setItem('auth_token', 'stale-token');
             loadScript('auth.js');
 
@@ -202,7 +202,7 @@ describe('AuthManager', () => {
             expect(localStorage.getItem('auth_token')).toBeNull();
         });
 
-        it('should clear state on a network-level rejection from the second (getDiscogsStatus) call too (regression discogsography-ponr)', async () => {
+        it('should clear state on a network-level rejection from the second (getDiscogsStatus) call too (regression migration-regression-ponr)', async () => {
             localStorage.setItem('auth_token', 'stale-token');
             loadScript('auth.js');
 
@@ -218,7 +218,7 @@ describe('AuthManager', () => {
         });
     });
 
-    describe('cross-tab sync (regression discogsography-ponr)', () => {
+    describe('cross-tab sync (regression migration-regression-ponr)', () => {
         it('clears local state and notifies listeners when another tab removes auth_token', () => {
             localStorage.setItem('auth_token', 'shared-token');
             loadScript('auth.js');

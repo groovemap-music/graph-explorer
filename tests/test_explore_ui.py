@@ -1,4 +1,4 @@
-"""E2E browser tests for the Explore service UI."""
+"""E2E browser tests for the graph-explorer UI."""
 
 import re
 
@@ -45,7 +45,7 @@ def _goto_ready(page: Page, url: str) -> None:
 @pytest.mark.e2e
 @pytest.mark.usefixtures("test_server")
 class TestExploreUI:
-    """End-to-end tests for the Explore service web interface."""
+    """End-to-end tests for the graph-explorer web interface."""
 
     def test_page_loads(self, page: Page, test_server: str) -> None:
         """Test that the explore page loads successfully."""
@@ -108,7 +108,7 @@ class TestExploreUI:
         response = page.request.get(f"{test_server}/health")
         assert response.ok
         data = response.json()
-        assert data["service"] == "explore"
+        assert data["service"] == "graph-explorer"
         assert data["status"] == "healthy"
 
     def test_responsive_layout(self, page: Page, test_server: str) -> None:

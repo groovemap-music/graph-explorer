@@ -24,6 +24,7 @@ from fastapi.staticfiles import StaticFiles
 
 
 logger = structlog.get_logger(__name__)
+SERVICE_NAME = "graph-explorer"
 
 STARTUP_BANNER = r"""
                     _                    _
@@ -46,7 +47,7 @@ def get_health_data() -> dict[str, Any]:
     """Return health check data."""
     return {
         "status": "healthy",
-        "service": "explore",
+        "service": SERVICE_NAME,
         "timestamp": datetime.now(UTC).isoformat(),
     }
 
@@ -54,7 +55,7 @@ def get_health_data() -> dict[str, Any]:
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
     """Manage application lifecycle."""
-    logger.info("🚀 Starting Explore service")
+    logger.info("🚀 Starting GrooveMap graph-explorer")
 
     # Start health server on separate port
     health_server = HealthServer(8007, get_health_data)
@@ -65,15 +66,15 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
     global _http_client
     _http_client = httpx.AsyncClient(base_url=_api_base_url, timeout=150.0)
 
-    logger.info("✅ Explore service ready")
+    logger.info("✅ GrooveMap graph-explorer ready")
     yield
 
     # Shutdown
-    logger.info("🛑 Shutting down Explore service")
+    logger.info("🛑 Shutting down GrooveMap graph-explorer")
     if _http_client is not None:
         await _http_client.aclose()
     health_server.stop()
-    logger.info("✅ Explore service shutdown complete")
+    logger.info("✅ GrooveMap graph-explorer shutdown complete")
 
 
 app = FastAPI(
@@ -99,7 +100,7 @@ async def health_check() -> JSONResponse:
 
 
 # x-forwarded-for/-proto are stripped from the inbound request before forwarding:
-# explore is the public edge, so any value a client sent for these is untrusted and
+# graph-explorer is the public edge, so any value a client sent for these is untrusted and
 # must not be passed through verbatim (that would let an attacker spoof their
 # apparent IP to the API and defeat per-IP rate limiting downstream). explore sets
 # its own trustworthy values below, from what it actually observed as the peer.
@@ -117,7 +118,7 @@ _PROXY_TIMEOUT_SECONDS = 150.0
 # the response's content-type is known, so the read timeout may only be disabled
 # for these — disabling it for every request meant a stalled upstream wedged a
 # buffered request forever, pinning an httpx pool connection and a server task
-# with no deadline until the pool was exhausted (discogsography-gav8).
+# with no deadline until the pool was exhausted (legacy stalled-stream regression).
 _STREAMING_PATHS = frozenset({"nlq/query"})
 
 _http_client: httpx.AsyncClient | None = None
@@ -143,7 +144,7 @@ def _proxy_timeout(path: str) -> httpx.Timeout:
     get `read=None`. Every other path keeps a bounded read timeout: without it
     `client.send()`/`aread()` on a buffered response had no deadline at all, and
     a stalled-but-connected upstream (hung Neo4j query, half-open TCP after an
-    OOM-kill) parked the request forever (discogsography-gav8).
+    OOM-kill) parked the request forever (legacy stalled-stream regression).
     """
     if _is_streaming_path(path):
         return httpx.Timeout(_PROXY_TIMEOUT_SECONDS, read=None)
@@ -168,12 +169,12 @@ async def proxy_api(path: str, request: Request) -> Response:
     url = f"/api/{path}"
     forward_headers = {k: v for k, v in request.headers.items() if k.lower() not in _PROXY_SKIP_HEADERS}
 
-    # Set trustworthy X-Forwarded-For/-Proto from what explore itself observed as the
+    # Set trustworthy X-Forwarded-For/-Proto from what graph-explorer itself observed as the
     # TCP peer and request scheme — never from client-supplied headers (stripped above).
     # api/api.py trusts these only when they arrive from the internal docker network
     # (FORWARDED_ALLOW_IPS), so this is the sole source of per-client identity that
     # api's rate limiter (api/limiter.py get_remote_address) resolves. See
-    # discogsography-quq5.
+    # the forwarded-client-identity regression.
     client_host = request.client.host if request.client else None
     if client_host:
         forward_headers["x-forwarded-for"] = client_host
@@ -250,8 +251,8 @@ app.mount("/", StaticFiles(directory=Path(__file__).parent / "static", html=True
 
 
 def main() -> None:  # pragma: no cover
-    """Entry point for the Explore service."""
-    setup_logging("explore", log_file=Path("/logs/explore.log"))
+    """Entry point for GrooveMap graph-explorer."""
+    setup_logging(SERVICE_NAME, log_file=Path("/logs/graph-explorer.log"))
     print(STARTUP_BANNER)
     uvicorn.run(
         "explore.explore:app",

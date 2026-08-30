@@ -70,7 +70,7 @@ export class NlqActionApplier {
         // Types of actions that were ACTUALLY applied — the caller must use
         // this (not a map over the raw input) to render the "✓ applied" log,
         // or a sanitizer-rejected/failed action shows as applied while also
-        // being counted as skipped (discogsography-cu2.39).
+        // being counted as skipped (migration-regression-cu2.39).
         const appliedTypes = [];
 
         for (const raw of sorted) {
