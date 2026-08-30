@@ -1,7 +1,7 @@
 """Test application factory for Explore service E2E tests."""
 
 import json
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator  # noqa: TC003  # Required for runtime annotation evaluation.
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
