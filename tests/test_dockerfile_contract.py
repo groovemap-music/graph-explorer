@@ -30,6 +30,15 @@ def test_image_metadata_uses_repository_name() -> None:
     assert "github.com/groovemap-music/graph-explorer" in DOCKERFILE
 
 
+def test_image_metadata_reports_license_and_exact_revision() -> None:
+    assert 'org.opencontainers.image.licenses="AGPL-3.0-only"' in DOCKERFILE
+    assert 'org.opencontainers.image.revision="${VCS_REF}"' in DOCKERFILE
+
+
+def test_image_ships_first_party_legal_files() -> None:
+    assert "LICENSE NOTICE COMMERCIAL-LICENSING.md BRAND-NOTICE.md /usr/share/doc/graph-explorer/" in DOCKERFILE
+
+
 def test_runtime_user_is_numeric_and_non_root() -> None:
     users = [line.removeprefix("USER ") for line in _instructions() if line.startswith("USER ")]
     assert users

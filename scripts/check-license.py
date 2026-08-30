@@ -9,10 +9,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 with (ROOT / "pyproject.toml").open("rb") as source:
-    project = tomllib.load(source)["project"]
+    pyproject = tomllib.load(source)
+project = pyproject["project"]
 version_match = re.search(r'^__version__ = "([^"]+)"$', (ROOT / "explore/__init__.py").read_text(), re.MULTILINE)
 assert version_match is not None
 assert project["license"] == "AGPL-3.0-only"
+assert set(project["license-files"]) == {"LICENSE", "NOTICE", "COMMERCIAL-LICENSING.md", "BRAND-NOTICE.md"}
 assert "License :: OSI Approved :: GNU Affero General Public License v3" in project["classifiers"]
 assert all("Proprietary" not in classifier for classifier in project["classifiers"])
 assert project["version"] == version_match.group(1)
@@ -30,6 +32,9 @@ commercial_terms = (ROOT / "COMMERCIAL-LICENSING.md").read_text().lower()
 notice = (ROOT / "NOTICE").read_text()
 contributing = (ROOT / "CONTRIBUTING.md").read_text().lower()
 justfile = (ROOT / "Justfile").read_text()
+brand_notice = (ROOT / "BRAND-NOTICE.md").read_text()
+runtime_source = pyproject["tool"]["uv"]["sources"]["groovemap-runtime"]
+prepare_runtime = (ROOT / "scripts/prepare-runtime-wheel.sh").read_text()
 assert "commercial use is permitted under the agpl" in readme
 assert "alternative commercial terms may be negotiated" in readme
 assert "commercial use is permitted" in commercial_terms
@@ -39,5 +44,11 @@ assert "PolyForm Noncommercial License 1.0.0" in notice
 assert "discogs" + "ography" not in notice.lower()
 assert "external contributions are temporarily paused" in contributing
 assert "relicensing-capable contributor license agreement" in contributing
-assert "--ignore-packages groovemap-graph-explorer" in justfile
+assert "github.com/groovemap-music/design/blob/main/TRADEMARKS.md" in brand_notice
+assert "explore/static/brand/source.json" in brand_notice
+assert runtime_source["git"] == "https://github.com/groovemap-music/python-libraries.git"
+assert re.fullmatch(r"[0-9a-f]{40}", runtime_source["rev"])
+assert f'expected="{runtime_source["rev"]}"' in prepare_runtime
+assert runtime_source["git"] in prepare_runtime
+assert "--ignore-packages groovemap-graph-explorer groovemap-runtime" in justfile
 assert '--fail-on "GPL-2.0-only;GPL-3.0-only;AGPL-3.0-only"' in justfile
