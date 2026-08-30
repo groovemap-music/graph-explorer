@@ -41,7 +41,7 @@ def test_server() -> Generator[str]:
         try:
             if httpx.get(f"{server_url}/health", timeout=2.0).status_code == 200:
                 break
-        except (httpx.ConnectError, httpx.TimeoutException):
+        except httpx.ConnectError, httpx.TimeoutException:
             pass
         time.sleep(0.5)
     else:

@@ -3,7 +3,7 @@
 
 import asyncio
 import os
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator  # noqa: TC003  # Required for runtime annotation evaluation.
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -205,7 +205,7 @@ async def proxy_api(path: str, request: Request) -> Response:
                 proxied = await client.send(req, stream=True)
         else:
             proxied = await client.send(req, stream=True)
-    except (httpx.TimeoutException, TimeoutError):
+    except httpx.TimeoutException, TimeoutError:
         logger.warning("⚠️ Proxy request timed out", path=path)
         return JSONResponse(content={"error": "Request timed out"}, status_code=504)
     except httpx.HTTPError as exc:
@@ -231,7 +231,7 @@ async def proxy_api(path: str, request: Request) -> Response:
 
     try:
         await proxied.aread()
-    except (httpx.TimeoutException, TimeoutError):
+    except httpx.TimeoutException, TimeoutError:
         logger.warning("⚠️ Proxy request timed out", path=path)
         return JSONResponse(content={"error": "Request timed out"}, status_code=504)
     except httpx.HTTPError as exc:
