@@ -86,7 +86,7 @@
       "id": "marked",
       "name": "Marked",
       "package": "marked",
-      "version": "18.0.10",
+      "version": "18.0.11",
       "declared_license": "MIT",
       "selected_license": "MIT",
       "homepage": "https://marked.js.org",
@@ -95,7 +95,7 @@
         "path": "LICENSE",
         "sha256": "8e3a3f82f59a60958f56ca08f445647c32a4733dc7ca6c2c46f6eb898471ab9c"
       },
-      "license_destination": "licenses/marked-18.0.10-MIT.txt",
+      "license_destination": "licenses/marked-18.0.11-MIT.txt",
       "outputs": ["marked.mjs"]
     },
     {
