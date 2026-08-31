@@ -42,7 +42,7 @@ coverage: test
     npm --prefix explore run test:coverage
 
 e2e-setup:
-    uv run playwright install chromium firefox webkit
+    uv run playwright install --with-deps chromium firefox webkit
 
 e2e-instrument: web-build
     bash scripts/instrument-e2e-coverage.sh
