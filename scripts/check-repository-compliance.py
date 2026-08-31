@@ -4,6 +4,8 @@ import json
 import re
 from pathlib import Path
 
+from repository_source import RepositorySourceError, tracked_tree_text
+
 
 ROOT = Path(__file__).resolve().parents[1]
 AUTOMATION_REVISION = "5e52f14885e70f39c7f588d89fc2a1316d4c4b13"
@@ -170,8 +172,9 @@ ignored_parts = {
     "coverage-e2e",
     "test-results",
 }
-current_tree_text = "\n".join(
-    path.read_text(errors="ignore") for path in ROOT.rglob("*") if path.is_file() and not any(part in ignored_parts for part in path.parts)
-)
 legacy_product_name = "discogs" + "ography"
+try:
+    current_tree_text = tracked_tree_text(ROOT, excluded_parts=ignored_parts)
+except RepositorySourceError as error:
+    raise SystemExit(str(error)) from error
 assert legacy_product_name not in current_tree_text.casefold()
