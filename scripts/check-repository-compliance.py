@@ -9,7 +9,7 @@ from repository_source import RepositorySourceError, tracked_tree_text
 
 ROOT = Path(__file__).resolve().parents[1]
 AUTOMATION_REVISION = "5e52f14885e70f39c7f588d89fc2a1316d4c4b13"
-PRIVATE_LIBRARY_REVISION = "28fa329702bc76896cc54ab8d05ec5b1bd3d929e"
+PYTHON_LIBRARIES_REVISION = "28fa329702bc76896cc54ab8d05ec5b1bd3d929e"
 DESIGN_REVISION = "59c9fd3c8bbdfa676e0b7bb3d463fc766c1f3c0d"
 E2E_PROJECTS = {"chromium", "firefox", "webkit", "iphone", "ipad"}
 EXPECTED_BROWSER_COVERAGE = [
@@ -47,9 +47,6 @@ for required_input in (
     "e2e-post-command: just e2e-post",
     "upload-codecov: true",
     "image-command: just image",
-    f"private-library-revision: {PRIVATE_LIBRARY_REVISION}",
-    "private-library-client-id: ${{ vars.GROOVEMAP_CI_APP_CLIENT_ID }}",
-    "PRIVATE_LIBRARY_PRIVATE_KEY: ${{ secrets.GROOVEMAP_CI_APP_PRIVATE_KEY }}",
     "CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}",
 ):
     assert required_input in ci
@@ -66,6 +63,15 @@ assert "test-results/**/*" not in ci
 assert "coverage-flags: python,javascript,e2e,explorer" in ci
 assert not any(f"e2e-{project}" in ci for project in E2E_PROJECTS)
 assert "secrets: inherit" not in ci
+for marker in (
+    "requires-private-library",
+    "private-library-client-id",
+    "private-library-revision",
+    "private_library_private_key",
+    "groovemap_ci_app_client_id",
+    "groovemap_ci_app_private_key",
+):
+    assert marker not in ci.lower()
 
 release = (ROOT / ".github/workflows/release.yml").read_text()
 assert "attestations: write" in release
@@ -75,12 +81,22 @@ for required_input in (
     "repository-name: graph-explorer",
     "release-command: just release-dry-run",
     "publish-image: true",
-    f"private-library-revision: {PRIVATE_LIBRARY_REVISION}",
-    "private-library-client-id: ${{ vars.GROOVEMAP_CI_APP_CLIENT_ID }}",
-    "PRIVATE_LIBRARY_PRIVATE_KEY: ${{ secrets.GROOVEMAP_CI_APP_PRIVATE_KEY }}",
 ):
     assert required_input in release
 assert "secrets: inherit" not in release
+for marker in (
+    "requires-private-library",
+    "private-library-client-id",
+    "private-library-revision",
+    "private_library_private_key",
+    "groovemap_ci_app_client_id",
+    "groovemap_ci_app_private_key",
+):
+    assert marker not in release.lower()
+
+pyproject = (ROOT / "pyproject.toml").read_text()
+assert "https://github.com/groovemap-music/python-libraries.git" in pyproject
+assert PYTHON_LIBRARIES_REVISION in pyproject
 
 workflow_names = {path.name.casefold() for path in (ROOT / ".github/workflows").iterdir()}
 assert not any("renovate" in name or "claude" in name for name in workflow_names)
