@@ -98,6 +98,7 @@ bump-preview:
 # Update local version metadata and changelog only; do not commit, tag, push, or publish.
 bump:
     uv run cz bump --files-only --changelog --yes --check-consistency
+    npm --prefix explore version "$(uv run cz version --project)" --no-git-tag-version
     uv lock
 
 release-artifacts: build install-check
