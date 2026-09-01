@@ -1,11 +1,13 @@
 {
   "name": "groovemap-graph-explorer-web",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "AGPL-3.0-only",
   "private": true,
   "type": "module",
   "packageManager": "npm@11.19.0",
-  "engines": {"node": "26.7.0"},
+  "engines": {
+    "node": "26.7.0"
+  },
   "scripts": {
     "build:css": "tailwindcss --input tailwind.input.css --output static/tailwind.css --minify",
     "build:vendor": "bash ../scripts/build-web-assets.sh",
