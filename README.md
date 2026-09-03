@@ -43,6 +43,22 @@ API_BASE_URL=http://localhost:8004 uv run graph-explorer
 
 The application listens on `8006` and its process health server on `8007`. `CORS_ORIGINS` accepts a comma-separated allowlist. Authentication and all catalog data remain owned by `catalog-api`.
 
+### OpenTelemetry metrics
+
+graph-explorer pushes OpenTelemetry metrics through `groovemap-runtime`'s `common.telemetry` module: `http.server.request.duration` for inbound requests (with the templated route, e.g. `/api/{path:path}`, never a raw path), `http.client.request.duration` for outbound calls to `catalog-api`, and its own `groovemap.explore.proxy.duration` domain metric, which — unlike the outbound HTTP metric — always covers the full duration of a proxied request, including a complete Server-Sent-Events stream. Telemetry is entirely optional: with no endpoint configured, or without the `otel`/`otel-http` extras installed, the service starts and behaves exactly as it does with telemetry disabled.
+
+Only standard OpenTelemetry environment variables are read; there is no GrooveMap-specific telemetry configuration:
+
+| Variable | Meaning | Default |
+| --- | --- | --- |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Collector base URL, e.g. `http://otel-collector:4318`. Unset disables export. | unset |
+| `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | Metrics-only endpoint override | falls back to `OTEL_EXPORTER_OTLP_ENDPOINT` |
+| `OTEL_METRICS_EXPORTER` | `otlp` or `none` | `otlp` |
+| `OTEL_SDK_DISABLED` | `true` makes the SDK itself a no-op | `false` |
+| `OTEL_METRIC_EXPORT_INTERVAL` | Push interval in milliseconds | SDK default |
+| `OTEL_SERVICE_NAME` | `service.name`, overriding the `explore` default | `explore` |
+| `OTEL_RESOURCE_ATTRIBUTES` | Extra resource attributes, e.g. `service.namespace=groovemap,deployment.environment.name=dev` | empty |
+
 ## Repository boundary
 
 `contracts/catalog-api/graph-explorer/v1/` is an immutable promoted copy of the producer-owned method/path contract. `scripts/check-contracts.py` verifies its digest and every `/api/*` route referenced by browser JavaScript. No Catalog API source is imported or required in the image build context.
