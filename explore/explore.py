@@ -3,6 +3,7 @@
 
 import asyncio
 import os
+import time
 from collections.abc import AsyncGenerator  # noqa: TC003  # Required for runtime annotation evaluation.
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -15,16 +16,27 @@ import uvicorn
 from common import (
     HealthServer,
     describe_exception,
+    get_meter,
+    instrument_fastapi_app,
+    instrument_httpx,
     setup_logging,
+    setup_telemetry,
+    shutdown_telemetry,
 )
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from explore import __version__
+
 
 logger = structlog.get_logger(__name__)
 SERVICE_NAME = "graph-explorer"
+
+# OTEL service.name: the docker-compose service key, per the GrooveMap telemetry conventions.
+# Deliberately distinct from SERVICE_NAME above, which identifies this process in logs.
+_TELEMETRY_SERVICE_NAME = "explore"
 
 STARTUP_BANNER = r"""
                     _                    _
@@ -41,6 +53,48 @@ _cors_origins = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()] i
 
 # API service base URL for proxying /api/* requests
 _api_base_url = os.environ.get("API_BASE_URL", "http://api:8004")
+
+
+# Domain metric: the full duration of an /api/* proxy request, including the complete SSE
+# stream when the response streams. Separate from the `http.client.request.duration` that
+# `instrument_httpx` emits, which — because the proxy issues `client.send(req, stream=True)` —
+# only covers the wait for response headers, not the time spent draining a streamed body.
+_PROXY_DURATION_METRIC = "groovemap.explore.proxy.duration"
+# Matches the FastAPI route pattern declared below (and what instrument_fastapi_app's own
+# http.route attribute reports for it) verbatim, so both metrics agree on the templated value.
+_PROXY_ROUTE = "/api/{path:path}"
+_proxy_duration_histogram: Any | None = None
+
+
+def _proxy_duration_instrument() -> Any:
+    """Return the proxy-duration histogram, built lazily against the active provider.
+
+    Deferred past import time so it binds to the MeterProvider `setup_telemetry` installs in
+    `main()`, rather than to whatever was active when this module was first imported.
+    """
+    global _proxy_duration_histogram
+    if _proxy_duration_histogram is None:
+        meter = get_meter("groovemap.explore")
+        _proxy_duration_histogram = meter.create_histogram(
+            _PROXY_DURATION_METRIC,
+            unit="s",
+            description="Duration of a graph-explorer /api/* proxy request to catalog-api, including the full SSE stream.",
+        )
+    return _proxy_duration_histogram
+
+
+def _record_proxy_duration(start: float, *, outcome: str) -> None:
+    """Record one proxy request's duration. Never raises — telemetry must not break a request."""
+    try:
+        _proxy_duration_instrument().record(time.perf_counter() - start, {"http.route": _PROXY_ROUTE, "outcome": outcome})
+    except Exception:
+        logger.debug("Could not record proxy duration metric", exc_info=True)
+
+
+def reset_proxy_telemetry() -> None:
+    """Drop the cached proxy-duration instrument. Test seam only."""
+    global _proxy_duration_histogram
+    _proxy_duration_histogram = None
 
 
 def get_health_data() -> dict[str, Any]:
@@ -65,6 +119,9 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
     # Initialize HTTP client during startup to avoid lazy-init race condition
     global _http_client
     _http_client = httpx.AsyncClient(base_url=_api_base_url, timeout=150.0)
+    # Called after setup_telemetry (main() runs it before starting uvicorn) so this binds to
+    # the configured provider. A no-op (returns False, logs once) without the otel-http extra.
+    instrument_httpx(client=_http_client)
 
     logger.info("✅ GrooveMap graph-explorer ready")
     yield
@@ -165,6 +222,7 @@ async def proxy_api(path: str, request: Request) -> Response:
     now forwarded chunk-by-chunk via StreamingResponse with the read timeout
     disabled; every other response is still read fully and returned as before.
     """
+    start = time.perf_counter()
     client = _get_http_client()
     url = f"/api/{path}"
     forward_headers = {k: v for k, v in request.headers.items() if k.lower() not in _PROXY_SKIP_HEADERS}
@@ -208,9 +266,11 @@ async def proxy_api(path: str, request: Request) -> Response:
             proxied = await client.send(req, stream=True)
     except httpx.TimeoutException, TimeoutError:
         logger.warning("⚠️ Proxy request timed out", path=path)
+        _record_proxy_duration(start, outcome="timeout")
         return JSONResponse(content={"error": "Request timed out"}, status_code=504)
     except httpx.HTTPError as exc:
         logger.error("❌ Proxy request failed", path=path, error=describe_exception(exc))
+        _record_proxy_duration(start, outcome="upstream_error")
         return JSONResponse(content={"error": "Upstream service error"}, status_code=502)
 
     skip_response_headers = {"content-encoding", "transfer-encoding", "content-length"}
@@ -220,13 +280,19 @@ async def proxy_api(path: str, request: Request) -> Response:
     if content_type.startswith(_STREAMING_CONTENT_TYPE_PREFIX):
 
         async def _forward_stream() -> AsyncGenerator[bytes]:
+            # `instrument_httpx`'s http.client.request.duration only covers the wait for
+            # headers (client.send(..., stream=True) returns before the body is read), so
+            # this domain metric's own timer is what covers the full SSE stream duration.
+            outcome = "success"
             try:
                 async for chunk in proxied.aiter_raw():
                     yield chunk
             except httpx.HTTPError as exc:
+                outcome = "upstream_error"
                 logger.warning("⚠️ Proxy stream interrupted", path=path, error=describe_exception(exc))
             finally:
                 await proxied.aclose()
+                _record_proxy_duration(start, outcome=outcome)
 
         return StreamingResponse(_forward_stream(), status_code=proxied.status_code, headers=response_headers, media_type=content_type)
 
@@ -234,15 +300,18 @@ async def proxy_api(path: str, request: Request) -> Response:
         await proxied.aread()
     except httpx.TimeoutException, TimeoutError:
         logger.warning("⚠️ Proxy request timed out", path=path)
+        _record_proxy_duration(start, outcome="timeout")
         return JSONResponse(content={"error": "Request timed out"}, status_code=504)
     except httpx.HTTPError as exc:
         logger.error("❌ Proxy request failed", path=path, error=describe_exception(exc))
+        _record_proxy_duration(start, outcome="upstream_error")
         return JSONResponse(content={"error": "Upstream service error"}, status_code=502)
     finally:
         # finally, not per-branch: a client disconnect cancels this task mid-read,
         # and the pool connection must be released on that path too.
         await proxied.aclose()
 
+    _record_proxy_duration(start, outcome="success")
     return Response(content=proxied.content, status_code=proxied.status_code, headers=response_headers)
 
 
@@ -253,14 +322,21 @@ app.mount("/", StaticFiles(directory=Path(__file__).parent / "static", html=True
 def main() -> None:  # pragma: no cover
     """Entry point for GrooveMap graph-explorer."""
     setup_logging(SERVICE_NAME, log_file=Path("/logs/graph-explorer.log"))
+    setup_telemetry(_TELEMETRY_SERVICE_NAME, service_version=__version__)
+    # instrument_fastapi_app must run after setup_telemetry so it binds to the configured
+    # provider; `app` already exists at module import time, ahead of this call.
+    instrument_fastapi_app(app)
     print(STARTUP_BANNER)
-    uvicorn.run(
-        "explore.explore:app",
-        host="0.0.0.0",  # noqa: S104  # nosec B104
-        port=8006,
-        reload=False,
-        log_level=os.getenv("LOG_LEVEL", "INFO").lower(),
-    )
+    try:
+        uvicorn.run(
+            "explore.explore:app",
+            host="0.0.0.0",  # noqa: S104  # nosec B104
+            port=8006,
+            reload=False,
+            log_level=os.getenv("LOG_LEVEL", "INFO").lower(),
+        )
+    finally:
+        shutdown_telemetry()
 
 
 if __name__ == "__main__":

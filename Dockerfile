@@ -24,7 +24,7 @@ COPY explore/ ./explore/
 COPY --from=css-builder /build/explore/static/tailwind.css ./explore/static/tailwind.css
 COPY --from=css-builder /build/explore/static/vendor/ ./explore/static/vendor/
 RUN uv venv /app/.venv && \
-    uv pip install --python /app/.venv/bin/python "/wheels/$(basename "$(find /wheels -name '*.whl' -print -quit)")" \
+    uv pip install --python /app/.venv/bin/python "/wheels/$(basename "$(find /wheels -name '*.whl' -print -quit)")[otel,otel-http]" \
       "fastapi==0.141.1" "httpx==0.28.1" "orjson==3.12.0" "pydantic==2.13.4" \
       "python-multipart==0.0.32" "structlog==26.1.0" "uvicorn[standard]==0.52.4" && \
     uv pip install --python /app/.venv/bin/python --no-deps . && \
