@@ -1,4 +1,4 @@
-"""Fixtures for Graph Explorer browser tests."""
+"""Fixtures for Graph Explorer tests: browser E2E plus OpenTelemetry isolation."""
 
 from __future__ import annotations
 
@@ -23,6 +23,28 @@ if TYPE_CHECKING:
 
 E2E_PROJECTS = {"chromium", "firefox", "webkit", "iphone", "ipad"}
 _DEVICE_CONTEXT: dict[str, Any] = {}
+
+# Every standard OpenTelemetry variable that changes what the SDK records or exports. The
+# telemetry suite asserts on what an in-memory provider recorded, so it must not inherit the
+# ambient configuration — CI runners in particular may set OTEL_SDK_DISABLED=true to keep their
+# own instrumentation quiet, which would otherwise make those assertions fail silently.
+_OTEL_ENVIRONMENT = (
+    "OTEL_EXPORTER_OTLP_ENDPOINT",
+    "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT",
+    "OTEL_METRICS_EXEMPLAR_FILTER",
+    "OTEL_METRICS_EXPORTER",
+    "OTEL_METRIC_EXPORT_INTERVAL",
+    "OTEL_RESOURCE_ATTRIBUTES",
+    "OTEL_SDK_DISABLED",
+    "OTEL_SERVICE_NAME",
+)
+
+
+@pytest.fixture(autouse=True)
+def isolated_otel_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Run every test against a known-empty OpenTelemetry configuration."""
+    for name in _OTEL_ENVIRONMENT:
+        monkeypatch.delenv(name, raising=False)
 
 
 @pytest.fixture(scope="session")
