@@ -6,7 +6,7 @@
   "type": "module",
   "packageManager": "npm@11.19.0",
   "engines": {
-    "node": "26.7.0"
+    "node": "26.8.1"
   },
   "scripts": {
     "build:css": "tailwindcss --input tailwind.input.css --output static/tailwind.css --minify",
