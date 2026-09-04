@@ -1798,6 +1798,29 @@ describe('UserPanes', () => {
             expect(() => userPanes._renderGaps(null, {})).not.toThrow();
         });
 
+        it('should keep the filter bar (and the current medium selection) visible when the result set is empty', () => {
+            const container = document.createElement('div');
+            userPanes._gapMediaTaxonomy = MEDIA_TAXONOMY;
+            userPanes._gapMedia = ['vinyl'];
+            userPanes._renderGaps(container, {
+                entity: { name: 'Radiohead', type: 'artist' },
+                summary: { total: 10, owned: 10, missing: 0 },
+                results: [],
+                pagination: { total: 0, offset: 0, limit: 50 },
+            });
+
+            expect(container.querySelector('.user-pane-empty')).not.toBeNull();
+            const select = container.querySelector('.gap-media-select');
+            expect(select).not.toBeNull();
+            expect(select.querySelector('option[value="vinyl"]').selected).toBe(true);
+
+            // The current medium selection can be cleared through this same,
+            // still-live control.
+            select.querySelector('option[value="vinyl"]').selected = false;
+            select.dispatchEvent(new Event('change'));
+            expect(userPanes._gapMedia).toEqual([]);
+        });
+
         it('should render a media multi-select grouped by family', () => {
             const container = document.createElement('div');
             userPanes._gapMediaTaxonomy = MEDIA_TAXONOMY;
@@ -1860,6 +1883,39 @@ describe('UserPanes', () => {
             expect(userPanes._gapOffset).toBe(0);
             expect(reload).toHaveBeenCalled();
             reload.mockRestore();
+        });
+
+        it("should keep the hint out of the media select's accessible name, linking it via aria-describedby instead", () => {
+            const container = document.createElement('div');
+            userPanes._gapMediaTaxonomy = MEDIA_TAXONOMY;
+            userPanes._renderGaps(container, {
+                entity: { name: 'Radiohead', type: 'artist' },
+                summary: {},
+                results: [{ title: 'Pablo Honey', artist: 'Radiohead', year: 1993 }],
+                pagination: { total: 1, offset: 0, limit: 50 },
+            });
+
+            const select = container.querySelector('.gap-media-select');
+            const hint = container.querySelector('.gap-filter-hint');
+
+            expect(select.getAttribute('aria-label')).toBe('Media');
+            expect(select.getAttribute('aria-label')).not.toContain('Select none');
+            expect(hint.id).toBeTruthy();
+            expect(select.getAttribute('aria-describedby')).toBe(hint.id);
+        });
+
+        it('should render at least two select rows for a single-family collection', () => {
+            const container = document.createElement('div');
+            userPanes._gapMediaTaxonomy = { families: [{ id: 'vinyl', count: 10 }], mediums: [] };
+            userPanes._renderGaps(container, {
+                entity: { name: 'Radiohead', type: 'artist' },
+                summary: {},
+                results: [{ title: 'Pablo Honey', artist: 'Radiohead', year: 1993 }],
+                pagination: { total: 1, offset: 0, limit: 50 },
+            });
+
+            const select = container.querySelector('.gap-media-select');
+            expect(select.size).toBeGreaterThanOrEqual(2);
         });
 
         it('should omit the media filter when the collection has no media', () => {
