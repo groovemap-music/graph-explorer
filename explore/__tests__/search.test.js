@@ -189,6 +189,33 @@ describe('search pane', () => {
             expect(loadingEl.classList.contains('active')).toBe(false);
         });
 
+        it('should clear stale genre and media facet chips left over from a prior search when the next search errors', async () => {
+            window.apiClient.search.mockResolvedValueOnce({
+                results: [{ name: 'X', type: 'release', relevance: 1 }],
+                total: 1,
+                facets: { genre: { Rock: 10 }, media: { vinyl: 5 } },
+                pagination: { has_more: false },
+            });
+
+            const input = document.getElementById('searchPaneInput');
+            input.value = 'radiohead';
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            await new Promise(r => setTimeout(r, 10));
+
+            const genreWrap = document.getElementById('searchGenreFilter');
+            const mediaWrap = document.getElementById('searchMediaFilter');
+            expect(genreWrap.querySelectorAll('.search-chip').length).toBeGreaterThan(0);
+            expect(mediaWrap.querySelectorAll('.search-media-chip').length).toBeGreaterThan(0);
+
+            window.apiClient.search.mockResolvedValueOnce(null);
+            input.value = 'a query that errors';
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            await new Promise(r => setTimeout(r, 10));
+
+            expect(genreWrap.querySelectorAll('.search-chip').length).toBe(0);
+            expect(mediaWrap.querySelectorAll('.search-media-chip').length).toBe(0);
+        });
+
         it('should render "no results" when results array is empty', async () => {
             window.apiClient.search.mockResolvedValue({
                 results: [],
@@ -796,6 +823,29 @@ describe('search pane', () => {
 
             // After toggling off, search should be triggered again
             expect(window.apiClient.search).toHaveBeenCalled();
+        });
+
+        it('should expose aria-pressed on genre chips consistent with media chips', async () => {
+            window.apiClient.search.mockResolvedValue({
+                results: [{ name: 'X', type: 'artist', relevance: 1 }],
+                total: 1,
+                facets: { genre: { Rock: 10, Electronic: 5 } },
+                pagination: { has_more: false },
+            });
+
+            const input = document.getElementById('searchPaneInput');
+            input.value = 'test';
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            await new Promise(r => setTimeout(r, 10));
+
+            const chips = document.getElementById('searchGenreFilter').querySelectorAll('.search-chip');
+            expect(chips[0].getAttribute('aria-pressed')).toBe('false');
+
+            chips[0].click();
+            await new Promise(r => setTimeout(r, 10));
+
+            const freshChip = document.getElementById('searchGenreFilter').querySelector('.search-chip');
+            expect(freshChip.getAttribute('aria-pressed')).toBe('true');
         });
     });
 

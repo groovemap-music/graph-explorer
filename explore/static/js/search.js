@@ -157,6 +157,12 @@
 
         if (!data || !data.results) {
             resultsEl.textContent = '';
+            // Facet chips from a prior successful search describe a result set
+            // that no longer exists once this search has failed — leaving them
+            // on screen would let the user filter/toggle a facet that renders
+            // nothing anymore.
+            genreWrap.textContent = '';
+            if (mediaWrap) mediaWrap.textContent = '';
             const msg = document.createElement('p');
             msg.className = 'text-text-mid text-center py-8';
             msg.textContent = 'An error occurred. Please try again.';
@@ -208,17 +214,20 @@
             entries.forEach(([genre, count]) => {
                 const chip = document.createElement('button');
                 chip.className = 'search-chip search-chip-sm';
-                if (selectedGenres.includes(genre)) chip.classList.add('active');
+                const selected = selectedGenres.includes(genre);
+                chip.classList.toggle('active', selected);
+                chip.setAttribute('aria-pressed', String(selected));
                 chip.textContent = `${genre} (${count})`;
                 chip.addEventListener('click', () => {
                     const idx = selectedGenres.indexOf(genre);
                     if (idx >= 0) {
                         selectedGenres.splice(idx, 1);
-                        chip.classList.remove('active');
                     } else {
                         selectedGenres.push(genre);
-                        chip.classList.add('active');
                     }
+                    const nowSelected = idx < 0;
+                    chip.classList.toggle('active', nowSelected);
+                    chip.setAttribute('aria-pressed', String(nowSelected));
                     currentOffset = 0;
                     triggerSearch();
                 });
