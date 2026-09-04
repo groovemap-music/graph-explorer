@@ -150,6 +150,18 @@ describe('ApiClient', () => {
             expect(capturedUrl).toContain('year_max=2000');
         });
 
+        it('should repeat the media param once per selected family', async () => {
+            let capturedUrl;
+            vi.stubGlobal('fetch', async (url) => {
+                capturedUrl = url;
+                return { ok: true, json: async () => ({ results: [], total: 0 }) };
+            });
+
+            await window.apiClient.search('test', [], [], null, null, 20, 0, ['vinyl', 'tape']);
+            expect(capturedUrl).toContain('media=vinyl');
+            expect(capturedUrl).toContain('media=tape');
+        });
+
         it('should omit optional params when not provided', async () => {
             let capturedUrl;
             vi.stubGlobal('fetch', async (url) => {
@@ -162,6 +174,7 @@ describe('ApiClient', () => {
             expect(capturedUrl).not.toContain('genres=');
             expect(capturedUrl).not.toContain('year_min');
             expect(capturedUrl).not.toContain('year_max');
+            expect(capturedUrl).not.toContain('media=');
         });
     });
 
@@ -248,7 +261,7 @@ describe('ApiClient', () => {
     });
 
     describe('collection gap analysis', () => {
-        it('getCollectionGaps should handle format array and excludeWantlist', async () => {
+        it('getCollectionGaps should handle media array and excludeWantlist', async () => {
             let capturedUrl;
             vi.stubGlobal('fetch', async (url) => {
                 capturedUrl = url;
@@ -259,15 +272,31 @@ describe('ApiClient', () => {
                 limit: 10,
                 offset: 5,
                 excludeWantlist: true,
-                formats: ['Vinyl', 'CD'],
+                media: ['vinyl', 'cd'],
             });
 
             expect(capturedUrl).toContain('limit=10');
             expect(capturedUrl).toContain('offset=5');
             expect(capturedUrl).toContain('exclude_wantlist=true');
-            expect(capturedUrl).toContain('formats=Vinyl');
-            expect(capturedUrl).toContain('formats=CD');
+            expect(capturedUrl).toContain('media=vinyl');
+            expect(capturedUrl).toContain('media=cd');
             expect(capturedUrl).toContain('/api/collection/gaps/artist/Radiohead');
+        });
+
+        it('getCollectionGaps should not send the deprecated formats param', async () => {
+            let capturedUrl;
+            vi.stubGlobal('fetch', async (url) => {
+                capturedUrl = url;
+                return { ok: true, json: async () => ({}) };
+            });
+
+            await window.apiClient.getCollectionGaps('token', 'artist', 'Radiohead', {
+                media: ['vinyl'],
+                formats: ['Vinyl'],
+            });
+
+            expect(capturedUrl).toContain('media=vinyl');
+            expect(capturedUrl).not.toContain('formats=');
         });
     });
 
@@ -770,6 +799,31 @@ describe('ApiClient', () => {
 
             const result = await window.apiClient.getCollectionFormats('token');
             expect(result).toEqual({ formats: ['Vinyl', 'CD'] });
+        });
+
+        it('getCollectionMedia should return null without token', async () => {
+            const result = await window.apiClient.getCollectionMedia(null);
+            expect(result).toBeNull();
+        });
+
+        it('getCollectionMedia should return families and mediums on success', async () => {
+            const media = {
+                families: [{ id: 'vinyl', count: 120 }],
+                mediums: [{ id: 'vinyl_12', label: '12" vinyl', family: 'vinyl', count: 80 }],
+            };
+            const mockFetch = createMockFetch({ '/api/collection/media': { data: media } });
+            vi.stubGlobal('fetch', mockFetch);
+
+            const result = await window.apiClient.getCollectionMedia('token');
+            expect(result).toEqual(media);
+        });
+
+        it('getCollectionMedia should return null on HTTP error', async () => {
+            const mockFetch = createMockFetch({ '/api/collection/media': { status: 500 } });
+            vi.stubGlobal('fetch', mockFetch);
+
+            const result = await window.apiClient.getCollectionMedia('token');
+            expect(result).toBeNull();
         });
 
         it('getCollectionGaps should return null without token', async () => {

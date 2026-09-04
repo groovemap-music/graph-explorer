@@ -183,14 +183,18 @@ class ApiClient {
      * @param {number|null} yearMax - Maximum release year
      * @param {number} limit - Results per page
      * @param {number} offset - Pagination offset
+     * @param {string[]} media - Media family or medium ids (repeated `media` params)
      * @returns {Promise<Object|null>} Search results with facets and pagination
      */
-    async search(q, types = [], genres = [], yearMin = null, yearMax = null, limit = 20, offset = 0) {
+    async search(q, types = [], genres = [], yearMin = null, yearMax = null, limit = 20, offset = 0, media = []) {
         const params = new URLSearchParams({ q, limit: String(limit), offset: String(offset) });
         if (types.length) params.set('types', types.join(','));
         if (genres.length) params.set('genres', genres.join(','));
         if (yearMin != null) params.set('year_min', String(yearMin));
         if (yearMax != null) params.set('year_max', String(yearMax));
+        // Repeated, not comma-joined: the producer reads `media` as a multi-value
+        // param so a family id and a medium id can be mixed in one filter.
+        media.forEach(m => params.append('media', m));
         const response = await fetch(`/api/search?${params}`);
         if (!response.ok) return null;
         return response.json();
@@ -452,9 +456,33 @@ class ApiClient {
 
     // --- Collection gap analysis ---
 
+    /**
+     * Raw provider format strings in the caller's collection.
+     * @deprecated Superseded by getCollectionMedia — the canonical taxonomy the
+     * gap filter and the search facet both read. Retained because the producer
+     * still contracts the route.
+     * @param {string} token - JWT auth token
+     * @returns {Promise<Object|null>} `{ formats: string[] }`
+     */
     async getCollectionFormats(token) {
         if (!token) return null;
         const response = await fetch('/api/collection/formats', {
+            headers: { 'Authorization': `Bearer ${token}` },
+        });
+        this._checkAuthResponse(response);
+        if (!response.ok) return null;
+        return response.json();
+    }
+
+    /**
+     * Media taxonomy present in the caller's collection: family counts plus the
+     * mediums under each family, with display labels.
+     * @param {string} token - JWT auth token
+     * @returns {Promise<Object|null>} `{ families: [{id, count}], mediums: [{id, label, family, count}] }`
+     */
+    async getCollectionMedia(token) {
+        if (!token) return null;
+        const response = await fetch('/api/collection/media', {
             headers: { 'Authorization': `Bearer ${token}` },
         });
         this._checkAuthResponse(response);
@@ -469,8 +497,10 @@ class ApiClient {
             offset: String(options.offset || 0),
         });
         if (options.excludeWantlist) params.set('exclude_wantlist', 'true');
-        if (options.formats?.length) {
-            options.formats.forEach(f => params.append('formats', f));
+        // `media` supersedes the deprecated `formats` alias — each entry is a
+        // canonical family id or medium id, repeated rather than comma-joined.
+        if (options.media?.length) {
+            options.media.forEach(m => params.append('media', m));
         }
         const response = await fetch(`/api/collection/gaps/${entityType}/${encodeURIComponent(entityId)}?${params}`, {
             headers: { 'Authorization': `Bearer ${token}` },

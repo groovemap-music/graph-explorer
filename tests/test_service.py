@@ -82,7 +82,7 @@ async def test_proxy_preserves_repeated_query_values_and_sets_forwarded_headers(
                 "type": "http",
                 "method": "GET",
                 "path": "/api/search",
-                "query_string": b"formats=Vinyl&formats=CD",
+                "query_string": b"media=vinyl&media=tape",
                 "headers": [(b"x-forwarded-for", b"spoofed")],
                 "scheme": "https",
                 "client": ("203.0.113.10", 4444),
@@ -94,7 +94,7 @@ async def test_proxy_preserves_repeated_query_values_and_sets_forwarded_headers(
 
     upstream = observed["request"]
     assert isinstance(upstream, httpx.Request)
-    assert upstream.url.params.get_list("formats") == ["Vinyl", "CD"]
+    assert upstream.url.params.get_list("media") == ["vinyl", "tape"]
     assert upstream.headers["x-forwarded-for"] == "203.0.113.10"
     assert upstream.headers["x-forwarded-proto"] == "https"
     assert response.status_code == 200

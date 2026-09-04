@@ -24,6 +24,12 @@ flowchart TD
 - The image and wheel are built entirely from this repository plus the exact reviewed
   `python-libraries` commit prepared as a wheel before the isolated image build.
 
+The media taxonomy is likewise owned upstream. `catalog-api` classifies every release into
+canonical media families and mediums, and the browser only renders what the collection media
+endpoint and each release's `media` block report — the family label map in
+`explore/static/js/media-taxonomy.js` is presentation only, and an unrecognized id falls back to
+a humanized form rather than being dropped.
+
 Authentication and catalog authorization remain `catalog-api` responsibilities. The browser
 stores the issued token and sends it through the proxy, but `graph-explorer` does not mint or
 interpret that token.
