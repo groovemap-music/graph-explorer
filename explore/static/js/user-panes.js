@@ -828,9 +828,13 @@ class UserPanes {
     _gapTotal = 0;
     _gapEntityType = null;
     _gapEntityId = null;
-    _gapFormats = [];
+    // Selected media filter ids — canonical family ids and/or medium ids, sent
+    // as repeated `media` params.
+    _gapMedia = [];
     _gapExcludeWantlist = false;
-    _gapAvailableFormats = null;
+    // { families: [{id, count}], mediums: [{id, label, family, count}] } from
+    // /api/collection/media, fetched once per session.
+    _gapMediaTaxonomy = null;
 
     async loadGapAnalysis(entityType, entityId, reset = false) {
         const token = window.authManager.getToken();
@@ -860,16 +864,19 @@ class UserPanes {
         const requestId = ++this._gapReqId;
         const requestOffset = this._gapOffset;
         try {
-            // Load available formats for filter (once)
-            if (!this._gapAvailableFormats) {
-                const fmtData = await window.apiClient.getCollectionFormats(token);
-                this._gapAvailableFormats = fmtData?.formats || [];
+            // Load the collection's media taxonomy for the filter (once)
+            if (!this._gapMediaTaxonomy) {
+                const mediaData = await window.apiClient.getCollectionMedia(token);
+                this._gapMediaTaxonomy = {
+                    families: mediaData?.families || [],
+                    mediums: mediaData?.mediums || [],
+                };
             }
 
             const data = await window.apiClient.getCollectionGaps(token, entityType, entityId, {
                 limit: this._pageSize,
                 offset: requestOffset,
-                formats: this._gapFormats,
+                media: this._gapMedia,
                 excludeWantlist: this._gapExcludeWantlist,
             });
             // A newer request has since been issued — discard this stale response.
@@ -937,29 +944,11 @@ class UserPanes {
         const filtersBar = document.createElement('div');
         filtersBar.className = 'gap-filters';
 
-        // Format filter dropdown
-        if (this._gapAvailableFormats && this._gapAvailableFormats.length > 0) {
-            const formatSelect = document.createElement('select');
-            formatSelect.className = 'form-input-dark gap-format-select';
-            const defaultOpt = document.createElement('option');
-            defaultOpt.value = '';
-            defaultOpt.textContent = 'All formats';
-            formatSelect.appendChild(defaultOpt);
-            this._gapAvailableFormats.forEach(f => {
-                const opt = document.createElement('option');
-                opt.value = f;
-                opt.textContent = f;
-                if (this._gapFormats.includes(f)) opt.selected = true;
-                formatSelect.appendChild(opt);
-            });
-            formatSelect.addEventListener('change', () => {
-                const selected = formatSelect.value;
-                this._gapFormats = selected ? [selected] : [];
-                this._gapOffset = 0;
-                this.loadGapAnalysis(this._gapEntityType, this._gapEntityId);
-            });
-            filtersBar.appendChild(formatSelect);
-        }
+        // Media filter — a native multi-select grouped by family, so a whole
+        // family or an individual medium can be picked, and both keyboard and
+        // screen-reader navigation come from the platform control.
+        const mediaFilter = this._buildGapMediaFilter();
+        if (mediaFilter) filtersBar.appendChild(mediaFilter);
 
         // Exclude wantlist toggle
         const wantlistLabel = document.createElement('label');
@@ -996,6 +985,142 @@ class UserPanes {
         container.appendChild(wrap);
     }
 
+    /**
+     * Display name for a media family id, via the shared taxonomy helper.
+     * @param {string} id - Canonical family id
+     * @returns {string} Family label
+     */
+    _mediaFamilyLabel(id) {
+        return window.mediaTaxonomy?.familyLabel(id) || id || '';
+    }
+
+    /**
+     * Display name for a medium id. Labels are owned by the collection media
+     * endpoint; an id the endpoint never listed falls back to a humanized form.
+     * @param {string} id - Canonical medium id
+     * @returns {string} Medium label
+     */
+    _mediaMediumLabel(id) {
+        const mediums = this._gapMediaTaxonomy?.mediums || [];
+        const match = mediums.find(m => m && m.id === id);
+        return match?.label || window.mediaTaxonomy?.humanize(id) || id || '';
+    }
+
+    _buildMediaOption(value, label, count) {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = typeof count === 'number' ? `${label} (${count.toLocaleString()})` : label;
+        if (this._gapMedia.includes(value)) opt.selected = true;
+        return opt;
+    }
+
+    /**
+     * Build the family-grouped media multi-select. Each family contributes an
+     * `<optgroup>` whose first entry selects the whole family and whose
+     * remaining entries select one medium each — so "everything on vinyl" and
+     * "only 12-inch vinyl" are both one click, and either can be combined with
+     * a selection from another family.
+     * @returns {HTMLElement|null} Filter control, or null when the collection has no media
+     */
+    _buildGapMediaFilter() {
+        const families = this._gapMediaTaxonomy?.families || [];
+        if (!families.length) return null;
+
+        const mediums = this._gapMediaTaxonomy?.mediums || [];
+        const byFamily = new Map();
+        mediums.forEach(m => {
+            if (!m || !m.family) return;
+            if (!byFamily.has(m.family)) byFamily.set(m.family, []);
+            byFamily.get(m.family).push(m);
+        });
+
+        const wrap = document.createElement('label');
+        wrap.className = 'gap-media-filter';
+        const caption = document.createElement('span');
+        caption.className = 'gap-filter-label';
+        caption.textContent = 'Media';
+        wrap.appendChild(caption);
+
+        const select = document.createElement('select');
+        select.className = 'form-input-dark gap-media-select';
+        select.multiple = true;
+        select.size = Math.min(8, families.length + mediums.length);
+
+        families.forEach(family => {
+            const group = document.createElement('optgroup');
+            const familyName = this._mediaFamilyLabel(family.id);
+            group.label = familyName;
+            group.appendChild(this._buildMediaOption(family.id, `All ${familyName}`, family.count));
+            (byFamily.get(family.id) || []).forEach(medium => {
+                group.appendChild(this._buildMediaOption(medium.id, medium.label || this._mediaMediumLabel(medium.id), medium.count));
+            });
+            select.appendChild(group);
+        });
+
+        select.addEventListener('change', () => {
+            this._gapMedia = Array.from(select.selectedOptions).map(opt => opt.value);
+            this._gapOffset = 0;
+            this.loadGapAnalysis(this._gapEntityType, this._gapEntityId);
+        });
+        wrap.appendChild(select);
+
+        const hint = document.createElement('span');
+        hint.className = 'gap-filter-hint';
+        hint.textContent = 'Select none for all media';
+        wrap.appendChild(hint);
+        return wrap;
+    }
+
+    /**
+     * Media cell for one release row: canonical media grouped by family, with
+     * the raw provider format strings kept only as a fallback for a row that
+     * carries no media block.
+     * @param {Object} release - Gap-analysis release row
+     * @returns {HTMLTableCellElement} The populated cell
+     */
+    _buildGapMediaCell(release) {
+        const td = document.createElement('td');
+        const items = Array.isArray(release.media?.items) ? release.media.items : [];
+
+        if (!items.length) {
+            (release.formats || []).forEach(f => {
+                const badge = document.createElement('span');
+                badge.className = 'genre-badge';
+                badge.textContent = f;
+                td.appendChild(badge);
+            });
+            return td;
+        }
+
+        // Family order follows the block's already-sorted `families` list, so
+        // two releases holding the same media always read in the same order.
+        const ordered = [];
+        const push = (family) => {
+            if (family && !ordered.includes(family)) ordered.push(family);
+        };
+        (Array.isArray(release.media.families) ? release.media.families : []).forEach(push);
+        items.forEach(item => push(item.family));
+
+        ordered.forEach(family => {
+            const familyItems = items.filter(item => item.family === family);
+            if (!familyItems.length) return;
+            const group = document.createElement('span');
+            group.className = 'media-family-group';
+            group.dataset.mediaFamily = family;
+            const familyName = this._mediaFamilyLabel(family);
+            familyItems.forEach(item => {
+                const badge = document.createElement('span');
+                badge.className = 'genre-badge media-badge';
+                const qty = Number(item.qty) > 1 ? ` ×${item.qty}` : '';
+                badge.textContent = `${familyName} · ${this._mediaMediumLabel(item.medium)}${qty}`;
+                group.appendChild(badge);
+            });
+            td.appendChild(group);
+        });
+
+        return td;
+    }
+
     _buildGapTable(releases, total, offset, onPageChange, hasMore) {
         const currentPage = Math.floor(offset / this._pageSize);
         const totalPages = Math.ceil(total / this._pageSize);
@@ -1025,7 +1150,7 @@ class UserPanes {
 
         const thead = document.createElement('thead');
         const headRow = document.createElement('tr');
-        ['Title', 'Artist', 'Label', 'Year', 'Formats', 'Genre', 'Status'].forEach(col => {
+        ['Title', 'Artist', 'Label', 'Year', 'Media', 'Genre', 'Status'].forEach(col => {
             const th = document.createElement('th');
             th.textContent = col;
             headRow.appendChild(th);
@@ -1051,16 +1176,7 @@ class UserPanes {
             tdYear.className = 'cell-year';
             tdYear.textContent = r.year || '';
 
-            const tdFormats = document.createElement('td');
-            const fmts = r.formats || [];
-            if (fmts.length) {
-                fmts.forEach(f => {
-                    const badge = document.createElement('span');
-                    badge.className = 'genre-badge';
-                    badge.textContent = f;
-                    tdFormats.appendChild(badge);
-                });
-            }
+            const tdMedia = this._buildGapMediaCell(r);
 
             const tdGenre = document.createElement('td');
             const genres = r.genres || [];
@@ -1082,7 +1198,7 @@ class UserPanes {
                 tdStatus.appendChild(badge);
             }
 
-            tr.append(tdTitle, tdArtist, tdLabel, tdYear, tdFormats, tdGenre, tdStatus);
+            tr.append(tdTitle, tdArtist, tdLabel, tdYear, tdMedia, tdGenre, tdStatus);
             tbody.appendChild(tr);
         });
         table.appendChild(tbody);

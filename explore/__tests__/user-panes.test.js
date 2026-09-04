@@ -1,5 +1,18 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { loadScriptDirect } from './helpers.js';
+import { loadScript, loadScriptDirect } from './helpers.js';
+
+/** Collection media taxonomy as /api/collection/media returns it. */
+const MEDIA_TAXONOMY = {
+    families: [
+        { id: 'vinyl', count: 120 },
+        { id: 'optical', count: 40 },
+    ],
+    mediums: [
+        { id: 'vinyl_12', label: '12" vinyl', family: 'vinyl', count: 80 },
+        { id: 'vinyl_7', label: '7" vinyl', family: 'vinyl', count: 40 },
+        { id: 'cd', label: 'CD', family: 'optical', count: 40 },
+    ],
+};
 
 /**
  * Set up minimal DOM elements for UserPanes tests.
@@ -37,6 +50,7 @@ describe('UserPanes', () => {
     beforeAll(() => {
         delete globalThis.window;
         globalThis.window = globalThis;
+        loadScript('media-taxonomy.js');
         loadScriptDirect('user-panes.js');
     });
 
@@ -51,7 +65,7 @@ describe('UserPanes', () => {
             getTasteFingerprint: vi.fn().mockResolvedValue(null),
             getTasteCard: vi.fn().mockResolvedValue(null),
             getCollectionGaps: vi.fn().mockResolvedValue(null),
-            getCollectionFormats: vi.fn().mockResolvedValue({ formats: [] }),
+            getCollectionMedia: vi.fn().mockResolvedValue({ families: [], mediums: [] }),
             triggerSync: vi.fn().mockResolvedValue({ ok: false, status: 500, body: null }),
             authorizeDiscogs: vi.fn().mockResolvedValue(null),
             verifyDiscogs: vi.fn().mockResolvedValue(null),
@@ -1353,6 +1367,31 @@ describe('UserPanes', () => {
             expect(window.apiClient.getCollectionGaps).not.toHaveBeenCalled();
         });
 
+        it('should send the selected media ids as the media option', async () => {
+            window.apiClient.getCollectionGaps.mockResolvedValue({
+                entity: { name: 'Radiohead', type: 'artist' },
+                summary: {}, results: [], pagination: { total: 0 },
+            });
+            userPanes._gapMedia = ['vinyl', 'cd'];
+
+            await userPanes.loadGapAnalysis('artist', '123');
+
+            const options = window.apiClient.getCollectionGaps.mock.calls[0][3];
+            expect(options.media).toEqual(['vinyl', 'cd']);
+            expect(options.formats).toBeUndefined();
+        });
+
+        it('should load the collection media taxonomy once', async () => {
+            window.apiClient.getCollectionMedia.mockResolvedValue(MEDIA_TAXONOMY);
+            window.apiClient.getCollectionGaps.mockResolvedValue(null);
+
+            await userPanes.loadGapAnalysis('artist', '123');
+            await userPanes.loadGapAnalysis('artist', '123');
+
+            expect(window.apiClient.getCollectionMedia).toHaveBeenCalledTimes(1);
+            expect(userPanes._gapMediaTaxonomy.mediums).toHaveLength(3);
+        });
+
         it('should call getCollectionGaps with params', async () => {
             window.apiClient.getCollectionGaps.mockResolvedValue({
                 entity: { name: 'Test', type: 'artist' },
@@ -1759,6 +1798,84 @@ describe('UserPanes', () => {
             expect(() => userPanes._renderGaps(null, {})).not.toThrow();
         });
 
+        it('should render a media multi-select grouped by family', () => {
+            const container = document.createElement('div');
+            userPanes._gapMediaTaxonomy = MEDIA_TAXONOMY;
+            userPanes._renderGaps(container, {
+                entity: { name: 'Radiohead', type: 'artist' },
+                summary: { total: 50, owned: 30, missing: 20 },
+                results: [{ title: 'Pablo Honey', artist: 'Radiohead', year: 1993 }],
+                pagination: { total: 1, offset: 0, limit: 50 },
+            });
+
+            const select = container.querySelector('.gap-media-select');
+            expect(select).not.toBeNull();
+            expect(select.multiple).toBe(true);
+
+            const groups = select.querySelectorAll('optgroup');
+            expect(groups).toHaveLength(2);
+            expect(groups[0].label).toBe('Vinyl');
+            expect(groups[1].label).toBe('Optical');
+
+            // Family entry first, then its mediums.
+            const vinylOptions = Array.from(groups[0].querySelectorAll('option'));
+            expect(vinylOptions.map(o => o.value)).toEqual(['vinyl', 'vinyl_12', 'vinyl_7']);
+            expect(vinylOptions[0].textContent).toBe('All Vinyl (120)');
+            expect(vinylOptions[1].textContent).toBe('12" vinyl (80)');
+        });
+
+        it('should mark the already selected media ids as selected', () => {
+            const container = document.createElement('div');
+            userPanes._gapMediaTaxonomy = MEDIA_TAXONOMY;
+            userPanes._gapMedia = ['vinyl_7'];
+            userPanes._renderGaps(container, {
+                entity: { name: 'Radiohead', type: 'artist' },
+                summary: {},
+                results: [{ title: 'Pablo Honey', artist: 'Radiohead', year: 1993 }],
+                pagination: { total: 1, offset: 0, limit: 50 },
+            });
+
+            const selected = Array.from(container.querySelectorAll('option')).filter(o => o.selected);
+            expect(selected.map(o => o.value)).toEqual(['vinyl_7']);
+        });
+
+        it('should reload with the selected media when the select changes', () => {
+            const container = document.createElement('div');
+            userPanes._gapMediaTaxonomy = MEDIA_TAXONOMY;
+            userPanes._gapOffset = 50;
+            const reload = vi.spyOn(userPanes, 'loadGapAnalysis').mockResolvedValue(undefined);
+            userPanes._renderGaps(container, {
+                entity: { name: 'Radiohead', type: 'artist' },
+                summary: {},
+                results: [{ title: 'Pablo Honey', artist: 'Radiohead', year: 1993 }],
+                pagination: { total: 1, offset: 0, limit: 50 },
+            });
+
+            const select = container.querySelector('.gap-media-select');
+            select.querySelector('option[value="vinyl"]').selected = true;
+            select.querySelector('option[value="cd"]').selected = true;
+            select.dispatchEvent(new Event('change'));
+
+            expect(userPanes._gapMedia).toEqual(['vinyl', 'cd']);
+            expect(userPanes._gapOffset).toBe(0);
+            expect(reload).toHaveBeenCalled();
+            reload.mockRestore();
+        });
+
+        it('should omit the media filter when the collection has no media', () => {
+            const container = document.createElement('div');
+            userPanes._gapMediaTaxonomy = { families: [], mediums: [] };
+            userPanes._renderGaps(container, {
+                entity: { name: 'Radiohead', type: 'artist' },
+                summary: {},
+                results: [{ title: 'Pablo Honey', artist: 'Radiohead', year: 1993 }],
+                pagination: { total: 1, offset: 0, limit: 50 },
+            });
+
+            expect(container.querySelector('.gap-media-select')).toBeNull();
+            expect(container.querySelector('.gap-filters')).not.toBeNull();
+        });
+
         it('should render label entity icon', () => {
             const container = document.createElement('div');
             userPanes._renderGaps(container, {
@@ -1785,7 +1902,96 @@ describe('UserPanes', () => {
             const headers = wrap.querySelectorAll('th');
             expect(headers).toHaveLength(7);
             expect(headers[0].textContent).toBe('Title');
+            expect(headers[4].textContent).toBe('Media');
             expect(headers[6].textContent).toBe('Status');
+        });
+
+        it('should render media badges grouped by family with medium label and qty', () => {
+            userPanes._gapMediaTaxonomy = MEDIA_TAXONOMY;
+            const releases = [
+                {
+                    title: 'Kid A',
+                    artist: 'Radiohead',
+                    year: 2000,
+                    media: {
+                        families: ['optical', 'vinyl'],
+                        items: [
+                            { family: 'vinyl', medium: 'vinyl_12', qty: 2 },
+                            { family: 'optical', medium: 'cd', qty: 1 },
+                        ],
+                    },
+                },
+            ];
+
+            const wrap = userPanes._buildGapTable(releases, 1, 0, vi.fn(), false);
+            const groups = wrap.querySelectorAll('.media-family-group');
+
+            // Family order follows the block's sorted families list.
+            expect(Array.from(groups).map(g => g.dataset.mediaFamily)).toEqual(['optical', 'vinyl']);
+            expect(groups[0].textContent).toBe('Optical · CD');
+            expect(groups[1].textContent).toBe('Vinyl · 12" vinyl ×2');
+        });
+
+        it('should group several mediums of one family together', () => {
+            userPanes._gapMediaTaxonomy = MEDIA_TAXONOMY;
+            const releases = [
+                {
+                    title: 'Box set',
+                    artist: 'Radiohead',
+                    year: 2010,
+                    media: {
+                        families: ['vinyl'],
+                        items: [
+                            { family: 'vinyl', medium: 'vinyl_12', qty: 3 },
+                            { family: 'vinyl', medium: 'vinyl_7', qty: 1 },
+                        ],
+                    },
+                },
+            ];
+
+            const wrap = userPanes._buildGapTable(releases, 1, 0, vi.fn(), false);
+            const groups = wrap.querySelectorAll('.media-family-group');
+            expect(groups).toHaveLength(1);
+            const badges = groups[0].querySelectorAll('.media-badge');
+            expect(Array.from(badges).map(b => b.textContent)).toEqual([
+                'Vinyl · 12" vinyl ×3',
+                'Vinyl · 7" vinyl',
+            ]);
+        });
+
+        it('should not render raw formats when a media block is present', () => {
+            userPanes._gapMediaTaxonomy = MEDIA_TAXONOMY;
+            const releases = [
+                {
+                    title: 'Kid A',
+                    artist: 'Radiohead',
+                    year: 2000,
+                    formats: ['Vinyl, LP, Album'],
+                    media: {
+                        families: ['vinyl'],
+                        items: [{ family: 'vinyl', medium: 'vinyl_12', qty: 1 }],
+                    },
+                },
+            ];
+
+            const wrap = userPanes._buildGapTable(releases, 1, 0, vi.fn(), false);
+            expect(wrap.textContent).not.toContain('Vinyl, LP, Album');
+            expect(wrap.querySelector('.media-badge').textContent).toBe('Vinyl · 12" vinyl');
+        });
+
+        it('should humanize a medium id the taxonomy never labelled', () => {
+            userPanes._gapMediaTaxonomy = { families: [], mediums: [] };
+            const releases = [
+                {
+                    title: 'Odd one',
+                    artist: 'Test',
+                    year: 1980,
+                    media: { families: ['tape'], items: [{ family: 'tape', medium: 'reel_to_reel', qty: 1 }] },
+                },
+            ];
+
+            const wrap = userPanes._buildGapTable(releases, 1, 0, vi.fn(), false);
+            expect(wrap.querySelector('.media-badge').textContent).toBe('Tape · Reel to reel');
         });
 
         it('should render wantlist badge when on_wantlist is true', () => {
@@ -1799,7 +2005,7 @@ describe('UserPanes', () => {
             expect(wrap.textContent).toContain('Wanted');
         });
 
-        it('should render format badges', () => {
+        it('should fall back to raw format badges when no media block is present', () => {
             const releases = [
                 { title: 'Test', artist: 'Test', year: 2000, formats: ['Vinyl', 'CD'] },
             ];
@@ -1807,6 +2013,19 @@ describe('UserPanes', () => {
             const wrap = userPanes._buildGapTable(releases, 1, 0, vi.fn(), false);
             const badges = wrap.querySelectorAll('.genre-badge');
             expect(badges.length).toBeGreaterThanOrEqual(2);
+            expect(wrap.querySelector('.media-family-group')).toBeNull();
+            expect(wrap.textContent).toContain('Vinyl');
+            expect(wrap.textContent).toContain('CD');
+        });
+
+        it('should fall back to raw formats when the media block has no items', () => {
+            const releases = [
+                { title: 'Test', artist: 'Test', year: 2000, formats: ['Cassette'], media: { families: [], items: [] } },
+            ];
+
+            const wrap = userPanes._buildGapTable(releases, 1, 0, vi.fn(), false);
+            expect(wrap.querySelector('.media-family-group')).toBeNull();
+            expect(wrap.textContent).toContain('Cassette');
         });
 
         it('should show showing count', () => {

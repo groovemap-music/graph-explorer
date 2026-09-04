@@ -14,6 +14,7 @@ function setupSearchDOM() {
         'searchYearMin',
         'searchYearMax',
         'searchGenreFilter',
+        'searchMediaFilter',
         'searchFacets',
         'searchLoading',
         'searchPlaceholder',
@@ -48,6 +49,7 @@ describe('search pane', () => {
             search: vi.fn().mockResolvedValue({ results: [], total: 0, facets: {}, pagination: {} }),
         };
 
+        loadScript('media-taxonomy.js');
         loadScript('search.js');
     });
 
@@ -85,7 +87,8 @@ describe('search pane', () => {
                 null,
                 null,
                 20,
-                0
+                0,
+                []
             );
 
             vi.useRealTimers();
@@ -108,7 +111,8 @@ describe('search pane', () => {
                 null,
                 null,
                 20,
-                0
+                0,
+                []
             );
 
             vi.useRealTimers();
@@ -378,6 +382,93 @@ describe('search pane', () => {
             expect(decadeTags.length).toBeGreaterThan(0);
         });
 
+        it('should render media family facet chips with labels and counts', async () => {
+            window.apiClient.search.mockResolvedValue({
+                results: [{ name: 'X', type: 'release', relevance: 1 }],
+                total: 1,
+                facets: { media: { vinyl: 120, grooved_other: 3 } },
+                pagination: { has_more: false },
+            });
+
+            const input = document.getElementById('searchPaneInput');
+            input.value = 'test';
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            await new Promise(r => setTimeout(r, 10));
+
+            const chips = document.getElementById('searchMediaFilter').querySelectorAll('.search-media-chip');
+            expect(Array.from(chips).map(c => c.textContent)).toEqual(['Vinyl (120)', 'Other grooved (3)']);
+            expect(chips[0].dataset.mediaFamily).toBe('vinyl');
+            expect(chips[0].getAttribute('aria-pressed')).toBe('false');
+        });
+
+        it('should skip zero-count media facets', async () => {
+            window.apiClient.search.mockResolvedValue({
+                results: [{ name: 'X', type: 'release', relevance: 1 }],
+                total: 1,
+                facets: { media: { vinyl: 5, tape: 0 } },
+                pagination: { has_more: false },
+            });
+
+            const input = document.getElementById('searchPaneInput');
+            input.value = 'test';
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            await new Promise(r => setTimeout(r, 10));
+
+            const chips = document.getElementById('searchMediaFilter').querySelectorAll('.search-media-chip');
+            expect(chips).toHaveLength(1);
+            expect(chips[0].textContent).toContain('Vinyl');
+        });
+
+        it('should send the clicked media family as a search filter and clear it on re-click', async () => {
+            window.apiClient.search.mockResolvedValue({
+                results: [{ name: 'X', type: 'release', relevance: 1 }],
+                total: 1,
+                facets: { media: { vinyl: 120 } },
+                pagination: { has_more: false },
+            });
+
+            const input = document.getElementById('searchPaneInput');
+            input.value = 'test';
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            await new Promise(r => setTimeout(r, 10));
+
+            const chip = document.getElementById('searchMediaFilter').querySelector('.search-media-chip');
+            chip.click();
+            await new Promise(r => setTimeout(r, 10));
+
+            const filtered = window.apiClient.search.mock.calls.at(-1);
+            expect(filtered[7]).toEqual(['vinyl']);
+            expect(document.getElementById('searchMediaFilter')
+                .querySelector('.search-media-chip').getAttribute('aria-pressed')).toBe('true');
+
+            document.getElementById('searchMediaFilter').querySelector('.search-media-chip').click();
+            await new Promise(r => setTimeout(r, 10));
+            expect(window.apiClient.search.mock.calls.at(-1)[7]).toEqual([]);
+        });
+
+        it('should clear the media filter when the query text changes', async () => {
+            window.apiClient.search.mockResolvedValue({
+                results: [{ name: 'X', type: 'release', relevance: 1 }],
+                total: 1,
+                facets: { media: { vinyl: 120 } },
+                pagination: { has_more: false },
+            });
+
+            const input = document.getElementById('searchPaneInput');
+            input.value = 'test';
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            await new Promise(r => setTimeout(r, 10));
+
+            document.getElementById('searchMediaFilter').querySelector('.search-media-chip').click();
+            await new Promise(r => setTimeout(r, 10));
+            expect(window.apiClient.search.mock.calls.at(-1)[7]).toEqual(['vinyl']);
+
+            input.value = 'different query';
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            await new Promise(r => setTimeout(r, 10));
+            expect(window.apiClient.search.mock.calls.at(-1)[7]).toEqual([]);
+        });
+
         it('should skip zero-count type facets', async () => {
             window.apiClient.search.mockResolvedValue({
                 results: [{ name: 'X', type: 'artist', relevance: 1 }],
@@ -621,7 +712,7 @@ describe('search pane', () => {
             input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
             await new Promise(r => setTimeout(r, 10));
 
-            expect(window.apiClient.search).toHaveBeenCalledWith('herbie hancock', expect.any(Array), [], null, null, 20, 0);
+            expect(window.apiClient.search).toHaveBeenCalledWith('herbie hancock', expect.any(Array), [], null, null, 20, 0, []);
         });
 
         it('should reset selectedGenres when the query text changes via search button', async () => {
@@ -647,7 +738,7 @@ describe('search pane', () => {
             btn.click();
             await new Promise(r => setTimeout(r, 10));
 
-            expect(window.apiClient.search).toHaveBeenCalledWith('herbie hancock', expect.any(Array), [], null, null, 20, 0);
+            expect(window.apiClient.search).toHaveBeenCalledWith('herbie hancock', expect.any(Array), [], null, null, 20, 0, []);
         });
 
         it('should keep selectedGenres when re-submitting the same query', async () => {
@@ -673,7 +764,7 @@ describe('search pane', () => {
             input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
             await new Promise(r => setTimeout(r, 10));
 
-            expect(window.apiClient.search).toHaveBeenCalledWith('beatles', expect.any(Array), ['Rock'], null, null, 20, 0);
+            expect(window.apiClient.search).toHaveBeenCalledWith('beatles', expect.any(Array), ['Rock'], null, null, 20, 0, []);
         });
 
         it('should deactivate genre chip on second click', async () => {

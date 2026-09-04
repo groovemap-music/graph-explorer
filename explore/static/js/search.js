@@ -10,6 +10,7 @@
     const yearMinEl   = document.getElementById('searchYearMin');
     const yearMaxEl   = document.getElementById('searchYearMax');
     const genreWrap   = document.getElementById('searchGenreFilter');
+    const mediaWrap   = document.getElementById('searchMediaFilter');
     const facetsEl    = document.getElementById('searchFacets');
     const loadingEl   = document.getElementById('searchLoading');
     const placeholder = document.getElementById('searchPlaceholder');
@@ -24,6 +25,8 @@
     let lastQuery = '';
     let lastResult = null;
     let selectedGenres = [];
+    // Canonical media family ids from the `media` facet, sent back as filters.
+    let selectedMedia = [];
     // Monotonic request id — discards a response from an earlier request that
     // resolves after a newer one was issued (type-chip toggle, year debounce,
     // genre chip, pagination, or a fresh Enter/search-button submit can all
@@ -105,7 +108,10 @@
     // text actually changed; refining/re-running the same query keeps it.
     function resetGenresOnNewQuery() {
         const q = input.value.trim();
-        if (q !== lastQuery) selectedGenres = [];
+        if (q === lastQuery) return;
+        selectedGenres = [];
+        // The media facet is coupled to its query for the same reason.
+        selectedMedia = [];
     }
 
     // ------------------------------------------------------------------
@@ -134,7 +140,7 @@
 
         let data;
         try {
-            data = await window.apiClient.search(q, types, selectedGenres, yearMin, yearMax, PAGE_SIZE, currentOffset);
+            data = await window.apiClient.search(q, types, selectedGenres, yearMin, yearMax, PAGE_SIZE, currentOffset, selectedMedia);
         } catch {
             // A network-level fetch rejection (offline, DNS, connection reset,
             // CORS) — not an HTTP error status — falls through to the same
@@ -219,6 +225,45 @@
                 chips.appendChild(chip);
             });
             genreWrap.appendChild(chips);
+        }
+
+        // Media family facets as clickable chips. Counts arrive keyed by
+        // canonical family id; the label map is shared with the gap pane so a
+        // family is spelled identically in both places.
+        if (mediaWrap) mediaWrap.textContent = '';
+        if (mediaWrap && facets.media && Object.keys(facets.media).length) {
+            const label = document.createElement('label');
+            label.className = 'search-filter-label';
+            label.textContent = 'Media';
+            mediaWrap.appendChild(label);
+
+            const chips = document.createElement('div');
+            chips.className = 'search-media-chips';
+            Object.entries(facets.media).forEach(([family, count]) => {
+                if (!count) return;
+                const chip = document.createElement('button');
+                chip.className = 'search-chip search-chip-sm search-media-chip';
+                chip.type = 'button';
+                chip.dataset.mediaFamily = family;
+                const familyName = window.mediaTaxonomy?.familyLabel(family) || family;
+                const selected = selectedMedia.includes(family);
+                chip.classList.toggle('active', selected);
+                chip.setAttribute('aria-pressed', String(selected));
+                chip.textContent = `${familyName} (${count.toLocaleString()})`;
+                chip.addEventListener('click', () => {
+                    const idx = selectedMedia.indexOf(family);
+                    if (idx >= 0) selectedMedia.splice(idx, 1);
+                    else selectedMedia.push(family);
+                    const nowSelected = idx < 0;
+                    chip.classList.toggle('active', nowSelected);
+                    chip.setAttribute('aria-pressed', String(nowSelected));
+                    currentOffset = 0;
+                    triggerSearch();
+                });
+                chips.appendChild(chip);
+            });
+            if (chips.children.length) mediaWrap.appendChild(chips);
+            else mediaWrap.textContent = '';
         }
 
         // Decade facets
@@ -440,6 +485,7 @@
         paginationEl.textContent = '';
         facetsEl.textContent = '';
         genreWrap.textContent = '';
+        if (mediaWrap) mediaWrap.textContent = '';
         setVisible(placeholder, true);
     }
 

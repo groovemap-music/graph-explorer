@@ -243,7 +243,7 @@ async def proxy_api(path: str, request: Request) -> Response:
         url=url,
         # request.query_params is a Starlette multi-dict — wrapping it in
         # dict() keeps only the LAST value per repeated key (e.g.
-        # ?formats=Vinyl&formats=CD collapses to formats=CD), silently
+        # ?media=vinyl&media=tape collapses to media=tape), silently
         # dropping multi-value filters. Build an httpx.QueryParams from
         # the multi-item list so every repeated key is preserved.
         params=httpx.QueryParams(tuple(request.query_params.multi_items())),
