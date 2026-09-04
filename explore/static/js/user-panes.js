@@ -966,9 +966,14 @@ class UserPanes {
 
         container.appendChild(filtersBar);
 
-        // Results table
+        // Results table. An empty result set describes the *current* filter
+        // selection, not a failed load — the filter bar (and the media
+        // selection it holds) must stay on screen and usable so the user can
+        // clear it to see the rest of the collection. Append the notice
+        // rather than routing through _renderGapsEmpty, which clears the
+        // whole container.
         if (!data.results || data.results.length === 0) {
-            this._renderGapsEmpty(container, 'No missing releases found. You have them all!');
+            container.appendChild(this._buildEmptyNotice('No missing releases found. You have them all!'));
             return;
         }
 
@@ -1044,7 +1049,16 @@ class UserPanes {
         const select = document.createElement('select');
         select.className = 'form-input-dark gap-media-select';
         select.multiple = true;
-        select.size = Math.min(8, families.length + mediums.length);
+        // A single-family collection (one option, or one plus a couple of
+        // mediums) would otherwise collapse to a one-row scroll box; clamp to
+        // at least two visible rows so the control still reads as a list.
+        select.size = Math.max(2, Math.min(8, families.length + mediums.length));
+        // Wrapping <label> would otherwise fold the hint span's text below
+        // into this select's accessible name (native label association pulls
+        // in all descendant text). aria-label pins the name to just "Media";
+        // the hint is still exposed via aria-describedby.
+        select.setAttribute('aria-label', 'Media');
+        select.setAttribute('aria-describedby', 'gapMediaHint');
 
         families.forEach(family => {
             const group = document.createElement('optgroup');
@@ -1066,6 +1080,7 @@ class UserPanes {
 
         const hint = document.createElement('span');
         hint.className = 'gap-filter-hint';
+        hint.id = 'gapMediaHint';
         hint.textContent = 'Select none for all media';
         wrap.appendChild(hint);
         return wrap;
@@ -1217,6 +1232,18 @@ class UserPanes {
     _renderGapsEmpty(container, msg) {
         if (!container) return;
         container.replaceChildren();
+        container.appendChild(this._buildEmptyNotice(msg));
+    }
+
+    /**
+     * Build the "nothing to show" notice markup shared by a genuine load
+     * failure (_renderGapsEmpty, which replaces the whole pane) and an empty
+     * result set under the current filters (_renderGaps, which appends this
+     * below the still-live filter bar).
+     * @param {string} msg - Notice text
+     * @returns {HTMLDivElement} The notice element
+     */
+    _buildEmptyNotice(msg) {
         const div = document.createElement('div');
         div.className = 'user-pane-empty';
         const icon = document.createElement('span');
@@ -1225,7 +1252,7 @@ class UserPanes {
         const p = document.createElement('p');
         p.textContent = msg;
         div.append(icon, p);
-        container.appendChild(div);
+        return div;
     }
 
     // ------------------------------------------------------------------ //
