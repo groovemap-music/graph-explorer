@@ -1089,6 +1089,25 @@ select option {
     border-color: rgba(74, 144, 217, 0.2);
 }
 
+/* Canonical media badge — "Vinyl · 12" vinyl ×2". Medium labels are
+   mixed-case and carry punctuation, so the genre badge's uppercasing and
+   letter-spacing are dropped here. */
+.genre-badge.media-badge {
+    background: rgba(74, 144, 217, 0.1);
+    color: #4A90D9;
+    border-color: rgba(74, 144, 217, 0.2);
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.media-family-group {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.2rem;
+    margin-right: 0.35rem;
+    vertical-align: top;
+}
+
 /* Star rating display */
 .star-rating {
     color: var(--accent-yellow);
@@ -1298,9 +1317,39 @@ select option {
     flex-wrap: wrap;
 }
 
-.gap-format-select {
-    min-width: 160px;
-    max-width: 220px;
+.gap-media-filter {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.gap-filter-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-mid);
+}
+
+.gap-filter-hint {
+    font-size: 0.7rem;
+    color: var(--text-mid);
+}
+
+.gap-media-select {
+    min-width: 200px;
+    max-width: 280px;
+    padding: 0.25rem;
+}
+
+.gap-media-select optgroup {
+    font-weight: 600;
+    color: var(--text-high);
+}
+
+.gap-media-select option {
+    font-weight: 400;
+    padding-left: 0.75rem;
 }
 
 .gap-filter-toggle {
@@ -1398,9 +1447,10 @@ select option {
     margin-right: 0.25rem;
 }
 
-/* Type & genre chips */
+/* Type, genre & media chips */
 .search-type-chips,
-.search-genre-chips {
+.search-genre-chips,
+.search-media-chips {
     display: flex;
     flex-wrap: wrap;
     gap: 0.35rem;
@@ -1676,8 +1726,9 @@ select option {
     font-size: 0.85rem;
 }
 
-/* Genre filter container */
-.search-genre-filter {
+/* Genre & media filter containers */
+.search-genre-filter,
+.search-media-filter {
     display: flex;
     align-items: center;
     gap: 0.35rem;

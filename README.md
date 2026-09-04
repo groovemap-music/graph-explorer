@@ -59,6 +59,12 @@ Only standard OpenTelemetry environment variables are read; there is no GrooveMa
 | `OTEL_SERVICE_NAME` | `service.name`, overriding the `explore` default | `explore` |
 | `OTEL_RESOURCE_ATTRIBUTES` | Extra resource attributes, e.g. `service.namespace=groovemap,deployment.environment.name=dev` | empty |
 
+## Media filters
+
+Physical and digital media are filtered by the canonical GrooveMap taxonomy rather than by raw provider format strings. `GET /api/collection/media` supplies the families present in a collection and the mediums under each one, which the gap-analysis pane renders as a multi-select grouped by family: selecting a family covers every medium in it, and an individual medium narrows further. Selections travel to the gap endpoints as repeated `media` parameters, superseding the deprecated `formats` alias.
+
+A release row shows its media as badges grouped by family, each naming the family, the medium, and the quantity when more than one — `Vinyl · 12" vinyl ×2`. Rows that carry no media block still fall back to the provider's raw format strings. Search exposes the same families as a `media` facet with counts; clicking a facet chip filters the query by that family.
+
 ## Repository boundary
 
 `contracts/catalog-api/graph-explorer/v1/` is an immutable promoted copy of the producer-owned method/path contract. `scripts/check-contracts.py` verifies its digest and every `/api/*` route referenced by browser JavaScript. No Catalog API source is imported or required in the image build context.
