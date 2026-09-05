@@ -22,6 +22,7 @@ from common import (
     setup_logging,
     setup_telemetry,
     shutdown_telemetry,
+    start_event_loop_monitor,
 )
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -122,6 +123,12 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
     # Called after setup_telemetry (main() runs it before starting uvicorn) so this binds to
     # the configured provider. A no-op (returns False, logs once) without the otel-http extra.
     instrument_httpx(client=_http_client)
+
+    # Event-loop lag is the one runtime signal the process view cannot supply: it has to be
+    # sampled from the loop that actually serves requests, which only exists here and not in
+    # main(). Returns None (and logs once) when metrics are not being exported, so this costs
+    # a service with no collector configured nothing at all. shutdown_telemetry cancels it.
+    start_event_loop_monitor()
 
     logger.info("✅ GrooveMap graph-explorer ready")
     yield

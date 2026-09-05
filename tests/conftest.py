@@ -24,19 +24,26 @@ if TYPE_CHECKING:
 E2E_PROJECTS = {"chromium", "firefox", "webkit", "iphone", "ipad"}
 _DEVICE_CONTEXT: dict[str, Any] = {}
 
-# Every standard OpenTelemetry variable that changes what the SDK records or exports. The
-# telemetry suite asserts on what an in-memory provider recorded, so it must not inherit the
-# ambient configuration — CI runners in particular may set OTEL_SDK_DISABLED=true to keep their
-# own instrumentation quiet, which would otherwise make those assertions fail silently.
+# Every standard OpenTelemetry variable that changes what the SDK records or exports, for both
+# signals. The telemetry suite asserts on what in-memory providers recorded, so it must not
+# inherit the ambient configuration — CI runners in particular may set OTEL_SDK_DISABLED=true to
+# keep their own instrumentation quiet, which would otherwise make those assertions fail
+# silently, and an inherited OTEL_TRACES_SAMPLER_ARG=0 would drop every span a test expects.
 _OTEL_ENVIRONMENT = (
     "OTEL_EXPORTER_OTLP_ENDPOINT",
     "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT",
+    "OTEL_EXPORTER_OTLP_TIMEOUT",
+    "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
     "OTEL_METRICS_EXEMPLAR_FILTER",
     "OTEL_METRICS_EXPORTER",
     "OTEL_METRIC_EXPORT_INTERVAL",
+    "OTEL_PROPAGATORS",
     "OTEL_RESOURCE_ATTRIBUTES",
     "OTEL_SDK_DISABLED",
     "OTEL_SERVICE_NAME",
+    "OTEL_TRACES_EXPORTER",
+    "OTEL_TRACES_SAMPLER",
+    "OTEL_TRACES_SAMPLER_ARG",
 )
 
 
