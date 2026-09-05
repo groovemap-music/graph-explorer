@@ -21,16 +21,16 @@
       "id": "plotly",
       "name": "Plotly.js",
       "package": "plotly.js-dist-min",
-      "version": "2.27.0",
+      "version": "4.0.0",
       "declared_license": "MIT",
       "selected_license": "MIT",
       "homepage": "https://plotly.com/javascript/",
       "license_source": {
         "scope": "package",
         "path": "LICENSE",
-        "sha256": "67a26cf80f03ff388f26945dfc1f6caed1a0746ff43871190339b3aee49b94bb"
+        "sha256": "8c45d9eaf50c2f72dd9c7ab9ef440788ba58a3538484b5c51c1f17d5128752e7"
       },
-      "license_destination": "licenses/plotly.js-dist-min-2.27.0-MIT.txt",
+      "license_destination": "licenses/plotly.js-dist-min-4.0.0-MIT.txt",
       "outputs": ["plotly.min.js"]
     },
     {

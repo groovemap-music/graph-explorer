@@ -171,13 +171,13 @@ class InsightsPanel {
             plot_bgcolor: 'transparent',
             margin: { t: 10, r: 20, b: 40, l: 50 },
             xaxis: {
-                title: 'Decade',
+                title: { text: 'Decade' },
                 color: '#b0b3b8',
                 gridcolor: '#2d3051',
                 tickformat: 'd',
             },
             yaxis: {
-                title: 'Releases',
+                title: { text: 'Releases' },
                 color: '#b0b3b8',
                 gridcolor: '#2d3051',
             },
