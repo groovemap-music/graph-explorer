@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   required:
-    uses: groovemap-music/automation/.github/workflows/reusable-ci.yml@5e52f14885e70f39c7f588d89fc2a1316d4c4b13
+    uses: groovemap-music/automation/.github/workflows/reusable-ci.yml@833cb464507678c38ab78bd4718ce697399463e9
     with:
       runner: ubuntu-24.04
       language: mixed
