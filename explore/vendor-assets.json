@@ -37,17 +37,17 @@
       "id": "alpinejs",
       "name": "Alpine.js",
       "package": "alpinejs",
-      "version": "3.16.3",
+      "version": "3.17.1",
       "declared_license": "MIT",
       "selected_license": "MIT",
       "homepage": "https://alpinejs.dev",
       "license_source": {
         "scope": "repository",
-        "path": "third_party/licenses/alpinejs-3.16.3-MIT.md",
+        "path": "third_party/licenses/alpinejs-3.17.1-MIT.md",
         "sha256": "08b7502da6e7aa1d0bbdc97d220fbf669b9366c61bd0f072238283c89bc4773a",
-        "url": "https://github.com/alpinejs/alpine/blob/v3.16.3/LICENSE.md"
+        "url": "https://github.com/alpinejs/alpine/blob/v3.17.1/LICENSE.md"
       },
-      "license_destination": "licenses/alpinejs-3.16.3-MIT.md",
+      "license_destination": "licenses/alpinejs-3.17.1-MIT.md",
       "outputs": ["alpine.min.js"]
     },
     {
@@ -183,7 +183,7 @@
       "id": "material-symbols",
       "name": "Material Symbols",
       "package": "material-symbols",
-      "version": "0.47.0",
+      "version": "0.47.1",
       "declared_license": "Apache-2.0",
       "selected_license": "Apache-2.0",
       "homepage": "https://marella.github.io/material-symbols/demo/",
