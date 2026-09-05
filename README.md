@@ -43,9 +43,36 @@ API_BASE_URL=http://localhost:8004 uv run graph-explorer
 
 The application listens on `8006` and its process health server on `8007`. `CORS_ORIGINS` accepts a comma-separated allowlist. Authentication and all catalog data remain owned by `catalog-api`.
 
-### OpenTelemetry metrics
+### OpenTelemetry
 
-graph-explorer pushes OpenTelemetry metrics through `groovemap-runtime`'s `common.telemetry` module: `http.server.request.duration` for inbound requests (with the templated route, e.g. `/api/{path:path}`, never a raw path), `http.client.request.duration` for outbound calls to `catalog-api`, and its own `groovemap.explore.proxy.duration` domain metric, which — unlike the outbound HTTP metric — always covers the full duration of a proxied request, including a complete Server-Sent-Events stream. Telemetry is entirely optional: with no endpoint configured, or without the `otel`/`otel-http` extras installed, the service starts and behaves exactly as it does with telemetry disabled.
+graph-explorer emits metrics and traces through `groovemap-runtime`'s `common.telemetry` module. Both signals are pushed over OTLP HTTP/protobuf to the same collector and are independent: either can be turned off without affecting the other. Telemetry is entirely optional — with no endpoint configured, or without the `otel`/`otel-http` extras installed, the service starts and behaves exactly as it does with telemetry disabled, and `shutdown_telemetry()` flushes both providers on exit.
+
+#### Metrics
+
+| Metric | Kind, unit | Attributes |
+| --- | --- | --- |
+| `http.server.request.duration` | histogram, seconds | `http.route` (templated, e.g. `/api/{path:path}`, never a raw path), `http.response.status_code` |
+| `http.client.request.duration` | histogram, seconds | `server.address` (`catalog-api`), `http.response.status_code` |
+| `groovemap.explore.proxy.duration` | histogram, seconds | `http.route`, `outcome` (`success`, `timeout`, `upstream_error`) |
+
+`groovemap.explore.proxy.duration` is this service's own domain metric. Unlike the outbound HTTP metric — which, because the proxy sends with `stream=True`, only covers the wait for response headers — it always covers the full duration of a proxied request, including a complete Server-Sent-Events stream.
+
+#### Runtime metrics
+
+`setup_telemetry()` installs the process view with no code in this repository: `process.cpu.time`, `process.cpu.utilization`, `process.memory.usage`, `process.memory.virtual`, `process.thread.count`, `process.open_file_descriptor.count`, `process.context_switches`, and `cpython.gc.collections`. No `system.*` host metric is collected; a host is scraped once by node-exporter.
+
+The FastAPI lifespan additionally starts `start_event_loop_monitor()`, which samples this loop's scheduling delay into `groovemap.runtime.event_loop.lag` (histogram, seconds, no attributes) once a second. The proxy is I/O-bound, so loop lag is the signal that separates a slow `catalog-api` from a graph-explorer worker that cannot get scheduled. The monitor declines to sample when metrics are not being exported and is cancelled by `shutdown_telemetry()`.
+
+#### Traces
+
+| Span | Name | Kind |
+| --- | --- | --- |
+| Inbound request | `GET /api/{path:path}` and the other route templates, from the FastAPI instrumentation | `SERVER` |
+| Outbound proxy call to `catalog-api` | from the httpx instrumentation | `CLIENT` |
+
+There is no domain span: the service is a proxy, and both spans it produces come from the HTTP instrumentors. The `CLIENT` span is a child of the `SERVER` span, and the proxy client writes `traceparent` onto the outbound request, so a browser request and the `catalog-api` request it triggers appear as one trace. Span names stay low-cardinality because the route is templated; no id, path, query, or free text is ever a span attribute.
+
+#### Configuration
 
 Only standard OpenTelemetry environment variables are read; there is no GrooveMap-specific telemetry configuration:
 
@@ -53,7 +80,11 @@ Only standard OpenTelemetry environment variables are read; there is no GrooveMa
 | --- | --- | --- |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Collector base URL, e.g. `http://otel-collector:4318`. Unset disables export. | unset |
 | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | Metrics-only endpoint override | falls back to `OTEL_EXPORTER_OTLP_ENDPOINT` |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Traces-only endpoint override | falls back to `OTEL_EXPORTER_OTLP_ENDPOINT` |
 | `OTEL_METRICS_EXPORTER` | `otlp` or `none` | `otlp` |
+| `OTEL_TRACES_EXPORTER` | `otlp` or `none` | `otlp` |
+| `OTEL_TRACES_SAMPLER` | Sampler name the SDK understands | `parentbased_traceidratio` |
+| `OTEL_TRACES_SAMPLER_ARG` | Sampling ratio for the ratio samplers | `1.0` |
 | `OTEL_SDK_DISABLED` | `true` makes the SDK itself a no-op | `false` |
 | `OTEL_METRIC_EXPORT_INTERVAL` | Push interval in milliseconds | SDK default |
 | `OTEL_SERVICE_NAME` | `service.name`, overriding the `explore` default | `explore` |
