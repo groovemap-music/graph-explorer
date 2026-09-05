@@ -1,7 +1,7 @@
-# syntax=docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+# syntax=docker/dockerfile:1@sha256:bde3983e9c939224420ddaf6b784cc30e09b035a4dea01f581230c50809f372e
 
-ARG NODE_IMAGE=node:26.7.0-slim@sha256:5758d367d7b4f48b73a9bb3530e687e47efb289f3b43f9c0450a25225ae0db5d
-ARG PYTHON_IMAGE=python:3.14.5-slim@sha256:c845af9399020c7e562969a13689e929074a10fd057acd1b1fad06a2fb068e97
+ARG NODE_IMAGE=node:26.8.1-slim@sha256:c0753125a3789977aefe869cbebccf70e3cfd7ea84ca48547458f02e4f1d7146
+ARG PYTHON_IMAGE=python:3.14.7-slim@sha256:cad9a2c871761c413caa6fdd6441c783451e740a48aaeba60ae62a8b53525ef6
 
 FROM ${NODE_IMAGE} AS css-builder
 WORKDIR /build
@@ -46,7 +46,7 @@ LABEL org.opencontainers.image.title="graph-explorer" \
       org.opencontainers.image.version="${BUILD_VERSION}" \
       org.opencontainers.image.revision="${VCS_REF}" \
       org.opencontainers.image.created="${BUILD_DATE}" \
-      org.opencontainers.image.base.name="docker.io/library/python:3.14.5-slim"
+      org.opencontainers.image.base.name="docker.io/library/python:3.14.7-slim"
 RUN groupadd --gid 1000 groovemap && \
     useradd --uid 1000 --gid groovemap --create-home --shell /usr/sbin/nologin groovemap && \
     mkdir -p /app /logs && chown -R 1000:1000 /app /logs
