@@ -104,6 +104,7 @@ describe('GraphVisualization', () => {
         window.apiClient = {
             expand: vi.fn().mockResolvedValue({ children: [], total: 0, limit: 30, has_more: false, offset: 0 }),
         };
+        loadScriptDirect('graph-state.js');
         loadScriptDirect('graph.js');
     });
 

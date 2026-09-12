@@ -1,47 +1,14 @@
-/**
- * D3.js force-directed graph visualization.
- */
 class GraphVisualization {
     constructor(containerId) {
         this.container = document.getElementById(containerId);
         this.svg = d3.select('#graphSvg');
         this.placeholder = document.getElementById('graphPlaceholder');
 
-        this.nodes = [];
-        this.links = [];
-        this.simulation = null;
+        this._state = new window.GraphSessionState();
+        this._state.exposeOn(this);
+        this._events = new window.AbortController();
         this.g = null;
         this.zoom = null;
-
-        // Track expanded categories
-        this.expandedCategories = new Set();
-        this._pendingExpands = 0;
-        this._loadingCategories = new Set();
-        // Monotonically increasing generation token. Bumped by every method
-        // that starts a new load/session (setExploreData, restoreSnapshot,
-        // setBeforeYear, setCompareYears). In-flight async expand/fetch calls
-        // capture the generation at start and re-check it after every await,
-        // discarding stale work instead of mutating state that belongs to a
-        // newer session (migration-regression-5fg0).
-        this._generation = 0;
-
-        // Track per-category pagination state: categoryId → {offset, limit, total, parentName, parentType, category}
-        this._categoryMeta = new Map();
-
-        // Debounce render
-        this._renderTimeout = null;
-
-        // Current center entity
-        this.centerName = null;
-        this.centerType = null;
-
-        // Time-travel filter
-        this.beforeYear = null;
-
-        // Comparison mode state
-        this.compareMode = false;
-        this.compareYearA = null;
-        this.compareYearB = null;
 
         // Callbacks
         this.onNodeClick = null;
@@ -87,21 +54,22 @@ class GraphVisualization {
 
         // Handle resize — store reference for cleanup
         this._resizeHandler = () => this._onResize();
-        window.addEventListener('resize', this._resizeHandler);
+        window.addEventListener('resize', this._resizeHandler, { signal: this._events.signal });
     }
 
     _initControls() {
-        document.getElementById('zoomInBtn').addEventListener('click', () => this.zoomIn());
-        document.getElementById('zoomOutBtn').addEventListener('click', () => this.zoomOut());
-        document.getElementById('zoomResetBtn').addEventListener('click', () => this.zoomReset());
-        document.getElementById('fullscreenBtn').addEventListener('click', () => this.toggleFullscreen());
+        const options = { signal: this._events.signal };
+        document.getElementById('zoomInBtn').addEventListener('click', () => this.zoomIn(), options);
+        document.getElementById('zoomOutBtn').addEventListener('click', () => this.zoomOut(), options);
+        document.getElementById('zoomResetBtn').addEventListener('click', () => this.zoomReset(), options);
+        document.getElementById('fullscreenBtn').addEventListener('click', () => this.toggleFullscreen(), options);
 
         // Escape key exits fullscreen
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && this.container.classList.contains('fullscreen')) {
                 this.toggleFullscreen();
             }
-        });
+        }, options);
     }
 
     zoomIn() {
@@ -623,6 +591,17 @@ class GraphVisualization {
         this.placeholder.classList.remove('hidden');
     }
 
+    destroy() {
+        this._state.invalidate();
+        this._events.abort();
+        clearTimeout(this._renderTimeout);
+        this._renderTimeout = null;
+        if (this.simulation) {
+            this.simulation.stop();
+            this.simulation = null;
+        }
+    }
+
     /**
      * Restore graph state from a snapshot node list and center.
      * @param {Array<{id: string, type: string}>} snapshotNodes
@@ -964,9 +943,6 @@ class GraphVisualization {
         if (this._render) this._render();
     }
 
-    /**
-     * Clear all nodes and links from the graph and re-render.
-     */
     clearAll() {
         this.nodes = [];
         this.links = [];

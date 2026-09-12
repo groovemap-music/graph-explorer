@@ -89,6 +89,10 @@ class AuthManager {
     /** Register a listener for auth state changes. Callback receives (isLoggedIn). */
     onChange(callback) {
         this._listeners.push(callback);
+        return () => {
+            const index = this._listeners.indexOf(callback);
+            if (index !== -1) this._listeners.splice(index, 1);
+        };
     }
 
     /** Notify all listeners of state change. */

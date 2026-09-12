@@ -6,6 +6,7 @@ describe('ApiClient', () => {
         // Reset the global instance before each test
         delete globalThis.window;
         globalThis.window = globalThis;
+        loadScript('api-transport.js');
         loadScript('api-client.js');
     });
 
