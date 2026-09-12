@@ -85,6 +85,7 @@ assert "artifact-check: build" in justfile
 assert "bash scripts/release-dry-run.sh --reuse-packages" in justfile
 assert "uv run cz bump --version-files-only" in justfile
 assert "uv run cz bump --files-only" not in justfile
+assert "python scripts/check-docs.py" in justfile
 
 source_check = justfile.split("source-check:\n", 1)[1].split("\n\n", 1)[0]
 assert "npm " not in source_check
@@ -182,6 +183,37 @@ assert "explicitly approved `v*` tag" in readme
 assert "publishing workflow remains disabled" not in readme
 assert "```mermaid" in (ROOT / "docs/architecture.md").read_text()
 assert "```mermaid" in (ROOT / "docs/release-compliance.md").read_text()
+assert "configuration.md" in docs_index
+assert "user-guide.md" in docs_index
+
+architecture = (ROOT / "docs/architecture.md").read_text()
+for component in (
+    "ApplicationLifecycle",
+    "GraphSessionState",
+    "UserPaneState",
+    "SettingsState",
+    "ApiTransport",
+    "proxy_transport",
+):
+    assert component in architecture
+for revision in (
+    "e84d134ec82dbfd66ebdcb6e38736a8f9f47f670",
+    PYTHON_LIBRARIES_REVISION,
+    DESIGN_REVISION,
+):
+    assert revision in architecture
+
+configuration = (ROOT / "docs/configuration.md").read_text()
+for setting in ("API_BASE_URL", "CORS_ORIGINS", "LOG_LEVEL"):
+    assert setting in configuration
+for entry_point in ("explore.explore:main", "GET /health", "/api/{path:path}", "GET :8007/health"):
+    assert entry_point in configuration
+
+user_guide = (ROOT / "docs/user-guide.md").read_text()
+for workflow in ("Explore", "Trends", "Find Path", "Search", "Insights", "Genres", "Credits", "Ask"):
+    assert workflow in user_guide
+for accessibility_contract in ("Arrow Down/Arrow Up", "Control+K", "Escape", "native multi-select"):
+    assert accessibility_contract in user_guide
 
 source = (ROOT / "explore/explore.py").read_text()
 assert 'SERVICE_NAME = "graph-explorer"' in source

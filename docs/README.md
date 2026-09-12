@@ -1,6 +1,8 @@
 # Graph Explorer documentation
 
 - [Architecture](architecture.md)
+- [Configuration](configuration.md)
+- [User guide and accessibility](user-guide.md)
 - [Architecture decisions](architecture-decisions.md)
 - [Release compliance](release-compliance.md)
 - [History rewrite approval gate](history-rewrite-gate.md)
