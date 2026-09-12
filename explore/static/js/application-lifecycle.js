@@ -27,6 +27,7 @@ class ApplicationLifecycle {
         this.app.timeline?.destroy?.();
         this.app.graph?.destroy?.();
         this.app.userPanes?.destroy?.();
+        window.settingsPane?.destroy?.();
         window.insightsPanel?.stopPolling?.();
     }
 }

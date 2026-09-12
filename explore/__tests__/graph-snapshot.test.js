@@ -80,6 +80,7 @@ describe('GraphVisualization snapshot/restore/clearAll/addEntity', () => {
         globalThis.window = globalThis;
         globalThis.d3 = createD3Stub();
         setupDOM();
+        loadScriptDirect('graph-state.js');
         loadScriptDirect('graph.js');
     });
 

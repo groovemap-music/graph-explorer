@@ -347,6 +347,7 @@ beforeAll(() => {
 
     // Load class files in dependency order
     loadScriptDirect('autocomplete.js');
+    loadScriptDirect('graph-state.js');
     loadScriptDirect('graph.js');
     loadScriptDirect('trends.js');
     loadScriptDirect('user-pane-state.js');
