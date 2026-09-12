@@ -6,19 +6,19 @@
  */
 class UserPanes {
     constructor() {
-        this._collectionOffset = 0;
-        this._wantlistOffset = 0;
-        this._pageSize = 50;
-        this._collectionTotal = 0;
-        this._wantlistTotal = 0;
+        this._state = new window.UserPaneState();
+        this._state.exposeOn(this);
+    }
+
+    destroy() {
+        this._state.invalidateRequests();
+        if (this._discogsOAuthMessageHandler) {
+            window.removeEventListener('message', this._discogsOAuthMessageHandler);
+            this._discogsOAuthMessageHandler = null;
+        }
         this._discogsOAuthState = null;
         this._tasteCache = null;
         this._tasteLoading = false;
-        // Monotonic request ids so an out-of-order (stale) fetch response
-        // can never overwrite the rows for a request issued after it.
-        this._collectionReqId = 0;
-        this._wantlistReqId = 0;
-        this._gapReqId = 0;
     }
 
     // ------------------------------------------------------------------ //

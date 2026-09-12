@@ -349,7 +349,9 @@ beforeAll(() => {
     loadScriptDirect('autocomplete.js');
     loadScriptDirect('graph.js');
     loadScriptDirect('trends.js');
+    loadScriptDirect('user-pane-state.js');
     loadScriptDirect('user-panes.js');
+    loadScriptDirect('application-lifecycle.js');
     loadScriptDirect('app.js');
 });
 

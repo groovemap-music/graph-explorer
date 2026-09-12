@@ -51,6 +51,7 @@ describe('UserPanes', () => {
         delete globalThis.window;
         globalThis.window = globalThis;
         loadScript('media-taxonomy.js');
+        loadScript('user-pane-state.js');
         loadScriptDirect('user-panes.js');
     });
 
