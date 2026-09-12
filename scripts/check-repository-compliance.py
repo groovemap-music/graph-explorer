@@ -41,6 +41,7 @@ assert ci_target is not None and ci_target.group(1) == AUTOMATION_REVISION
 for required_input in (
     "language: mixed",
     "coverage-command: just coverage",
+    "secret-scan-command: just secret-scan",
     "e2e-setup-command: just e2e-setup",
     "e2e-instrument-command: just e2e-instrument",
     "e2e-command: just e2e-run",
@@ -72,6 +73,27 @@ for marker in (
     "groovemap_ci_app_private_key",
 ):
     assert marker not in ci.lower()
+
+justfile = (ROOT / "Justfile").read_text()
+assert "uv run ruff format --check ." in justfile
+assert "uvx --from ruff" not in justfile
+assert "check: source-check secret-scan typecheck test js-test build artifact-check" in justfile
+assert "js-test: web-dependencies" in justfile
+assert "coverage: test web-dependencies" in justfile
+assert "web-build: web-dependencies" in justfile
+assert "artifact-check: build" in justfile
+assert "bash scripts/release-dry-run.sh --reuse-packages" in justfile
+assert "uv run cz bump --version-files-only" in justfile
+assert "uv run cz bump --files-only" not in justfile
+
+source_check = justfile.split("source-check:\n", 1)[1].split("\n\n", 1)[0]
+assert "npm " not in source_check
+assert "build:web" not in source_check
+assert "gitleaks" not in source_check
+
+secret_scan = justfile.split("secret-scan:\n", 1)[1].split("\n\n", 1)[0]
+assert secret_scan.count("gitleaks git") == 1
+assert secret_scan.count("gitleaks dir") == 1
 
 release = (ROOT / ".github/workflows/release.yml").read_text()
 assert "attestations: write" in release

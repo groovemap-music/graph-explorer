@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
-uv build --out-dir dist --clear
+if [[ "${1:-}" == "--reuse-packages" ]]; then
+  shift
+  test "$(find dist -maxdepth 1 -type f -name '*.whl' | wc -l | tr -d ' ')" = "1"
+  test "$(find dist -maxdepth 1 -type f -name '*.tar.gz' | wc -l | tr -d ' ')" = "1"
+elif [[ $# -eq 0 ]]; then
+  uv build --out-dir dist --clear
+else
+  echo "usage: $0 [--reuse-packages]" >&2
+  exit 2
+fi
+test $# -eq 0
 node explore/scripts/vendor-licenses.mjs check
 mkdir -p dist/WEB_THIRD_PARTY_NOTICES
 cp explore/static/vendor/ASSET_LICENSES.json explore/static/vendor/THIRD_PARTY_NOTICES.md dist/WEB_THIRD_PARTY_NOTICES/
