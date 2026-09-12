@@ -30,6 +30,17 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from explore import __version__
+from explore.proxy_transport import (
+    PROXY_SKIP_HEADERS,
+    PROXY_TIMEOUT_SECONDS,
+    STREAMING_CONTENT_TYPE_PREFIX,
+    STREAMING_PATHS,
+    build_upstream_request,
+    is_streaming_path,
+    proxy_timeout,
+    response_headers,
+)
+from explore.runtime_config import RuntimeConfig
 
 
 logger = structlog.get_logger(__name__)
@@ -48,12 +59,9 @@ STARTUP_BANNER = r"""
                          graph-explorer
 """.strip("\n")
 
-# CORS origins configurable via environment variable (comma-separated list)
-_cors_origins_raw = os.environ.get("CORS_ORIGINS", "")
-_cors_origins = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()] if _cors_origins_raw else None
-
-# API service base URL for proxying /api/* requests
-_api_base_url = os.environ.get("API_BASE_URL", "http://api:8004")
+_runtime_config = RuntimeConfig.from_environment()
+_cors_origins = list(_runtime_config.cors_origins) if _runtime_config.cors_origins else None
+_api_base_url = _runtime_config.api_base_url
 
 
 # Domain metric: the full duration of an /api/* proxy request, including the complete SSE
@@ -168,22 +176,22 @@ async def health_check() -> JSONResponse:
 # must not be passed through verbatim (that would let an attacker spoof their
 # apparent IP to the API and defeat per-IP rate limiting downstream). explore sets
 # its own trustworthy values below, from what it actually observed as the peer.
-_PROXY_SKIP_HEADERS = frozenset({"host", "content-length", "transfer-encoding", "x-forwarded-for", "x-forwarded-proto"})
+_PROXY_SKIP_HEADERS = PROXY_SKIP_HEADERS
 
 # Content-Type prefix used by sse_starlette's EventSourceResponse (see
 # api/routers/nlq.py) for the NLQ 'Ask' streaming endpoint.
-_STREAMING_CONTENT_TYPE_PREFIX = "text/event-stream"
+_STREAMING_CONTENT_TYPE_PREFIX = STREAMING_CONTENT_TYPE_PREFIX
 
 # Total budget for connect/write/pool, and the default read budget for every
 # BUFFERED proxied response.
-_PROXY_TIMEOUT_SECONDS = 150.0
+_PROXY_TIMEOUT_SECONDS = PROXY_TIMEOUT_SECONDS
 
 # The only upstream paths that stream (SSE). The timeout has to be chosen before
 # the response's content-type is known, so the read timeout may only be disabled
 # for these — disabling it for every request meant a stalled upstream wedged a
 # buffered request forever, pinning an httpx pool connection and a server task
 # with no deadline until the pool was exhausted (legacy stalled-stream regression).
-_STREAMING_PATHS = frozenset({"nlq/query"})
+_STREAMING_PATHS = STREAMING_PATHS
 
 _http_client: httpx.AsyncClient | None = None
 
@@ -197,7 +205,7 @@ def _get_http_client() -> httpx.AsyncClient:
 
 def _is_streaming_path(path: str) -> bool:
     """Whether this upstream path returns an SSE stream."""
-    return path.strip("/") in _STREAMING_PATHS
+    return is_streaming_path(path)
 
 
 def _proxy_timeout(path: str) -> httpx.Timeout:
@@ -210,9 +218,7 @@ def _proxy_timeout(path: str) -> httpx.Timeout:
     a stalled-but-connected upstream (hung Neo4j query, half-open TCP after an
     OOM-kill) parked the request forever (legacy stalled-stream regression).
     """
-    if _is_streaming_path(path):
-        return httpx.Timeout(_PROXY_TIMEOUT_SECONDS, read=None)
-    return httpx.Timeout(_PROXY_TIMEOUT_SECONDS)
+    return proxy_timeout(path)
 
 
 @app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
@@ -231,34 +237,7 @@ async def proxy_api(path: str, request: Request) -> Response:
     """
     start = time.perf_counter()
     client = _get_http_client()
-    url = f"/api/{path}"
-    forward_headers = {k: v for k, v in request.headers.items() if k.lower() not in _PROXY_SKIP_HEADERS}
-
-    # Set trustworthy X-Forwarded-For/-Proto from what graph-explorer itself observed as the
-    # TCP peer and request scheme — never from client-supplied headers (stripped above).
-    # api/api.py trusts these only when they arrive from the internal docker network
-    # (FORWARDED_ALLOW_IPS), so this is the sole source of per-client identity that
-    # api's rate limiter (api/limiter.py get_remote_address) resolves. See
-    # the forwarded-client-identity regression.
-    client_host = request.client.host if request.client else None
-    if client_host:
-        forward_headers["x-forwarded-for"] = client_host
-    forward_headers["x-forwarded-proto"] = request.url.scheme
-
-    req = client.build_request(
-        method=request.method,
-        url=url,
-        # request.query_params is a Starlette multi-dict — wrapping it in
-        # dict() keeps only the LAST value per repeated key (e.g.
-        # ?media=vinyl&media=tape collapses to media=tape), silently
-        # dropping multi-value filters. Build an httpx.QueryParams from
-        # the multi-item list so every repeated key is preserved.
-        params=httpx.QueryParams(tuple(request.query_params.multi_items())),
-        content=await request.body(),
-        headers=forward_headers,
-        # Read timeout disabled for SSE paths only — see _proxy_timeout.
-        timeout=_proxy_timeout(path),
-    )
+    req = await build_upstream_request(client, path, request)
 
     try:
         if _is_streaming_path(path):
@@ -280,8 +259,7 @@ async def proxy_api(path: str, request: Request) -> Response:
         _record_proxy_duration(start, outcome="upstream_error")
         return JSONResponse(content={"error": "Upstream service error"}, status_code=502)
 
-    skip_response_headers = {"content-encoding", "transfer-encoding", "content-length"}
-    response_headers = {k: v for k, v in proxied.headers.items() if k.lower() not in skip_response_headers}
+    headers = response_headers(proxied.headers)
     content_type = proxied.headers.get("content-type", "")
 
     if content_type.startswith(_STREAMING_CONTENT_TYPE_PREFIX):
@@ -301,7 +279,7 @@ async def proxy_api(path: str, request: Request) -> Response:
                 await proxied.aclose()
                 _record_proxy_duration(start, outcome=outcome)
 
-        return StreamingResponse(_forward_stream(), status_code=proxied.status_code, headers=response_headers, media_type=content_type)
+        return StreamingResponse(_forward_stream(), status_code=proxied.status_code, headers=headers, media_type=content_type)
 
     try:
         await proxied.aread()
@@ -319,7 +297,7 @@ async def proxy_api(path: str, request: Request) -> Response:
         await proxied.aclose()
 
     _record_proxy_duration(start, outcome="success")
-    return Response(content=proxied.content, status_code=proxied.status_code, headers=response_headers)
+    return Response(content=proxied.content, status_code=proxied.status_code, headers=headers)
 
 
 # Serve UI — must be mounted after all API routes so /health and /api/* take priority
