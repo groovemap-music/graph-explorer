@@ -77,6 +77,7 @@ describe('SettingsPane', () => {
         setupSettingsDOM();
         setupMocks();
         QRCode.mockClear();
+        loadScript('settings-state.js');
         loadScript('settings.js');
     });
 

@@ -5,6 +5,7 @@ describe('apiClient.fetchNlqSuggestions', () => {
     beforeEach(() => {
         delete globalThis.window;
         globalThis.window = globalThis;
+        loadScript('api-transport.js');
         loadScript('api-client.js');
         vi.restoreAllMocks();
     });

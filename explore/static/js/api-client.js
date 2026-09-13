@@ -1,7 +1,9 @@
-/**
- * API client for graph-explorer.
- */
 class ApiClient {
+    constructor(transport = new window.ApiTransport()) {
+        this._transport = transport;
+        this._nlqSession = null;
+    }
+
     /**
      * Detect an expired/revoked JWT (401) on an authenticated request and
      * reconcile client-side auth state immediately, instead of silently
@@ -11,10 +13,7 @@ class ApiClient {
      * @param {Response} response
      */
     _checkAuthResponse(response) {
-        if (response && response.status === 401 && window.authManager?.isLoggedIn()) {
-            window.authManager.clear();
-            window.authManager.notify();
-        }
+        this._transport.checkAuthResponse(response);
     }
 
     /**
@@ -26,9 +25,9 @@ class ApiClient {
      */
     async autocomplete(query, type, limit = 10) {
         const params = new URLSearchParams({ q: query, type, limit: String(limit) });
-        const response = await fetch(`/api/autocomplete?${params}`);
+        const response = await this._transport.fetch(`/api/autocomplete?${params}`);
         if (!response.ok) return [];
-        const data = await response.json();
+        const data = await this._transport.readJson(response);
         return data.results || [];
     }
 
@@ -40,9 +39,9 @@ class ApiClient {
      */
     async explore(name, type) {
         const params = new URLSearchParams({ name, type });
-        const response = await fetch(`/api/explore?${params}`);
+        const response = await this._transport.fetch(`/api/explore?${params}`);
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     /**
@@ -65,9 +64,9 @@ class ApiClient {
         if (beforeYear !== null) {
             params.set('before_year', String(beforeYear));
         }
-        const response = await fetch(`/api/expand?${params}`);
+        const response = await this._transport.fetch(`/api/expand?${params}`);
         if (!response.ok) return { children: [], total: 0, offset, limit, has_more: false };
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     /**
@@ -78,9 +77,9 @@ class ApiClient {
      */
     async getNodeDetails(nodeId, type) {
         const params = new URLSearchParams({ type });
-        const response = await fetch(`/api/node/${encodeURIComponent(nodeId)}?${params}`);
+        const response = await this._transport.fetch(`/api/node/${encodeURIComponent(nodeId)}?${params}`);
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     /**
@@ -91,9 +90,9 @@ class ApiClient {
      */
     async getTrends(name, type) {
         const params = new URLSearchParams({ name, type });
-        const response = await fetch(`/api/trends?${params}`);
+        const response = await this._transport.fetch(`/api/trends?${params}`);
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     /**
@@ -101,9 +100,9 @@ class ApiClient {
      * @returns {Promise<{min_year: number|null, max_year: number|null}>}
      */
     async getYearRange() {
-        const response = await fetch('/api/explore/year-range');
+        const response = await this._transport.fetch('/api/explore/year-range');
         if (!response.ok) return { min_year: null, max_year: null };
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     /**
@@ -113,9 +112,9 @@ class ApiClient {
      */
     async getGenreEmergence(beforeYear) {
         const params = new URLSearchParams({ before_year: String(beforeYear) });
-        const response = await fetch(`/api/explore/genre-emergence?${params}`);
+        const response = await this._transport.fetch(`/api/explore/genre-emergence?${params}`);
         if (!response.ok) return { genres: [], styles: [] };
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     /**
@@ -127,14 +126,14 @@ class ApiClient {
     async saveSnapshot(nodes, center, token) {
         const headers = { 'Content-Type': 'application/json' };
         if (token) headers['Authorization'] = `Bearer ${token}`;
-        const response = await fetch('/api/snapshot', {
+        const response = await this._transport.fetch('/api/snapshot', {
             method: 'POST',
             headers,
             body: JSON.stringify({ nodes, center }),
         });
         this._checkAuthResponse(response);
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     /**
@@ -143,9 +142,9 @@ class ApiClient {
      * @returns {Promise<Object|null>} Snapshot restore response
      */
     async restoreSnapshot(token) {
-        const response = await fetch(`/api/snapshot/${encodeURIComponent(token)}`);
+        const response = await this._transport.fetch(`/api/snapshot/${encodeURIComponent(token)}`);
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     /**
@@ -165,13 +164,13 @@ class ApiClient {
             to_type: toType,
             max_depth: String(maxDepth),
         });
-        const response = await fetch(`/api/path?${params}`);
+        const response = await this._transport.fetch(`/api/path?${params}`);
         if (response.status === 404) {
-            const data = await response.json();
+            const data = await this._transport.readJson(response);
             return { notFound: true, error: data.error || 'Entity not found' };
         }
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     /**
@@ -195,15 +194,15 @@ class ApiClient {
         // Repeated, not comma-joined: the producer reads `media` as a multi-value
         // param so a family id and a medium id can be mixed in one filter.
         media.forEach(m => params.append('media', m));
-        const response = await fetch(`/api/search?${params}`);
+        const response = await this._transport.fetch(`/api/search?${params}`);
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     // --- Auth ---
 
     async register(email, password) {
-        const response = await fetch('/api/auth/register', {
+        const response = await this._transport.fetch('/api/auth/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password }),
@@ -212,25 +211,25 @@ class ApiClient {
     }
 
     async login(email, password) {
-        const response = await fetch('/api/auth/login', {
+        const response = await this._transport.fetch('/api/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password }),
         });
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     async logout(token) {
         if (!token) return;
-        await fetch('/api/auth/logout', {
+        await this._transport.fetch('/api/auth/logout', {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}` },
         });
     }
 
     async resetRequest(email) {
-        const response = await fetch('/api/auth/reset-request', {
+        const response = await this._transport.fetch('/api/auth/reset-request', {
             method: 'POST', headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ email }),
         });
@@ -238,7 +237,7 @@ class ApiClient {
     }
 
     async resetConfirm(token, newPassword) {
-        const response = await fetch('/api/auth/reset-confirm', {
+        const response = await this._transport.fetch('/api/auth/reset-confirm', {
             method: 'POST', headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ token, new_password: newPassword }),
         });
@@ -246,7 +245,7 @@ class ApiClient {
     }
 
     async twoFactorSetup(token) {
-        const response = await fetch('/api/auth/2fa/setup', {
+        const response = await this._transport.fetch('/api/auth/2fa/setup', {
             method: 'POST', headers: {'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json'},
         });
         this._checkAuthResponse(response);
@@ -254,7 +253,7 @@ class ApiClient {
     }
 
     async twoFactorConfirm(token, code) {
-        const response = await fetch('/api/auth/2fa/confirm', {
+        const response = await this._transport.fetch('/api/auth/2fa/confirm', {
             method: 'POST', headers: {'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json'},
             body: JSON.stringify({ code }),
         });
@@ -263,7 +262,7 @@ class ApiClient {
     }
 
     async twoFactorVerify(challengeToken, code) {
-        const response = await fetch('/api/auth/2fa/verify', {
+        const response = await this._transport.fetch('/api/auth/2fa/verify', {
             method: 'POST', headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ challenge_token: challengeToken, code }),
         });
@@ -271,7 +270,7 @@ class ApiClient {
     }
 
     async twoFactorRecovery(challengeToken, code) {
-        const response = await fetch('/api/auth/2fa/recovery', {
+        const response = await this._transport.fetch('/api/auth/2fa/recovery', {
             method: 'POST', headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ challenge_token: challengeToken, code }),
         });
@@ -279,7 +278,7 @@ class ApiClient {
     }
 
     async twoFactorDisable(token, code, password) {
-        const response = await fetch('/api/auth/2fa/disable', {
+        const response = await this._transport.fetch('/api/auth/2fa/disable', {
             method: 'POST', headers: {'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json'},
             body: JSON.stringify({ code, password }),
         });
@@ -288,7 +287,7 @@ class ApiClient {
     }
 
     async changePassword(token, currentPassword, newPassword) {
-        const response = await fetch('/api/auth/change-password', {
+        const response = await this._transport.fetch('/api/auth/change-password', {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
@@ -299,57 +298,57 @@ class ApiClient {
 
     async getMe(token) {
         if (!token) return null;
-        const response = await fetch('/api/auth/me', {
+        const response = await this._transport.fetch('/api/auth/me', {
             headers: { 'Authorization': `Bearer ${token}` },
         });
         this._checkAuthResponse(response);
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     // --- Discogs OAuth ---
 
     async authorizeDiscogs(token) {
         if (!token) return null;
-        const response = await fetch('/api/oauth/authorize/discogs', {
+        const response = await this._transport.fetch('/api/oauth/authorize/discogs', {
             headers: { 'Authorization': `Bearer ${token}` },
         });
         this._checkAuthResponse(response);
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     async verifyDiscogs(token, state, oauthVerifier) {
         if (!token) return null;
-        const response = await fetch('/api/oauth/verify/discogs', {
+        const response = await this._transport.fetch('/api/oauth/verify/discogs', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
             body: JSON.stringify({ state, oauth_verifier: oauthVerifier }),
         });
         this._checkAuthResponse(response);
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     async getDiscogsStatus(token) {
         if (!token) return null;
-        const response = await fetch('/api/oauth/status/discogs', {
+        const response = await this._transport.fetch('/api/oauth/status/discogs', {
             headers: { 'Authorization': `Bearer ${token}` },
         });
         this._checkAuthResponse(response);
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     async revokeDiscogs(token) {
         if (!token) return null;
-        const response = await fetch('/api/oauth/revoke/discogs', {
+        const response = await this._transport.fetch('/api/oauth/revoke/discogs', {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${token}` },
         });
         this._checkAuthResponse(response);
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     // --- App tokens (third-party app authorization) ---
@@ -360,12 +359,12 @@ class ApiClient {
      */
     async listAppTokens(token) {
         if (!token) return null;
-        const response = await fetch('/api/user/app-tokens', {
+        const response = await this._transport.fetch('/api/user/app-tokens', {
             headers: { 'Authorization': `Bearer ${token}` },
         });
         this._checkAuthResponse(response);
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     /**
@@ -374,14 +373,14 @@ class ApiClient {
      */
     async mintAppToken(token, name, scopes) {
         if (!token) return { ok: false, status: 0, body: null };
-        const response = await fetch('/api/user/app-tokens', {
+        const response = await this._transport.fetch('/api/user/app-tokens', {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ name, scopes }),
         });
         this._checkAuthResponse(response);
         let body = null;
-        try { body = await response.json(); } catch { /* no-op */ }
+        try { body = await this._transport.readJson(response); } catch { /* no-op */ }
         return { ok: response.ok, status: response.status, body };
     }
 
@@ -391,7 +390,7 @@ class ApiClient {
      */
     async revokeAppToken(token, tokenId) {
         if (!token || !tokenId) return false;
-        const response = await fetch(`/api/user/app-tokens/${encodeURIComponent(tokenId)}`, {
+        const response = await this._transport.fetch(`/api/user/app-tokens/${encodeURIComponent(tokenId)}`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${token}` },
         });
@@ -404,54 +403,54 @@ class ApiClient {
     async getUserCollection(token, limit = 50, offset = 0) {
         if (!token) return null;
         const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
-        const response = await fetch(`/api/user/collection?${params}`, {
+        const response = await this._transport.fetch(`/api/user/collection?${params}`, {
             headers: { 'Authorization': `Bearer ${token}` },
         });
         this._checkAuthResponse(response);
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     async getUserWantlist(token, limit = 50, offset = 0) {
         if (!token) return null;
         const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
-        const response = await fetch(`/api/user/wantlist?${params}`, {
+        const response = await this._transport.fetch(`/api/user/wantlist?${params}`, {
             headers: { 'Authorization': `Bearer ${token}` },
         });
         this._checkAuthResponse(response);
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     async getUserRecommendations(token, limit = 20) {
         if (!token) return null;
         const params = new URLSearchParams({ limit: String(limit) });
-        const response = await fetch(`/api/user/recommendations?${params}`, {
+        const response = await this._transport.fetch(`/api/user/recommendations?${params}`, {
             headers: { 'Authorization': `Bearer ${token}` },
         });
         this._checkAuthResponse(response);
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     async getUserCollectionStats(token) {
         if (!token) return null;
-        const response = await fetch('/api/user/collection/stats', {
+        const response = await this._transport.fetch('/api/user/collection/stats', {
             headers: { 'Authorization': `Bearer ${token}` },
         });
         this._checkAuthResponse(response);
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     async getUserStatus(ids, token = null) {
         const params = new URLSearchParams({ ids: ids.join(',') });
         const headers = {};
         if (token) headers['Authorization'] = `Bearer ${token}`;
-        const response = await fetch(`/api/user/status?${params}`, { headers });
+        const response = await this._transport.fetch(`/api/user/status?${params}`, { headers });
         if (token) this._checkAuthResponse(response);
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     // --- Collection gap analysis ---
@@ -466,12 +465,12 @@ class ApiClient {
      */
     async getCollectionFormats(token) {
         if (!token) return null;
-        const response = await fetch('/api/collection/formats', {
+        const response = await this._transport.fetch('/api/collection/formats', {
             headers: { 'Authorization': `Bearer ${token}` },
         });
         this._checkAuthResponse(response);
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     /**
@@ -482,12 +481,12 @@ class ApiClient {
      */
     async getCollectionMedia(token) {
         if (!token) return null;
-        const response = await fetch('/api/collection/media', {
+        const response = await this._transport.fetch('/api/collection/media', {
             headers: { 'Authorization': `Bearer ${token}` },
         });
         this._checkAuthResponse(response);
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     async getCollectionGaps(token, entityType, entityId, options = {}) {
@@ -502,35 +501,35 @@ class ApiClient {
         if (options.media?.length) {
             options.media.forEach(m => params.append('media', m));
         }
-        const response = await fetch(`/api/collection/gaps/${entityType}/${encodeURIComponent(entityId)}?${params}`, {
+        const response = await this._transport.fetch(`/api/collection/gaps/${entityType}/${encodeURIComponent(entityId)}?${params}`, {
             headers: { 'Authorization': `Bearer ${token}` },
         });
         this._checkAuthResponse(response);
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     // --- Sync ---
 
     async triggerSync(token) {
         if (!token) return { ok: false, status: 0, body: null };
-        const response = await fetch('/api/sync', {
+        const response = await this._transport.fetch('/api/sync', {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}` },
         });
         this._checkAuthResponse(response);
-        const body = await response.json().catch(() => null);
+        const body = await this._transport.readJson(response).catch(() => null);
         return { ok: response.ok, status: response.status, body };
     }
 
     async getSyncStatus(token) {
         if (!token) return null;
-        const response = await fetch('/api/sync/status', {
+        const response = await this._transport.fetch('/api/sync/status', {
             headers: { 'Authorization': `Bearer ${token}` },
         });
         this._checkAuthResponse(response);
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     // --- Taste fingerprint ---
@@ -542,12 +541,12 @@ class ApiClient {
      */
     async getTasteFingerprint(token) {
         if (!token) return null;
-        const response = await fetch('/api/user/taste/fingerprint', {
+        const response = await this._transport.fetch('/api/user/taste/fingerprint', {
             headers: { 'Authorization': `Bearer ${token}` },
         });
         this._checkAuthResponse(response);
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     /**
@@ -557,12 +556,12 @@ class ApiClient {
      */
     async getTasteCard(token) {
         if (!token) return null;
-        const response = await fetch('/api/user/taste/card', {
+        const response = await this._transport.fetch('/api/user/taste/card', {
             headers: { 'Authorization': `Bearer ${token}` },
         });
         this._checkAuthResponse(response);
         if (!response.ok) return null;
-        return response.blob();
+        return this._transport.readBlob(response);
     }
     // --- Collaborators ---
 
@@ -574,9 +573,9 @@ class ApiClient {
      */
     async getCollaborators(artistId, limit = 20) {
         const params = new URLSearchParams({ limit: String(limit) });
-        const response = await fetch(`/api/collaborators/${encodeURIComponent(artistId)}?${params}`);
+        const response = await this._transport.fetch(`/api/collaborators/${encodeURIComponent(artistId)}?${params}`);
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     // --- Genre Tree ---
@@ -586,43 +585,43 @@ class ApiClient {
      * @returns {Promise<Object|null>} Genre tree data or null on error
      */
     async getGenreTree() {
-        const response = await fetch('/api/genre-tree');
+        const response = await this._transport.fetch('/api/genre-tree');
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     // --- Insights ---
 
     async getInsightsTopArtists(limit = 10) {
         const params = new URLSearchParams({ limit: String(limit) });
-        const response = await fetch(`/api/insights/top-artists?${params}`);
+        const response = await this._transport.fetch(`/api/insights/top-artists?${params}`);
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     async getInsightsGenreTrends(genre) {
         const params = new URLSearchParams({ genre });
-        const response = await fetch(`/api/insights/genre-trends?${params}`);
+        const response = await this._transport.fetch(`/api/insights/genre-trends?${params}`);
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     async getInsightsThisMonth() {
-        const response = await fetch('/api/insights/this-month');
+        const response = await this._transport.fetch('/api/insights/this-month');
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     async getInsightsDataCompleteness() {
-        const response = await fetch('/api/insights/data-completeness');
+        const response = await this._transport.fetch('/api/insights/data-completeness');
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
 
     async getInsightsStatus() {
-        const response = await fetch('/api/insights/status');
+        const response = await this._transport.fetch('/api/insights/status');
         if (!response.ok) return null;
-        return response.json();
+        return this._transport.readJson(response);
     }
     // --- NLQ (Natural Language Query) ---
 
@@ -638,9 +637,9 @@ class ApiClient {
         const params = new URLSearchParams({ pane });
         if (focus) params.set('focus', focus);
         if (focusType) params.set('focus_type', focusType);
-        const response = await fetch(`/api/nlq/suggestions?${params.toString()}`);
+        const response = await this._transport.fetch(`/api/nlq/suggestions?${params.toString()}`);
         if (!response.ok) throw new Error(`Suggestions fetch failed: ${response.status}`);
-        return await response.json();
+        return await this._transport.readJson(response);
     }
 
     /**
@@ -649,9 +648,9 @@ class ApiClient {
      */
     async checkNlqStatus() {
         try {
-            const response = await fetch('/api/nlq/status');
+            const response = await this._transport.fetch('/api/nlq/status');
             if (!response.ok) return { enabled: false };
-            return response.json();
+            return this._transport.readJson(response);
         } catch {
             return { enabled: false };
         }
@@ -667,13 +666,13 @@ class ApiClient {
         try {
             const body = { query };
             if (context) body.context = context;
-            const response = await fetch('/api/nlq/query', {
+            const response = await this._transport.fetch('/api/nlq/query', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
             });
             if (!response.ok) return null;
-            return response.json();
+            return this._transport.readJson(response);
         } catch {
             return null;
         }
@@ -703,23 +702,32 @@ class ApiClient {
         const body = { query };
         if (context) body.context = context;
         let settled = false;
+        const session = this._transport.openSession();
+        this._nlqSession = session;
+        const closeSession = () => {
+            this._transport.closeSession(session);
+            if (this._nlqSession === session) this._nlqSession = null;
+        };
         const settleResult = (data) => {
             if (settled) return;
             settled = true;
+            closeSession();
             if (onResult) onResult(data);
         };
         const settleError = (err) => {
             if (settled) return;
             settled = true;
+            closeSession();
             if (onError) onError(err);
         };
-        fetch('/api/nlq/query', {
+        this._transport.fetch('/api/nlq/query', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'text/event-stream',
             },
             body: JSON.stringify(body),
+            signal: session.signal,
         }).then(response => {
             if (!response.ok) {
                 settleError(response.status);
@@ -773,6 +781,13 @@ class ApiClient {
         }).catch(err => {
             settleError(err);
         });
+    }
+
+    cancelNlqStream() {
+        const session = this._nlqSession;
+        if (!session) return;
+        this._transport.cancelSession(session);
+        this._nlqSession = null;
     }
 }
 

@@ -387,18 +387,12 @@ class ExploreApp {
         this.graph.onNodeClick = (nodeId, type) => this._onNodeClick(nodeId, type);
         this.graph.onNodeExpand = (name, type) => this._onNodeExpand(name, type);
 
-        // Auth state changes → update UI
-        window.authManager.onChange(() => this._updateAuthUI());
+        this.lifecycle = new window.ApplicationLifecycle(this);
+        this.lifecycle.start();
+    }
 
-        this._bindEvents();
-        // authManager.init() now catches its own network-level rejections
-        // (migration-regression-ponr), but this .catch() is kept as a backstop so
-        // an unrelated failure in _updateAuthUI()/_initAuth() can never skip
-        // _restoreFromUrl() and strand any node/search state encoded in the URL.
-        this._initAuth().then(() => this._restoreFromUrl()).catch((err) => {
-            console.error('Auth initialisation failed:', err);
-            this._restoreFromUrl();
-        });
+    destroy() {
+        this.lifecycle.destroy();
     }
 
     // ------------------------------------------------------------------ //

@@ -1,24 +1,10 @@
-/**
- * Settings pane controller — account management and 2FA state machine.
- *
- * 2FA states: disabled → setup → recovery → enabled
- *                                enabled → disableConfirm → disabled
- */
 class SettingsPane {
     constructor() {
-        this._initialized = false;
-        this._twoFaState = 'disabled'; // disabled | setup | recovery | enabled | disableConfirm
-        this._setupData = null;        // { secret, otpauth_uri } from /api/auth/2fa/setup
-        this._recoveryCodes = null;    // string[] from /api/auth/2fa/confirm
-        // App tokens (third-party app authorization)
-        this._appTokensView = 'list';   // list | minting | revealing
-        this._activeTokens = [];
-        this._revokedTokens = [];
-        this._mintedPlaintext = null;   // held only while view === 'revealing'
-        this._mintedTokenMeta = null;   // { name, scopes } shown alongside plaintext
+        this._state = new window.SettingsState();
+        this._state.exposeOn(this);
+        this._events = new window.AbortController();
     }
 
-    /** Called when pane activates. Loads profile, renders 2FA, binds events once. */
     init() {
         this._loadProfile();
         this._renderTwoFaState();
@@ -89,8 +75,14 @@ class SettingsPane {
     _bindEvents() {
         const changeBtn = document.getElementById('changePasswordBtn');
         if (changeBtn) {
-            changeBtn.addEventListener('click', () => this._handleChangePassword());
+            changeBtn.addEventListener('click', () => this._handleChangePassword(), { signal: this._events.signal });
         }
+    }
+
+    destroy() {
+        this._events.abort();
+        this._state.clearTransientSecrets();
+        this._initialized = false;
     }
 
     // ------------------------------------------------------------------ //
@@ -599,7 +591,6 @@ class SettingsPane {
         if (inputs.length > 0) inputs[0].focus();
     }
 
-    /** Convert camelCase data attribute name to kebab-case for querySelector. */
     _camelToKebab(str) {
         return str.replace(/([A-Z])/g, '-$1').toLowerCase();
     }

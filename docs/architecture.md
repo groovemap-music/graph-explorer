@@ -5,20 +5,41 @@ requests to `catalog-api`. It does not own catalog persistence, ingestion, analy
 deployment topology, or editable brand sources.
 
 ```mermaid
-flowchart TD
-    Browser[Browser] -->|HTML, CSS, and JavaScript| Explorer[graph-explorer]
-    Browser -->|/api/*| Explorer
-    Explorer -->|promoted route contract| Catalog[catalog-api]
-    Design[design at pinned commit] -->|deterministic rendered assets| Explorer
-    Libraries[python-libraries at pinned commit] -->|groovemap-runtime wheel| Explorer
+flowchart LR
+    Browser[Browser]
+    subgraph UI[Static browser application]
+        Lifecycle[ApplicationLifecycle] --> App[ExploreApp]
+        App --> Graph[GraphVisualization]
+        Graph --> GraphState[GraphSessionState]
+        App --> Users[UserPanes]
+        Users --> UserState[UserPaneState]
+        App --> Settings[SettingsPane]
+        Settings --> SettingsState[SettingsState]
+        App --> Client[ApiClient]
+        Users --> Client
+        Settings --> Client
+        Client --> Transport[ApiTransport]
+    end
+    subgraph Service[Python service]
+        Runtime[RuntimeConfig] --> Explorer[FastAPI app]
+        Explorer --> Proxy[proxy_transport]
+    end
+    Browser --> UI
+    UI -->|same-origin /api requests| Explorer
+    Proxy -->|/api requests| Catalog[catalog-api]
 ```
 
 ## Boundaries
 
 - `explore/static/` is the deployed UI. Its vendor and brand trees are deterministic artifacts
   with checked source and license manifests.
-- `explore/explore.py` owns health, lifecycle, static serving, and the API proxy. Only the
-  allowlisted server-sent-event route disables the upstream read timeout.
+- `explore/explore.py` is the composition root and owns health, process lifecycle, static serving,
+  and the `/api/{path:path}` proxy entry point. `runtime_config.py` constructs immutable startup
+  settings, while `proxy_transport.py` owns request, timeout, and response-header policy. Only
+  `nlq/query` disables the upstream body read timeout; its response-header phase remains bounded.
+- `ApplicationLifecycle` owns browser startup and teardown. The graph, personal-pane, and settings
+  controllers delegate their mutable state to `GraphSessionState`, `UserPaneState`, and
+  `SettingsState`; `ApiClient` delegates fetch/session mechanics to `ApiTransport`.
 - `contracts/catalog-api/graph-explorer/v1/` is a promoted producer contract. Validation ensures
   every browser API route remains represented without importing another repository's source.
 - The image and wheel are built entirely from this repository plus the exact reviewed
@@ -33,3 +54,17 @@ a humanized form rather than being dropped.
 Authentication and catalog authorization remain `catalog-api` responsibilities. The browser
 stores the issued token and sends it through the proxy, but `graph-explorer` does not mint or
 interpret that token.
+
+## Promoted and pinned authorities
+
+| Authority | Revision | Local evidence |
+| --- | --- | --- |
+| `catalog-api` graph-explorer route contract | `e84d134ec82dbfd66ebdcb6e38736a8f9f47f670` | [`contracts/catalog-api/graph-explorer/v1/source.json`](../contracts/catalog-api/graph-explorer/v1/source.json) and [`routes.json`](../contracts/catalog-api/graph-explorer/v1/routes.json) |
+| `python-libraries` runtime package | `455523ec388fdb9862d7aca65d9434aa7073dcb5` | [`pyproject.toml`](../pyproject.toml) and `uv.lock` |
+| `design` generated brand assets | `59c9fd3c8bbdfa676e0b7bb3d463fc766c1f3c0d` | [`explore/static/brand/source.json`](../explore/static/brand/source.json) |
+
+`scripts/check-contracts.py` verifies the producer digest and checks every literal browser API
+route against the promoted route set. `scripts/check-brand.py` verifies the source revision and
+every asset digest. Editable brand sources are never copied here: [`scripts/promote-brand.sh`](../scripts/promote-brand.sh)
+accepts only a clean design checkout at the pinned revision and runs the producer renderer in
+check mode before replacing the generated asset tree.

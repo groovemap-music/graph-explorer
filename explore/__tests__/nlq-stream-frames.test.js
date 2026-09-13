@@ -17,6 +17,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { initNlq } from '../static/js/nlq.js';
+import '../static/js/api-transport.js';
 import '../static/js/api-client.js';
 
 function makeReadableStream(chunks) {

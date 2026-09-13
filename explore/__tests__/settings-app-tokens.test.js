@@ -68,6 +68,7 @@ describe('SettingsPane — App Tokens card', () => {
         vi.useFakeTimers({ shouldAdvanceTime: true });
         container = setupDOM();
         setupMocks();
+        loadScript('settings-state.js');
         loadScript('settings.js');
     });
 

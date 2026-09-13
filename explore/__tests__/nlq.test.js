@@ -9,6 +9,7 @@ describe('ApiClient NLQ', () => {
     beforeEach(() => {
         delete globalThis.window;
         globalThis.window = globalThis;
+        loadScript('api-transport.js');
         loadScript('api-client.js');
     });
 
