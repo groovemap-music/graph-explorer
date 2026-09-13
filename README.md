@@ -5,7 +5,7 @@ The public-facing graph exploration application for GrooveMap. It serves a stati
 ```mermaid
 flowchart LR
     Browser[Web browser] --> Explorer[graph-explorer]
-    Explorer --> Static[Versioned static UI]
+    Explorer --> Static[Static browser UI]
     Explorer --> Proxy[Catalog API proxy]
     Proxy --> Catalog[catalog-api]
 ```
@@ -29,6 +29,8 @@ The repository interface is:
 - `just setup` — install locked Python and Node environments.
 - `just check` — run the authoritative pre-merge gate.
 - `just test` / `just js-test` — run Python proxy and JavaScript unit suites.
+- `just coverage` — produce Python and JavaScript coverage reports.
+- `just secret-scan` — scan Git history and the working tree without running unrelated checks.
 - `just e2e-setup` / `just e2e` — install and run the Chromium, Firefox, WebKit, iPhone, and iPad browser matrix against the self-contained mock Catalog API, retaining coverage and failure artifacts.
 - `just build` — generate CSS and build the wheel/source distribution.
 - `just image` — build and inspect the non-root production image.
@@ -41,7 +43,9 @@ The repository interface is:
 API_BASE_URL=http://localhost:8004 uv run graph-explorer
 ```
 
-The application listens on `8006` and its process health server on `8007`. `CORS_ORIGINS` accepts a comma-separated allowlist. Authentication and all catalog data remain owned by `catalog-api`.
+The application listens on `8006` and its process health server on `8007`. Authentication and
+all catalog data remain owned by `catalog-api`. See the [configuration guide](docs/configuration.md)
+for the complete runtime environment and fixed public entry points.
 
 ### OpenTelemetry
 
@@ -107,11 +111,11 @@ repository at the full commit pinned in both `pyproject.toml` and `uv.lock`.
 wheel before the isolated image build; the Docker build never fetches source or
 depends on another repository's build context.
 
-Canonical editable branding belongs to the public [`groovemap-music/design`](https://github.com/groovemap-music/design) repository. `explore/static/brand/` contains byte-identical deterministic render outputs promoted from the full design commit recorded in [`source.json`](explore/static/brand/source.json); [`scripts/promote-brand.sh`](scripts/promote-brand.sh) refuses any other source revision or a dirty source tree. The old monorepo raster copies are deliberately not retained. Use of the GrooveMap name and logos is governed separately by the design repository's [trademark-use policy](https://github.com/groovemap-music/design/blob/main/TRADEMARKS.md).
+Canonical editable branding belongs to the public [`groovemap-music/design`](https://github.com/groovemap-music/design) repository. `explore/static/brand/` contains byte-identical deterministic render outputs promoted from the full design commit recorded in [`source.json`](explore/static/brand/source.json); [`scripts/promote-brand.sh`](scripts/promote-brand.sh) refuses any other source revision or a dirty source tree. The old monorepo raster copies are deliberately not retained. Use of the GrooveMap name and logos is governed separately by the design repository's [trademark-use policy](https://github.com/groovemap-music/design/blob/59c9fd3c8bbdfa676e0b7bb3d463fc766c1f3c0d/TRADEMARKS.md).
 
 ## Releases
 
 This independently deployable application is versioned from PEP 621 metadata using Commitizen and annotated `v$version` tags. Migration verification does not publish images, packages, tags, or releases. The active release workflow runs only when an explicitly approved `v*` tag is pushed; it then validates the release candidate and publishes the repository-named image to GHCR.
 
-See the [documentation index](docs/README.md) for the architecture, release boundary, public
-decisions, and source-history sanitization gate.
+See the [documentation index](docs/README.md) for architecture, configuration, user workflows,
+release boundaries, public decisions, and the source-history sanitization gate.

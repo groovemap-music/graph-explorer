@@ -8,22 +8,18 @@ setup:
     npm --prefix explore ci --ignore-scripts
 
 source-check:
-    uvx --from ruff==0.16.4 ruff format --check .
-    uvx --from ruff==0.16.4 ruff check .
+    uv run ruff format --check .
+    uv run ruff check .
     python scripts/check-contracts.py
     python scripts/check-brand.py
     python scripts/check-repository-compliance.py
-    npm --prefix explore ci --ignore-scripts
-    npm --prefix explore run build:web
-    node explore/scripts/vendor-licenses.mjs check
-    npm --prefix explore test
-    test -s explore/static/tailwind.css
+    python scripts/check-docs.py
 
-security:
+secret-scan:
     gitleaks git --redact --no-banner
     gitleaks dir . --redact --no-banner
 
-check: source-check security typecheck test build artifact-check install-check license-check release-artifacts bump-preview
+check: source-check secret-scan typecheck test js-test build artifact-check install-check license-check release-artifacts bump-preview
 
 format:
     uv run ruff format .
@@ -35,10 +31,10 @@ typecheck:
 test:
     uv run pytest -m 'not e2e' --cov=explore --cov-report=term-missing --cov-report=xml
 
-js-test:
+js-test: web-dependencies
     npm --prefix explore test
 
-coverage: test
+coverage: test web-dependencies
     npm --prefix explore run test:coverage
 
 e2e-setup:
@@ -56,15 +52,19 @@ e2e-post:
 e2e: web-build
     bash scripts/e2e-with-coverage.sh
 
-web-build:
-    npm --prefix explore ci --ignore-scripts
+web-build: web-dependencies
     npm --prefix explore run build:web
+    node explore/scripts/vendor-licenses.mjs check
     test -s explore/static/tailwind.css
+
+[private]
+web-dependencies:
+    npm --prefix explore ci --ignore-scripts
 
 build: web-build
     uv build --out-dir dist --clear
 
-artifact-check:
+artifact-check: build
     python scripts/check-vendor-artifacts.py dist/*.whl
 
 install-check: build
@@ -97,12 +97,12 @@ bump-preview:
 
 # Update local version metadata and changelog only; do not commit, tag, push, or publish.
 bump:
-    uv run cz bump --files-only --changelog --yes --check-consistency
+    uv run cz bump --version-files-only --changelog --yes --check-consistency
     npm --prefix explore version "$(uv run cz version --project)" --no-git-tag-version
     uv lock
 
 release-artifacts: build install-check
-    bash scripts/release-dry-run.sh
+    bash scripts/release-dry-run.sh --reuse-packages
 
 release-dry-run: check
 
