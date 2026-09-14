@@ -196,8 +196,12 @@ for component in (
     "proxy_transport",
 ):
     assert component in architecture
+# The route contract's revision is read from the promoted provenance rather than
+# pinned here, so a promotion updates the table it is checked against instead of
+# passing because both copies are equally stale.
+contract_source = json.loads((ROOT / "contracts/catalog-api/graph-explorer/v1/source.json").read_text())
 for revision in (
-    "e84d134ec82dbfd66ebdcb6e38736a8f9f47f670",
+    contract_source["producer_commit"],
     PYTHON_LIBRARIES_REVISION,
     DESIGN_REVISION,
 ):
