@@ -532,6 +532,99 @@ class ApiClient {
         return this._transport.readJson(response);
     }
 
+    // --- Activity outcomes, consent, export, and erasure (ADR 0010) ---
+
+    /**
+     * Report a client-observed outcome (open/save/dismiss/hide) against a
+     * recommendation or search impression. Fire-and-forget: a failed post
+     * never blocks navigation, so callers are expected to ignore the result.
+     * @param {string} token - JWT auth token
+     * @param {string} eventType - One of the recommendation outcome types
+     * @param {string} impressionId - The impression the outcome is reported against
+     * @param {string} itemId - The native id of the item the impression showed
+     * @returns {Promise<{ok: boolean, status: number, body: object | null}>}
+     */
+    async postActivityEvent(token, eventType, impressionId, itemId) {
+        if (!token) return { ok: false, status: 0, body: null };
+        const response = await this._transport.fetch('/api/activity/events', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ event_type: eventType, impression_id: impressionId, item_id: itemId }),
+        });
+        this._checkAuthResponse(response);
+        const body = await this._transport.readJson(response).catch(() => null);
+        return { ok: response.ok, status: response.status, body };
+    }
+
+    /**
+     * Get the caller's current consent state for both published purposes.
+     * @param {string} token - JWT auth token
+     * @returns {Promise<{purposes: object[]} | null>}
+     */
+    async getConsent(token) {
+        if (!token) return null;
+        const response = await this._transport.fetch('/api/user/consent', {
+            headers: { 'Authorization': `Bearer ${token}` },
+        });
+        this._checkAuthResponse(response);
+        if (!response.ok) return null;
+        return this._transport.readJson(response);
+    }
+
+    /**
+     * Grant or revoke consent for one purpose.
+     * @param {string} token - JWT auth token
+     * @param {string} purpose - The consent purpose to update
+     * @param {boolean} granted - True to grant the purpose, false to revoke it
+     * @returns {Promise<{purpose: string, granted: boolean, changed: boolean} | null>}
+     */
+    async setConsent(token, purpose, granted) {
+        if (!token) return null;
+        const response = await this._transport.fetch(`/api/user/consent/${purpose}`, {
+            method: 'PUT',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ granted }),
+        });
+        this._checkAuthResponse(response);
+        if (!response.ok) return null;
+        return this._transport.readJson(response);
+    }
+
+    /**
+     * Download everything keyed to the caller as an application/x-ndjson blob.
+     * @param {string} token - JWT auth token
+     * @returns {Promise<Blob|null>} NDJSON blob or null on error
+     */
+    async requestExport(token) {
+        if (!token) return null;
+        const response = await this._transport.fetch('/api/user/export', {
+            headers: { 'Authorization': `Bearer ${token}` },
+        });
+        this._checkAuthResponse(response);
+        if (!response.ok) return null;
+        return this._transport.readBlob(response);
+    }
+
+    /**
+     * Erase everything keyed to the caller, re-authenticating with the
+     * current password (and TOTP code when 2FA is enabled).
+     * @param {string} token - JWT auth token
+     * @param {string} password - The caller's current password
+     * @param {string|null} totpCode - Current TOTP code, required when 2FA is enabled
+     * @returns {Promise<{ok: boolean, status: number, body: object | null}>}
+     */
+    async requestErasure(token, password, totpCode = null) {
+        if (!token) return { ok: false, status: 0, body: null };
+        const response = await this._transport.fetch('/api/user/erasure', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password, code: totpCode }),
+        });
+        this._checkAuthResponse(response);
+        const body = await this._transport.readJson(response).catch(() => null);
+        return { ok: response.ok, status: response.status, body };
+    }
+
     // --- Taste fingerprint ---
 
     /**
