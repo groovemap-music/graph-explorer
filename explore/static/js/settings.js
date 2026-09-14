@@ -14,6 +14,22 @@ const CONSENT_PURPOSES = [
     },
 ];
 
+// The erasure receipt outlives the settings pane on purpose.
+//
+// A successful erasure clears the session, the auth listener switches the
+// browser off Settings, and `SettingsState` drops the delete card's transient
+// state — so the card that rendered the receipt is behind the signed-out view
+// before anyone can read it. The erasure id is the only durable handle the
+// user has on an erasure that did not finish in every store, so it is held
+// here, in module scope, where the session clear cannot reach it, and rendered
+// once into a region that lives outside every pane.
+//
+// Deliberately not localStorage: the erasure has just emptied that key space,
+// and a receipt written there would outlive the session on a shared machine.
+// Losing the receipt on reload is the correct trade — it is a one-time notice,
+// not a record the browser is responsible for keeping.
+let pendingErasureReceipt = null;
+
 class SettingsPane {
     constructor() {
         this._state = new window.SettingsState();
@@ -1427,12 +1443,28 @@ class SettingsPane {
     }
 
     _renderDeleteReceipt(container) {
-        const result = this._erasureResult || {};
-
         const heading = document.createElement('p');
         heading.className = 'delete-account-intro';
         heading.textContent = 'Your account has been deleted. You are now signed out.';
         container.appendChild(heading);
+        this._appendErasureReceiptBody(container, this._erasureResult || {}, 'card');
+    }
+
+    /**
+     * Append the erasure id and any partial-failure notice to a container.
+     *
+     * Shared by the settings card and the signed-out banner. Element ids are
+     * suffixed per surface because both can exist at once: the card is still in
+     * the DOM, behind the signed-out view, while the banner is the copy the
+     * user can actually read. The unsuffixed ids stay on the banner, since that
+     * is the surface the receipt is now delivered on.
+     *
+     * @param {HTMLElement} container - Where to append
+     * @param {object} result - The 202 body from requestErasure
+     * @param {string} surface - 'card' or 'banner'
+     */
+    _appendErasureReceiptBody(container, result, surface) {
+        const suffix = surface === 'card' ? 'Card' : '';
 
         const idRow = document.createElement('div');
         idRow.className = 'settings-field';
@@ -1440,7 +1472,7 @@ class SettingsPane {
         idLabel.className = 'settings-label';
         idLabel.textContent = 'Erasure id';
         const idValue = document.createElement('code');
-        idValue.id = 'erasureId';
+        idValue.id = `erasureId${suffix}`;
         idValue.className = 'settings-value';
         idValue.textContent = result.erasure_id || '';
         idRow.appendChild(idLabel);
@@ -1448,32 +1480,78 @@ class SettingsPane {
         container.appendChild(idRow);
 
         const incomplete = Array.isArray(result.incomplete) ? result.incomplete : [];
-        if (incomplete.length) {
-            const notice = document.createElement('div');
-            notice.id = 'erasureIncomplete';
-            notice.className = 'recovery-warning';
-            const icon = document.createElement('span');
-            icon.className = 'material-symbols-outlined';
-            icon.style.fontSize = '20px';
-            icon.style.color = '#eab308';
-            icon.textContent = 'warning';
-            notice.appendChild(icon);
+        if (!incomplete.length) return;
 
-            const body = document.createElement('div');
-            const lead = document.createElement('div');
-            lead.textContent = 'Some stores did not finish. Keep this erasure id and contact support.';
-            body.appendChild(lead);
-            const list = document.createElement('ul');
-            list.className = 'erasure-incomplete-list';
-            for (const failure of incomplete) {
-                const item = document.createElement('li');
-                item.textContent = String(failure);
-                list.appendChild(item);
-            }
-            body.appendChild(list);
-            notice.appendChild(body);
-            container.appendChild(notice);
+        const notice = document.createElement('div');
+        notice.id = `erasureIncomplete${suffix}`;
+        notice.className = 'recovery-warning';
+        const icon = document.createElement('span');
+        icon.className = 'material-symbols-outlined';
+        icon.style.fontSize = '20px';
+        icon.style.color = '#eab308';
+        icon.textContent = 'warning';
+        notice.appendChild(icon);
+
+        const body = document.createElement('div');
+        const lead = document.createElement('div');
+        lead.textContent = 'Some stores did not finish. Keep this erasure id and contact support.';
+        body.appendChild(lead);
+        const list = document.createElement('ul');
+        list.className = 'erasure-incomplete-list';
+        for (const failure of incomplete) {
+            const item = document.createElement('li');
+            item.textContent = String(failure);
+            list.appendChild(item);
         }
+        body.appendChild(list);
+        notice.appendChild(body);
+        container.appendChild(notice);
+    }
+
+    /**
+     * Render the held receipt onto the signed-out view, once.
+     *
+     * Called after the session clear, when the settings pane is no longer
+     * reachable. Renders nothing when no receipt is held — which is the state
+     * after a dismiss, and after a reload, since the receipt is memory only.
+     */
+    _renderErasureReceiptBanner() {
+        const banner = document.getElementById('erasureReceiptBanner');
+        if (!banner) return;
+        this._clearContainer(banner);
+
+        if (!pendingErasureReceipt) {
+            banner.hidden = true;
+            return;
+        }
+
+        const heading = document.createElement('p');
+        heading.className = 'erasure-receipt-heading';
+        heading.textContent = 'Your account has been deleted. You are now signed out.';
+        banner.appendChild(heading);
+
+        this._appendErasureReceiptBody(banner, pendingErasureReceipt, 'banner');
+
+        const keep = document.createElement('p');
+        keep.className = 'erasure-receipt-note';
+        keep.textContent = 'Keep this id if you need to ask about the deletion. It is not stored anywhere in this browser.';
+        banner.appendChild(keep);
+
+        const dismiss = document.createElement('button');
+        dismiss.id = 'erasureReceiptDismissBtn';
+        dismiss.type = 'button';
+        dismiss.className = 'erasure-receipt-dismiss';
+        dismiss.setAttribute('aria-label', 'Dismiss the deletion receipt');
+        dismiss.textContent = 'Dismiss';
+        dismiss.addEventListener('click', () => {
+            // Dropping the held copy is what makes this a one-time notice:
+            // nothing can render it again.
+            pendingErasureReceipt = null;
+            this._renderErasureReceiptBanner();
+        });
+        banner.appendChild(dismiss);
+
+        banner.hidden = false;
     }
 
     async _handleErasure() {
@@ -1532,8 +1610,17 @@ class SettingsPane {
         this._deleteView = 'done';
         this._renderDeleteAccountCard();
 
+        // Hold the receipt outside the pane's state before clearing the
+        // session. The clear switches the browser off Settings, so the card
+        // above is not the copy anyone reads.
+        pendingErasureReceipt = this._erasureResult;
+
         window.authManager.clear();
         window.authManager.notify();
+
+        // Now that the signed-out view is up, put the receipt where it is
+        // visible, with a dismiss control.
+        this._renderErasureReceiptBanner();
     }
 }
 

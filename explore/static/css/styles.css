@@ -3039,3 +3039,56 @@ select option {
     list-style: disc;
     font-size: 0.8125rem;
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Erasure receipt banner
+ *
+ * Fixed rather than in flow: the region sits between the header and the pane
+ * stack, which fills the remaining height, so a block there would resize every
+ * pane for a one-time notice. Fixed keeps the layout untouched and the receipt
+ * readable over whichever pane the sign-out landed on.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+.erasure-receipt-banner {
+    position: fixed;
+    top: 5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2100;
+    width: min(32rem, calc(100vw - 2rem));
+    padding: 1rem 1.25rem;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-left: 4px solid var(--accent-red, #ef4444);
+    border-radius: 0.5rem;
+    box-shadow: 0 10px 30px rgb(0 0 0 / 45%);
+    color: var(--text-high);
+}
+
+.erasure-receipt-heading {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+}
+
+.erasure-receipt-note {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    margin-top: 0.75rem;
+}
+
+.erasure-receipt-dismiss {
+    margin-top: 0.75rem;
+    padding: 0.375rem 0.875rem;
+    font-size: 0.8125rem;
+    background: transparent;
+    color: var(--text-mid);
+    border: 1px solid var(--border-color);
+    border-radius: 0.25rem;
+    cursor: pointer;
+}
+
+.erasure-receipt-dismiss:hover {
+    color: var(--text-high);
+    border-color: var(--text-mid);
+}
