@@ -1250,6 +1250,79 @@ select option {
     border-radius: 4px;
 }
 
+/* Recommendation outcome controls (Save / Dismiss / Hide) */
+.rec-outcome-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex-shrink: 0;
+}
+
+.rec-outcome-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-mid);
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.rec-outcome-btn:hover {
+    color: var(--text-high);
+    border-color: var(--accent-green);
+}
+
+.rec-outcome-btn:focus-visible {
+    outline: 2px solid var(--accent-green);
+    outline-offset: 2px;
+}
+
+.rec-outcome-btn:disabled {
+    cursor: default;
+    opacity: 0.5;
+}
+
+.rec-outcome-icon {
+    font-size: 1.1rem;
+    line-height: 1;
+}
+
+.rec-outcome-btn[aria-pressed="true"] {
+    color: var(--accent-green);
+    border-color: var(--accent-green);
+    background: rgba(74, 222, 128, 0.1);
+}
+
+.recommendation-item--saved {
+    border-color: var(--accent-green);
+}
+
+/* A dismissed or hidden row collapses and is then removed. The outcome is
+   already recorded server side, so there is nothing to undo and nothing to
+   leave parked in the list. */
+.recommendation-item.rec-outcome-collapsing {
+    overflow: hidden;
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-bottom: 0;
+    opacity: 0;
+    pointer-events: none;
+    transition: max-height 0.15s ease, opacity 0.15s ease, padding 0.15s ease, margin 0.15s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .recommendation-item.rec-outcome-collapsing {
+        transition: none;
+    }
+}
+
 /* Discogs connection status badge */
 .discogs-badge {
     font-size: 0.75rem;
