@@ -1168,13 +1168,22 @@ class SettingsPane {
         return row;
     }
 
+    _setConsentTogglesDisabled(disabled) {
+        document.querySelectorAll('[data-consent-toggle]').forEach(input => { input.disabled = disabled; });
+    }
+
     async _handleConsentToggle(purpose, granted) {
         const token = window.authManager && window.authManager.getToken && window.authManager.getToken();
         if (!token) return;
 
         this._consentPending = purpose;
         this._consentError = '';
-        this._renderConsentCard();
+        // Disable in place rather than re-rendering: replacing the control the
+        // user just clicked detaches it mid-gesture, and the only visible
+        // difference is the checkbox going inert, which this does directly.
+        this._setConsentTogglesDisabled(true);
+        const errEl = document.getElementById('consentError');
+        if (errEl) errEl.textContent = '';
 
         let res = null;
         try {
@@ -1503,6 +1512,12 @@ class SettingsPane {
         }
 
         if (!res || !res.ok) {
+            // The panel stays in the confirm state with the detail inline so the
+            // caller can correct the credential. Note that the API answers a wrong
+            // password with 401, and ApiTransport ends the session on any 401 —
+            // the same thing the 2FA disable card has always done — so the pane
+            // itself goes behind the signed-out view. This card never clears the
+            // session on a rejection of its own accord.
             const detail = (res && res.body && res.body.detail) ? res.body.detail : 'Could not delete your account — please try again.';
             errorEl.textContent = detail;
             if (confirmBtn) confirmBtn.disabled = false;
