@@ -5,6 +5,13 @@
  * Depends on: window.apiClient (api-client.js), window.authManager (auth.js)
  */
 class UserPanes {
+    /**
+     * How long a dismissed or hidden recommendation stays in the DOM while it
+     * collapses, in milliseconds. Kept just longer than the CSS transition so
+     * the row is gone the moment the animation finishes.
+     */
+    static OUTCOME_COLLAPSE_MS = 180;
+
     constructor() {
         this._state = new window.UserPaneState();
         this._state.exposeOn(this);
@@ -235,6 +242,11 @@ class UserPanes {
         data.recommendations.forEach(r => {
             const item = document.createElement('div');
             item.className = 'recommendation-item';
+            // The impression the API issued for this item is what an outcome is
+            // attributed to, and gm_id says what was recommended. Both ride on
+            // the rendered row so a handler never re-reads the response.
+            if (r.impression_id) item.dataset.impressionId = r.impression_id;
+            if (r.gm_id) item.dataset.gmId = r.gm_id;
 
             const info = document.createElement('div');
             const title = document.createElement('div');
@@ -245,6 +257,9 @@ class UserPanes {
                 link.textContent = r.title || '(Unknown title)';
                 link.addEventListener('click', (e) => {
                     e.preventDefault();
+                    // Fire and forget, before navigating: the post is never
+                    // awaited, so the click-through cannot stall on it.
+                    this._emitOutcome('recommendation.opened', r);
                     if (window.exploreApp) {
                         window.exploreApp._setSearchType('artist');
                         window.exploreApp.currentQuery = r.artist;
@@ -269,8 +284,132 @@ class UserPanes {
             }
 
             item.append(info, score);
+            const controls = this._buildOutcomeControls(r, item);
+            if (controls) item.appendChild(controls);
             container.appendChild(item);
         });
+    }
+
+    /**
+     * Post one recommendation outcome event, fire and forget.
+     *
+     * An outcome event is telemetry, so it is never awaited and never allowed
+     * to reject: a failed post must neither block the click-through it
+     * accompanies nor surface an unhandled rejection. An anonymous session
+     * records nothing, and so does an item the API issued no impression for —
+     * there would be nothing to attribute the outcome to.
+     *
+     * @param {string} eventType - Outcome vocabulary term, e.g. 'recommendation.opened'
+     * @param {object} rec - The recommendation item as the API returned it
+     */
+    _emitOutcome(eventType, rec) {
+        const token = window.authManager?.getToken?.();
+        if (!token) return;
+        if (!rec || !rec.impression_id) return;
+        if (typeof window.apiClient?.postActivityEvent !== 'function') return;
+        try {
+            const posted = window.apiClient.postActivityEvent(
+                token, eventType, rec.impression_id, rec.gm_id ?? null,
+            );
+            if (posted && typeof posted.catch === 'function') posted.catch(() => {});
+        } catch {
+            // Best effort by design — a throwing client must not reach the caller.
+        }
+    }
+
+    /**
+     * Build the Save / Dismiss / Hide control row for one recommendation.
+     *
+     * Returns null when the row must not exist at all: an anonymous session, or
+     * an item carrying no impression_id. Rendering controls that cannot record
+     * anything would promise the user an effect that never happens.
+     *
+     * @param {object} rec - The recommendation item as the API returned it
+     * @param {HTMLElement} item - The rendered row the controls act on
+     * @returns {HTMLElement|null} The control row, or null when none should render
+     */
+    _buildOutcomeControls(rec, item) {
+        const token = window.authManager?.getToken?.();
+        if (!token) return null;
+        if (!rec || !rec.impression_id) return null;
+
+        const label = [rec.title, rec.artist].filter(Boolean).join(' by ') || 'this recommendation';
+        const actions = document.createElement('div');
+        actions.className = 'rec-outcome-actions';
+
+        const save = this._buildOutcomeButton('save', 'bookmark_add', `Save ${label}`);
+        save.addEventListener('click', () => {
+            // The outcome vocabulary has no un-save term, so the saved state is
+            // terminal and a repeat click records nothing.
+            if (save.getAttribute('aria-pressed') === 'true') return;
+            this._emitOutcome('recommendation.saved', rec);
+            save.setAttribute('aria-pressed', 'true');
+            save.setAttribute('aria-label', `Saved ${label}`);
+            save.title = `Saved ${label}`;
+            const glyph = save.querySelector('.rec-outcome-icon');
+            if (glyph) glyph.textContent = 'bookmark_added';
+            item.classList.add('recommendation-item--saved');
+        });
+
+        const dismiss = this._buildOutcomeButton('dismiss', 'close', `Dismiss ${label}`);
+        dismiss.addEventListener('click', () => {
+            this._emitOutcome('recommendation.dismissed', rec);
+            this._collapseRecommendation(item);
+        });
+
+        const hide = this._buildOutcomeButton('hide', 'visibility_off', `Hide ${label}`);
+        hide.addEventListener('click', () => {
+            this._emitOutcome('recommendation.hidden', rec);
+            this._collapseRecommendation(item);
+        });
+
+        actions.append(save, dismiss, hide);
+        return actions;
+    }
+
+    /**
+     * Build one outcome control as a real button so it is focusable and
+     * activates on Enter and Space without any key handling of our own. The
+     * glyph is aria-hidden; the accessible name comes from the aria-label.
+     *
+     * @param {string} action - 'save', 'dismiss' or 'hide'
+     * @param {string} icon - Material symbol ligature
+     * @param {string} label - Accessible name for the control
+     * @returns {HTMLButtonElement}
+     */
+    _buildOutcomeButton(action, icon, label) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `rec-outcome-btn rec-outcome-${action}`;
+        btn.dataset.outcome = action;
+        btn.setAttribute('aria-label', label);
+        btn.title = label;
+        if (action === 'save') btn.setAttribute('aria-pressed', 'false');
+        const glyph = document.createElement('span');
+        glyph.className = 'material-symbols-outlined rec-outcome-icon';
+        glyph.setAttribute('aria-hidden', 'true');
+        glyph.textContent = icon;
+        btn.appendChild(glyph);
+        return btn;
+    }
+
+    /**
+     * Collapse a dismissed or hidden row and drop it from the list.
+     *
+     * Undo-free by design: the outcome is already recorded server side, so the
+     * row is removed rather than parked behind an undo affordance. Removal is
+     * on a timer rather than on `transitionend` so the row still disappears
+     * where transitions never fire — reduced motion, a hidden pane, jsdom.
+     *
+     * @param {HTMLElement} item - The rendered row to collapse
+     */
+    _collapseRecommendation(item) {
+        if (!item || item.dataset.collapsing === 'true') return;
+        item.dataset.collapsing = 'true';
+        item.classList.add('rec-outcome-collapsing');
+        item.setAttribute('aria-hidden', 'true');
+        item.querySelectorAll('button').forEach(btn => { btn.disabled = true; });
+        setTimeout(() => item.remove(), UserPanes.OUTCOME_COLLAPSE_MS);
     }
 
     // ------------------------------------------------------------------ //
