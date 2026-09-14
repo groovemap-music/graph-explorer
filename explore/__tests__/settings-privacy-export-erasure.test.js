@@ -37,6 +37,13 @@ function setupDOM() {
         document.body.appendChild(el);
         containers[id] = el;
     }
+    // The receipt region lives outside the settings pane in index.html, which
+    // is the whole point of it: the session clear hides the pane.
+    const banner = document.createElement('div');
+    banner.id = 'erasureReceiptBanner';
+    banner.hidden = true;
+    document.body.appendChild(banner);
+    containers.erasureReceiptBanner = banner;
     return containers;
 }
 
@@ -307,10 +314,13 @@ describe('SettingsPane — Export card', () => {
 
 describe('SettingsPane — Delete account card', () => {
     let deleteContainer;
+    let receiptBanner;
 
     beforeEach(() => {
         vi.useFakeTimers({ shouldAdvanceTime: true });
-        deleteContainer = setupDOM().deleteAccountContent;
+        const containers = setupDOM();
+        deleteContainer = containers.deleteAccountContent;
+        receiptBanner = containers.erasureReceiptBanner;
         setupMocks();
         loadScript('settings-state.js');
         loadScript('settings.js');
@@ -492,5 +502,80 @@ describe('SettingsPane — Delete account card', () => {
 
         expect(document.getElementById('erasureError').textContent).toContain('Could not delete your account');
         expect(window.authManager.clear).not.toHaveBeenCalled();
+    });
+
+    // ------------------------------------------------------------------ //
+    // Receipt on the signed-out view
+    //
+    // The settings card renders a receipt the user never sees: clearing the
+    // session switches the browser off Settings before the paint the card was
+    // written for. These cover the copy that outlives that switch.
+    // ------------------------------------------------------------------ //
+
+    async function erase() {
+        window.settingsPane.init();
+        await flush();
+        await openConfirm();
+        document.getElementById('erasurePassword').value = 'hunter2hunter2';
+        document.getElementById('erasureConfirmBtn').click();
+        await flush();
+    }
+
+    it('renders the receipt outside the settings pane after the session clear', async () => {
+        await erase();
+
+        expect(receiptBanner.hidden).toBe(false);
+        expect(receiptBanner.contains(deleteContainer)).toBe(false);
+        expect(receiptBanner.querySelector('#erasureId').textContent).toBe('era-42');
+        expect(receiptBanner.textContent).toContain('Your account has been deleted');
+    });
+
+    it('carries the partial-failure notice onto the signed-out view', async () => {
+        window.apiClient.requestErasure.mockResolvedValue({
+            ok: true,
+            status: 202,
+            body: {
+                erasure_id: 'era-44',
+                events_deleted: 1,
+                impressions_deleted: 0,
+                incomplete: ['Redis deletion failed: ConnectionError'],
+            },
+        });
+        await erase();
+
+        expect(receiptBanner.querySelector('#erasureId').textContent).toBe('era-44');
+        const notice = receiptBanner.querySelector('#erasureIncomplete');
+        expect(notice).toBeTruthy();
+        expect(notice.textContent).toContain('Redis deletion failed: ConnectionError');
+    });
+
+    it('keeps the receipt out of localStorage', async () => {
+        const setItem = vi.spyOn(Storage.prototype, 'setItem');
+        await erase();
+
+        const written = setItem.mock.calls.map(([, value]) => String(value)).join('\n');
+        expect(written).not.toContain('era-42');
+    });
+
+    it('dismissing the receipt removes it and nothing brings it back', async () => {
+        await erase();
+
+        receiptBanner.querySelector('#erasureReceiptDismissBtn').click();
+
+        expect(receiptBanner.hidden).toBe(true);
+        expect(receiptBanner.textContent).toBe('');
+
+        // A later render finds nothing held: the notice is one-time.
+        window.settingsPane._renderErasureReceiptBanner();
+        expect(receiptBanner.hidden).toBe(true);
+        expect(receiptBanner.querySelector('#erasureId')).toBeNull();
+    });
+
+    it('renders no receipt when the erasure never succeeded', async () => {
+        window.apiClient.requestErasure.mockResolvedValue({ ok: false, status: 403, body: null });
+        await erase();
+
+        expect(receiptBanner.hidden).toBe(true);
+        expect(receiptBanner.textContent).toBe('');
     });
 });
