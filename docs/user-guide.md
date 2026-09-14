@@ -18,9 +18,15 @@ The always-visible navigation provides these public workflows:
 
 After login, the personal navigation exposes **Collection**, **Wantlist**, **Discover**, and the
 contextual **Missing** analysis. Connect Discogs and start a collection sync from the account menu.
-Account Settings owns password changes, two-factor authentication, and application-token
-management. Authentication, OAuth, sync, snapshots, and catalog data are all performed by
-`catalog-api` through the same-origin proxy.
+Account Settings owns password changes, two-factor authentication, application-token management,
+and the **Privacy**, **Export Your Data**, and **Delete Account** cards. Authentication, OAuth,
+sync, snapshots, and catalog data are all performed by `catalog-api` through the same-origin proxy.
+
+Each recommendation in **Discover** carries **Save**, **Dismiss**, and **Hide** controls; opening
+one, and opening a search hit, is recorded too. Dismissed and hidden recommendations collapse and
+do not come back. A signed-out visitor sees none of these controls and has nothing recorded.
+[Activity events and account data controls](activity-and-account-data.md) describes exactly what
+each action records and what the three settings cards do.
 
 ## Keyboard and accessibility behavior
 

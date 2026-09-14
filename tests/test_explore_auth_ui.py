@@ -548,3 +548,265 @@ class TestExploreNewStaticFiles:
         page.wait_for_timeout(500)
         defined = page.evaluate("typeof window.UserPanes !== 'undefined'")
         assert defined, "window.UserPanes must be defined"
+
+
+def _open_settings(page: Page, test_server: str) -> None:
+    """Sign in and open the Account Settings pane from the user dropdown."""
+    _set_logged_in(page, test_server)
+    page.locator("#userMenuToggle").click()
+    page.locator("#accountSettingsBtn").click()
+    expect(page.locator("#settingsPane")).to_have_class(re.compile(r"\bactive\b"), timeout=5000)
+
+
+@pytest.mark.e2e
+@pytest.mark.usefixtures("test_server")
+class TestExploreSettingsPrivacyExportErasure:
+    """E2E tests for the Privacy, Export, and Delete Account settings cards."""
+
+    def test_privacy_card_renders_both_purposes_from_the_server(self, page: Page, test_server: str) -> None:
+        """Both published purposes render with the state the API reported."""
+        _open_settings(page, test_server)
+
+        analytics = page.locator('[data-consent-toggle="product_analytics"]')
+        training = page.locator('[data-consent-toggle="model_training"]')
+        expect(analytics).to_be_checked(timeout=5000)
+        expect(training).not_to_be_checked(timeout=5000)
+
+    def test_privacy_toggle_writes_through_and_reflects_the_answer(self, page: Page, test_server: str) -> None:
+        """Granting a purpose persists and the control shows the stored state."""
+        _open_settings(page, test_server)
+
+        training = page.locator('[data-consent-toggle="model_training"]')
+        training.check()
+        expect(page.locator('[data-consent-toggle="model_training"]')).to_be_checked(timeout=5000)
+
+        stored = page.request.get(
+            f"{test_server}/api/user/consent",
+            headers={"Authorization": f"Bearer {_MOCK_TOKEN}"},
+        ).json()
+        granted = {row["purpose"]: row["granted"] for row in stored["purposes"]}
+        assert granted["model_training"] is True
+
+    def test_export_downloads_the_ndjson_file(self, page: Page, test_server: str) -> None:
+        """The export button downloads the NDJSON body under the published name."""
+        _open_settings(page, test_server)
+
+        with page.expect_download(timeout=15000) as download_info:
+            page.locator("#exportDataBtn").click()
+        assert download_info.value.suggested_filename == "groovemap-export.ndjson"
+        expect(page.locator("#exportNote")).to_contain_text("downloaded", timeout=5000)
+
+    def test_delete_account_confirm_requires_the_password(self, page: Page, test_server: str) -> None:
+        """Confirming with no password reports the requirement and calls nothing."""
+        _open_settings(page, test_server)
+
+        page.locator("#deleteAccountBtn").click()
+        page.locator("#erasureConfirmBtn").click()
+
+        expect(page.locator("#erasureError")).to_contain_text("Password is required", timeout=5000)
+        expect(page.locator("#erasurePassword")).to_be_visible()
+
+    def test_delete_account_rejects_a_wrong_password_and_keeps_the_panel(self, page: Page, test_server: str) -> None:
+        """A rejected credential reports the detail inline and leaves the panel standing.
+
+        The API answers a wrong erasure password with 401, which ApiTransport treats as
+        an expired session for every route alike, so the pane is hidden behind the
+        signed-out view even though the confirm panel itself is intact. The 2FA disable
+        card has answered a wrong password the same way since it was written; the
+        settings card does not clear the session itself.
+        """
+        _open_settings(page, test_server)
+
+        page.locator("#deleteAccountBtn").click()
+        page.locator("#erasurePassword").fill("not-the-password")
+        page.locator("#erasureConfirmBtn").click()
+
+        expect(page.locator("#erasureError")).to_contain_text("Incorrect password", timeout=5000)
+        expect(page.locator("#erasurePassword")).to_have_count(1)
+        expect(page.locator("#erasureConfirmBtn")).not_to_be_disabled()
+        expect(page.locator("#erasureId")).to_have_count(0)
+
+    def test_delete_account_shows_the_erasure_id_and_signs_out(self, page: Page, test_server: str) -> None:
+        """A successful erasure shows its id, clears the session, and signs the user out.
+
+        The receipt is asserted visible, not merely present: the session clear
+        switches the browser off Settings, so the copy in the card is behind the
+        signed-out view and only the banner outside the panes is readable.
+        """
+        _open_settings(page, test_server)
+
+        page.locator("#deleteAccountBtn").click()
+        page.locator("#erasurePassword").fill("testpassword")
+        page.locator("#erasureConfirmBtn").click()
+
+        expect(page.locator("#navLoginBtn")).to_be_visible(timeout=5000)
+        expect(page.locator("#userDropdown")).to_have_class(re.compile(r"\bhidden\b"), timeout=5000)
+        expect(page.locator("#erasureReceiptBanner")).to_be_visible(timeout=5000)
+        expect(page.locator("#erasureId")).to_be_visible(timeout=5000)
+        expect(page.locator("#erasureId")).to_have_text("00000000-0000-0000-0000-0000000000ff")
+        assert page.evaluate("window.localStorage.getItem('auth_token')") is None
+
+    def test_the_erasure_receipt_is_dismissable_and_never_stored(self, page: Page, test_server: str) -> None:
+        """The receipt is a one-time notice held in memory, not in the browser."""
+        _open_settings(page, test_server)
+
+        page.locator("#deleteAccountBtn").click()
+        page.locator("#erasurePassword").fill("testpassword")
+        page.locator("#erasureConfirmBtn").click()
+        expect(page.locator("#erasureReceiptBanner")).to_be_visible(timeout=5000)
+
+        stored = page.evaluate("() => JSON.stringify(window.localStorage)")
+        assert "00000000-0000-0000-0000-0000000000ff" not in stored
+
+        page.locator("#erasureReceiptDismissBtn").click()
+        expect(page.locator("#erasureReceiptBanner")).to_be_hidden(timeout=5000)
+
+        # Memory only: a reload does not bring it back.
+        page.reload(wait_until="domcontentloaded", timeout=30000)
+        expect(page.locator("#erasureReceiptBanner")).to_be_hidden(timeout=5000)
+
+
+_FIRST_IMPRESSION = "11111111-1111-1111-1111-111111111111"
+_FIRST_GM_ID = "gm:release:30"
+
+
+def _open_discover(page: Page, test_server: str) -> None:
+    """Sign in, clear the recorded event log, and open the Discover pane."""
+    _set_logged_in(page, test_server)
+    page.request.delete(f"{test_server}/api/activity/events")
+    page.locator('[data-pane="recommendations"]').click()
+    expect(page.locator("#recommendationsPane")).to_have_class(re.compile(r"\bactive\b"), timeout=5000)
+    expect(page.locator(".recommendation-item").first).to_be_visible(timeout=8000)
+
+
+def _recorded_events(page: Page, test_server: str) -> list[dict[str, str]]:
+    """Read back what the page has posted to the activity route."""
+    return list(page.request.get(f"{test_server}/api/activity/events").json()["events"])
+
+
+def _expect_recorded(page: Page, test_server: str, event_type: str) -> dict[str, str]:
+    """Wait for one event of this type and return it.
+
+    Outcome posts are fire-and-forget, so the click returns before the request
+    does; this polls rather than reading once.
+    """
+    deadline = 8000
+    waited = 0
+    while waited < deadline:
+        for event in _recorded_events(page, test_server):
+            if event["event_type"] == event_type:
+                return event
+        page.wait_for_timeout(200)
+        waited += 200
+    raise AssertionError(f"no {event_type} event was recorded: {_recorded_events(page, test_server)}")
+
+
+@pytest.mark.e2e
+@pytest.mark.usefixtures("test_server")
+class TestExploreRecommendationOutcomes:
+    """E2E tests for the outcome events the Discover pane emits."""
+
+    def test_recommendation_rows_carry_their_impression(self, page: Page, test_server: str) -> None:
+        """Every row keeps the impression and native ids the API issued with it."""
+        _open_discover(page, test_server)
+
+        first = page.locator(".recommendation-item").first
+        expect(first).to_have_attribute("data-impression-id", _FIRST_IMPRESSION, timeout=5000)
+        expect(first).to_have_attribute("data-gm-id", _FIRST_GM_ID, timeout=5000)
+
+    def test_opening_a_recommendation_records_an_opened_outcome(self, page: Page, test_server: str) -> None:
+        """The click-through emits recommendation.opened and still navigates."""
+        _open_discover(page, test_server)
+
+        page.locator(".recommendation-item").first.locator("a").click()
+
+        event = _expect_recorded(page, test_server, "recommendation.opened")
+        assert event["impression_id"] == _FIRST_IMPRESSION
+        assert event["item_id"] == _FIRST_GM_ID
+        # The post never blocks the navigation it accompanies.
+        expect(page.locator("#explorePane")).to_have_class(re.compile(r"\bactive\b"), timeout=5000)
+
+    def test_saving_a_recommendation_records_the_outcome_and_marks_the_row(self, page: Page, test_server: str) -> None:
+        """Save emits recommendation.saved and leaves the row in a saved state."""
+        _open_discover(page, test_server)
+
+        first = page.locator(".recommendation-item").first
+        first.locator('[data-outcome="save"]').click()
+
+        event = _expect_recorded(page, test_server, "recommendation.saved")
+        assert event["impression_id"] == _FIRST_IMPRESSION
+        expect(first.locator('[data-outcome="save"]')).to_have_attribute("aria-pressed", "true", timeout=5000)
+        expect(first).to_be_visible()
+
+    def test_saving_twice_records_one_outcome(self, page: Page, test_server: str) -> None:
+        """Saved is terminal — the vocabulary has no un-save term, so a repeat records nothing."""
+        _open_discover(page, test_server)
+
+        save = page.locator(".recommendation-item").first.locator('[data-outcome="save"]')
+        save.click()
+        _expect_recorded(page, test_server, "recommendation.saved")
+        save.click()
+        page.wait_for_timeout(500)
+
+        saved = [e for e in _recorded_events(page, test_server) if e["event_type"] == "recommendation.saved"]
+        assert len(saved) == 1
+
+    def test_dismissing_a_recommendation_records_the_outcome_and_collapses_the_row(self, page: Page, test_server: str) -> None:
+        """Dismiss emits recommendation.dismissed and removes the row."""
+        _open_discover(page, test_server)
+
+        expect(page.locator(".recommendation-item")).to_have_count(2, timeout=5000)
+        page.locator(".recommendation-item").first.locator('[data-outcome="dismiss"]').click()
+
+        event = _expect_recorded(page, test_server, "recommendation.dismissed")
+        assert event["impression_id"] == _FIRST_IMPRESSION
+        expect(page.locator(".recommendation-item")).to_have_count(1, timeout=5000)
+        expect(page.locator(f'[data-impression-id="{_FIRST_IMPRESSION}"]')).to_have_count(0)
+
+    def test_hiding_a_recommendation_records_the_outcome_and_collapses_the_row(self, page: Page, test_server: str) -> None:
+        """Hide emits recommendation.hidden and removes the row."""
+        _open_discover(page, test_server)
+
+        expect(page.locator(".recommendation-item")).to_have_count(2, timeout=5000)
+        page.locator(".recommendation-item").first.locator('[data-outcome="hide"]').click()
+
+        event = _expect_recorded(page, test_server, "recommendation.hidden")
+        assert event["impression_id"] == _FIRST_IMPRESSION
+        expect(page.locator(".recommendation-item")).to_have_count(1, timeout=5000)
+
+    def test_outcome_controls_are_reachable_by_keyboard(self, page: Page, test_server: str) -> None:
+        """The controls are real buttons, so Enter activates them with no key handling."""
+        _open_discover(page, test_server)
+
+        save = page.locator(".recommendation-item").first.locator('[data-outcome="save"]')
+        save.focus()
+        page.keyboard.press("Enter")
+
+        _expect_recorded(page, test_server, "recommendation.saved")
+
+    def test_an_anonymous_session_records_nothing(self, page: Page, test_server: str) -> None:
+        """No token means no controls and no events, even on the click-through."""
+        page.goto(test_server, wait_until="domcontentloaded", timeout=30000)
+        _wait_for_alpine(page)
+        page.evaluate("window.localStorage.removeItem('auth_token')")
+        page.reload(wait_until="domcontentloaded", timeout=30000)
+        _wait_for_alpine(page)
+        page.request.delete(f"{test_server}/api/activity/events")
+
+        # Render a row that would carry controls for a signed-in user, so this
+        # exercises the anonymous branch rather than the empty-list one, then
+        # click its link to prove the click-through emits nothing either.
+        rendered = page.evaluate(
+            """() => {
+                const body = document.getElementById('recommendationsBody');
+                window.userPanes._renderRecommendations(body, { recommendations: [{
+                    id: '30', title: 'Pablo Honey', artist: 'Radiohead', year: 1993, score: 0.85,
+                    impression_id: '11111111-1111-1111-1111-111111111111', gm_id: 'gm:release:30',
+                }], total: 1 });
+                body.querySelector('.recommendation-item a').click();
+                return document.querySelectorAll('[data-outcome]').length;
+            }"""
+        )
+        assert rendered == 0
+        page.wait_for_timeout(500)
+        assert _recorded_events(page, test_server) == []

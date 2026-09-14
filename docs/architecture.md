@@ -55,11 +55,19 @@ Authentication and catalog authorization remain `catalog-api` responsibilities. 
 stores the issued token and sends it through the proxy, but `graph-explorer` does not mint or
 interpret that token.
 
+Activity events, consent, and erasure are owned upstream the same way. The browser posts an
+outcome against the `impression_id` the API issued and renders the consent, export, and erasure
+surfaces, but what is durably written, whether consent permits it, and what an erasure removes
+are all decided by `catalog-api` under
+[ADR 0010](https://github.com/groovemap-music/design/blob/main/docs/adr/0010-first-party-events-consent-and-deletion.md).
+Outcome posts are fire-and-forget and never gate an interaction — see
+[Activity events and account data controls](activity-and-account-data.md).
+
 ## Promoted and pinned authorities
 
 | Authority | Revision | Local evidence |
 | --- | --- | --- |
-| `catalog-api` graph-explorer route contract | `e84d134ec82dbfd66ebdcb6e38736a8f9f47f670` | [`contracts/catalog-api/graph-explorer/v1/source.json`](../contracts/catalog-api/graph-explorer/v1/source.json) and [`routes.json`](../contracts/catalog-api/graph-explorer/v1/routes.json) |
+| `catalog-api` graph-explorer route contract | `d034e297161aa2427249ebab2b4baf5e16621de0` | [`contracts/catalog-api/graph-explorer/v1/source.json`](../contracts/catalog-api/graph-explorer/v1/source.json) and [`routes.json`](../contracts/catalog-api/graph-explorer/v1/routes.json) |
 | `python-libraries` runtime package | `455523ec388fdb9862d7aca65d9434aa7073dcb5` | [`pyproject.toml`](../pyproject.toml) and `uv.lock` |
 | `design` generated brand assets | `59c9fd3c8bbdfa676e0b7bb3d463fc766c1f3c0d` | [`explore/static/brand/source.json`](../explore/static/brand/source.json) |
 

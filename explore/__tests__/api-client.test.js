@@ -1534,9 +1534,214 @@ describe('ApiClient', () => {
             await window.apiClient.listAppTokens('expired-token');
             await window.apiClient.getMe('expired-token');
             await window.apiClient.getSyncStatus('expired-token');
+            await window.apiClient.postActivityEvent('expired-token', 'recommendation.opened', 'imp-1', 'item-1');
+            await window.apiClient.getConsent('expired-token');
+            await window.apiClient.setConsent('expired-token', 'analytics', true);
+            await window.apiClient.requestExport('expired-token');
+            await window.apiClient.requestErasure('expired-token', 'password');
 
-            expect(window.authManager.clear).toHaveBeenCalledTimes(6);
-            expect(window.authManager.notify).toHaveBeenCalledTimes(6);
+            expect(window.authManager.clear).toHaveBeenCalledTimes(11);
+            expect(window.authManager.notify).toHaveBeenCalledTimes(11);
+        });
+    });
+
+    describe('activity, consent, export, and erasure methods', () => {
+        describe('postActivityEvent', () => {
+            it('should return not-ok envelope without token', async () => {
+                const result = await window.apiClient.postActivityEvent(null, 'recommendation.opened', 'imp-1', 'item-1');
+                expect(result).toEqual({ ok: false, status: 0, body: null });
+            });
+
+            it('should POST to /api/activity/events with the event body and auth header', async () => {
+                let capturedUrl;
+                let capturedOptions;
+                vi.stubGlobal('fetch', async (url, options) => {
+                    capturedUrl = url;
+                    capturedOptions = options;
+                    return {
+                        ok: true,
+                        status: 202,
+                        json: async () => ({ recorded: true, event_type: 'recommendation.opened', impression_id: 'imp-1' }),
+                    };
+                });
+
+                const result = await window.apiClient.postActivityEvent('token', 'recommendation.opened', 'imp-1', 'item-1');
+
+                expect(capturedUrl).toBe('/api/activity/events');
+                expect(capturedOptions.method).toBe('POST');
+                expect(capturedOptions.headers['Authorization']).toBe('Bearer token');
+                expect(JSON.parse(capturedOptions.body)).toEqual({
+                    event_type: 'recommendation.opened',
+                    impression_id: 'imp-1',
+                    item_id: 'item-1',
+                });
+                expect(result).toEqual({
+                    ok: true,
+                    status: 202,
+                    body: { recorded: true, event_type: 'recommendation.opened', impression_id: 'imp-1' },
+                });
+            });
+
+            it('should surface a 401 response in the envelope', async () => {
+                vi.stubGlobal('fetch', async () => ({ ok: false, status: 401, json: async () => ({ detail: 'Not authenticated' }) }));
+
+                const result = await window.apiClient.postActivityEvent('bad-token', 'recommendation.saved', 'imp-1', 'item-1');
+
+                expect(result.ok).toBe(false);
+                expect(result.status).toBe(401);
+            });
+        });
+
+        describe('getConsent', () => {
+            it('should return null without token', async () => {
+                const result = await window.apiClient.getConsent(null);
+                expect(result).toBeNull();
+            });
+
+            it('should GET /api/user/consent with the auth header', async () => {
+                let capturedUrl;
+                let capturedOptions;
+                const purposes = [
+                    { purpose: 'analytics', granted: true, granted_at: '2026-01-01T00:00:00Z', revoked_at: null },
+                    { purpose: 'model_training', granted: false, granted_at: null, revoked_at: null },
+                ];
+                vi.stubGlobal('fetch', async (url, options) => {
+                    capturedUrl = url;
+                    capturedOptions = options;
+                    return { ok: true, json: async () => ({ purposes }) };
+                });
+
+                const result = await window.apiClient.getConsent('token');
+
+                expect(capturedUrl).toBe('/api/user/consent');
+                expect(capturedOptions.headers['Authorization']).toBe('Bearer token');
+                expect(result).toEqual({ purposes });
+            });
+
+            it('should return null on a 401 response', async () => {
+                vi.stubGlobal('fetch', async () => ({ ok: false, status: 401, json: async () => ({}) }));
+
+                const result = await window.apiClient.getConsent('bad-token');
+                expect(result).toBeNull();
+            });
+        });
+
+        describe('setConsent', () => {
+            it('should return null without token', async () => {
+                const result = await window.apiClient.setConsent(null, 'analytics', true);
+                expect(result).toBeNull();
+            });
+
+            it('should PUT to /api/user/consent/{purpose} with the granted body and auth header', async () => {
+                let capturedUrl;
+                let capturedOptions;
+                vi.stubGlobal('fetch', async (url, options) => {
+                    capturedUrl = url;
+                    capturedOptions = options;
+                    return { ok: true, json: async () => ({ purpose: 'analytics', granted: true, changed: true }) };
+                });
+
+                const result = await window.apiClient.setConsent('token', 'analytics', true);
+
+                expect(capturedUrl).toBe('/api/user/consent/analytics');
+                expect(capturedOptions.method).toBe('PUT');
+                expect(capturedOptions.headers['Authorization']).toBe('Bearer token');
+                expect(JSON.parse(capturedOptions.body)).toEqual({ granted: true });
+                expect(result).toEqual({ purpose: 'analytics', granted: true, changed: true });
+            });
+
+            it('should return null on a 401 response', async () => {
+                vi.stubGlobal('fetch', async () => ({ ok: false, status: 401, json: async () => ({}) }));
+
+                const result = await window.apiClient.setConsent('bad-token', 'analytics', false);
+                expect(result).toBeNull();
+            });
+        });
+
+        describe('requestExport', () => {
+            it('should return null without token', async () => {
+                const result = await window.apiClient.requestExport(null);
+                expect(result).toBeNull();
+            });
+
+            it('should GET /api/user/export with the auth header and return a Blob', async () => {
+                let capturedUrl;
+                let capturedOptions;
+                const ndjsonBlob = new Blob(['{"kind":"event"}\n'], { type: 'application/x-ndjson' });
+                vi.stubGlobal('fetch', async (url, options) => {
+                    capturedUrl = url;
+                    capturedOptions = options;
+                    return { ok: true, blob: async () => ndjsonBlob };
+                });
+
+                const result = await window.apiClient.requestExport('token');
+
+                expect(capturedUrl).toBe('/api/user/export');
+                expect(capturedOptions.headers['Authorization']).toBe('Bearer token');
+                expect(result).toBeInstanceOf(Blob);
+            });
+
+            it('should return null on a 401 response', async () => {
+                vi.stubGlobal('fetch', async () => ({ ok: false, status: 401, json: async () => ({}) }));
+
+                const result = await window.apiClient.requestExport('bad-token');
+                expect(result).toBeNull();
+            });
+        });
+
+        describe('requestErasure', () => {
+            it('should return not-ok envelope without token', async () => {
+                const result = await window.apiClient.requestErasure(null, 'password');
+                expect(result).toEqual({ ok: false, status: 0, body: null });
+            });
+
+            it('should POST to /api/user/erasure with the password, TOTP code, and auth header', async () => {
+                let capturedUrl;
+                let capturedOptions;
+                vi.stubGlobal('fetch', async (url, options) => {
+                    capturedUrl = url;
+                    capturedOptions = options;
+                    return {
+                        ok: true,
+                        status: 202,
+                        json: async () => ({ erasure_id: 'era-1', events_deleted: 3, impressions_deleted: 2, incomplete: [] }),
+                    };
+                });
+
+                const result = await window.apiClient.requestErasure('token', 'my-password', '123456');
+
+                expect(capturedUrl).toBe('/api/user/erasure');
+                expect(capturedOptions.method).toBe('POST');
+                expect(capturedOptions.headers['Authorization']).toBe('Bearer token');
+                expect(JSON.parse(capturedOptions.body)).toEqual({ password: 'my-password', code: '123456' });
+                expect(result).toEqual({
+                    ok: true,
+                    status: 202,
+                    body: { erasure_id: 'era-1', events_deleted: 3, impressions_deleted: 2, incomplete: [] },
+                });
+            });
+
+            it('should omit the TOTP code when not provided', async () => {
+                let capturedOptions;
+                vi.stubGlobal('fetch', async (_url, options) => {
+                    capturedOptions = options;
+                    return { ok: true, status: 202, json: async () => ({ erasure_id: 'era-1' }) };
+                });
+
+                await window.apiClient.requestErasure('token', 'my-password');
+
+                expect(JSON.parse(capturedOptions.body)).toEqual({ password: 'my-password', code: null });
+            });
+
+            it('should surface a 401 response in the envelope', async () => {
+                vi.stubGlobal('fetch', async () => ({ ok: false, status: 401, json: async () => ({ detail: 'Incorrect password' }) }));
+
+                const result = await window.apiClient.requestErasure('token', 'wrong-password');
+
+                expect(result.ok).toBe(false);
+                expect(result.status).toBe(401);
+                expect(result.body).toEqual({ detail: 'Incorrect password' });
+            });
         });
     });
 });

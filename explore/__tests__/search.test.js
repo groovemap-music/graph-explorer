@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { loadScript } from './helpers.js';
 
 /**
@@ -1031,6 +1031,111 @@ describe('search pane', () => {
             const metaEl = document.querySelector('.search-result-meta');
             expect(metaEl.textContent).toContain('1997');
             expect(metaEl.textContent).toContain('Rock');
+        });
+    });
+
+    describe('outcome events on search hits', () => {
+        /** A search hit as the API now returns it, carrying its impression. */
+        const HIT = {
+            name: 'Radiohead',
+            type: 'artist',
+            relevance: 0.9,
+            impression_id: 'imp-search-1',
+            gm_id: 'gm-artist-1',
+        };
+
+        /** Run a search that returns `results` and hand back the first card. */
+        async function renderAndGetCard(results) {
+            window.apiClient.search.mockResolvedValue({
+                results,
+                total: results.length,
+                facets: {},
+                pagination: { has_more: false },
+            });
+
+            const input = document.getElementById('searchPaneInput');
+            input.value = 'radiohead';
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            await new Promise(r => setTimeout(r, 10));
+
+            return document.querySelector('.search-result-card');
+        }
+
+        beforeEach(() => {
+            window.authManager = {
+                getToken: vi.fn().mockReturnValue('test-token'),
+            };
+            window.apiClient.postActivityEvent = vi.fn()
+                .mockResolvedValue({ ok: true, status: 202, body: null });
+            window.exploreApp = {
+                _setSearchType: vi.fn(),
+                _switchPane: vi.fn(),
+                _loadExplore: vi.fn(),
+                _showToast: vi.fn(),
+                currentQuery: '',
+            };
+        });
+
+        afterEach(() => {
+            delete window.authManager;
+            delete window.exploreApp;
+        });
+
+        it('keeps impression_id and gm_id on the rendered card', async () => {
+            const card = await renderAndGetCard([HIT]);
+
+            expect(card.dataset.impressionId).toBe('imp-search-1');
+            expect(card.dataset.gmId).toBe('gm-artist-1');
+        });
+
+        it('emits recommendation.opened when a hit with an impression is clicked', async () => {
+            const card = await renderAndGetCard([HIT]);
+
+            card.click();
+
+            expect(window.apiClient.postActivityEvent).toHaveBeenCalledWith(
+                'test-token', 'recommendation.opened', 'imp-search-1', 'gm-artist-1',
+            );
+            expect(window.apiClient.postActivityEvent).toHaveBeenCalledTimes(1);
+        });
+
+        it('emits nothing for a hit with no impression_id', async () => {
+            const card = await renderAndGetCard([{ name: 'Radiohead', type: 'artist', relevance: 0.9 }]);
+
+            card.click();
+
+            expect(window.apiClient.postActivityEvent).not.toHaveBeenCalled();
+            expect(window.exploreApp._loadExplore).toHaveBeenCalledWith('Radiohead', 'artist');
+        });
+
+        it('emits nothing for an anonymous session', async () => {
+            window.authManager.getToken.mockReturnValue(null);
+            const card = await renderAndGetCard([HIT]);
+
+            card.click();
+
+            expect(window.apiClient.postActivityEvent).not.toHaveBeenCalled();
+            expect(window.exploreApp._loadExplore).toHaveBeenCalledWith('Radiohead', 'artist');
+        });
+
+        it('navigates even when the post rejects', async () => {
+            window.apiClient.postActivityEvent.mockRejectedValue(new TypeError('Failed to fetch'));
+            const card = await renderAndGetCard([HIT]);
+
+            expect(() => card.click()).not.toThrow();
+
+            expect(window.exploreApp._loadExplore).toHaveBeenCalledWith('Radiohead', 'artist');
+        });
+
+        it('navigates even when the client throws synchronously', async () => {
+            window.apiClient.postActivityEvent.mockImplementation(() => {
+                throw new Error('client exploded');
+            });
+            const card = await renderAndGetCard([HIT]);
+
+            expect(() => card.click()).not.toThrow();
+
+            expect(window.exploreApp._loadExplore).toHaveBeenCalledWith('Radiohead', 'artist');
         });
     });
 });

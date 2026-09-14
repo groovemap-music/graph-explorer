@@ -324,7 +324,15 @@
         results.forEach(r => {
             const card = document.createElement('div');
             card.className = 'search-result-card';
-            card.addEventListener('click', () => navigateToResult(r));
+            // Keep the impression the hit was served under and the id of what
+            // was served, so an opened hit can be attributed without re-reading
+            // the response.
+            if (r.impression_id) card.dataset.impressionId = r.impression_id;
+            if (r.gm_id) card.dataset.gmId = r.gm_id;
+            card.addEventListener('click', () => {
+                emitResultOpened(r);
+                navigateToResult(r);
+            });
 
             // Type badge
             const badge = document.createElement('span');
@@ -455,6 +463,33 @@
     // ------------------------------------------------------------------
     // Navigate to Explore pane on result click
     // ------------------------------------------------------------------
+
+    /**
+     * Record that the user opened a search hit, fire and forget.
+     *
+     * Search hits are logged server side as `search.result_impression`, and the
+     * outcome vocabulary has no search-specific open term, so an opened hit is
+     * recorded as `recommendation.opened` against the impression the hit
+     * carries and nothing else is recorded here. A hit with no impression_id
+     * and an anonymous session both record nothing. The post is never awaited,
+     * so a failure cannot block or break navigation.
+     *
+     * @param {object} result - The search hit as the API returned it
+     */
+    function emitResultOpened(result) {
+        const token = window.authManager?.getToken?.();
+        if (!token) return;
+        if (!result || !result.impression_id) return;
+        if (typeof window.apiClient?.postActivityEvent !== 'function') return;
+        try {
+            const posted = window.apiClient.postActivityEvent(
+                token, 'recommendation.opened', result.impression_id, result.gm_id ?? null,
+            );
+            if (posted && typeof posted.catch === 'function') posted.catch(() => {});
+        } catch {
+            // Best effort by design — telemetry never breaks the click-through.
+        }
+    }
 
     function navigateToResult(result) {
         const explorableTypes = ['artist', 'label'];

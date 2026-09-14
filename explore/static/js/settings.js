@@ -1,3 +1,35 @@
+// The consent vocabulary catalog-api publishes, in its order. A purpose the
+// server has never recorded still renders (as not granted), so the same two
+// controls appear before and after the first decision.
+const CONSENT_PURPOSES = [
+    {
+        purpose: 'product_analytics',
+        label: 'Product analytics',
+        description: 'Count what happens in the app so we can see what works.',
+    },
+    {
+        purpose: 'model_training',
+        label: 'Model training',
+        description: 'Use your activity to improve the recommendation models.',
+    },
+];
+
+// The erasure receipt outlives the settings pane on purpose.
+//
+// A successful erasure clears the session, the auth listener switches the
+// browser off Settings, and `SettingsState` drops the delete card's transient
+// state — so the card that rendered the receipt is behind the signed-out view
+// before anyone can read it. The erasure id is the only durable handle the
+// user has on an erasure that did not finish in every store, so it is held
+// here, in module scope, where the session clear cannot reach it, and rendered
+// once into a region that lives outside every pane.
+//
+// Deliberately not localStorage: the erasure has just emptied that key space,
+// and a receipt written there would outlive the session on a shared machine.
+// Losing the receipt on reload is the correct trade — it is a one-time notice,
+// not a record the browser is responsible for keeping.
+let pendingErasureReceipt = null;
+
 class SettingsPane {
     constructor() {
         this._state = new window.SettingsState();
@@ -9,6 +41,9 @@ class SettingsPane {
         this._loadProfile();
         this._renderTwoFaState();
         this._loadAppTokens();
+        this._loadConsent();
+        this._renderExportCard();
+        this._renderDeleteAccountCard();
 
         if (!this._initialized) {
             this._bindEvents();
@@ -1036,6 +1071,556 @@ class SettingsPane {
             window.alert('Failed to revoke token. It may have already been revoked.');
         }
         this._loadAppTokens();
+    }
+
+    // ------------------------------------------------------------------ //
+    // Privacy card (consent purposes)
+    //
+    // Like the app-tokens card, every node is built with createElement +
+    // textContent — the purpose strings come from the API and are never
+    // interpolated as HTML.
+    // ------------------------------------------------------------------ //
+
+    _clearContainer(container) {
+        while (container.firstChild) container.removeChild(container.firstChild);
+    }
+
+    async _loadConsent() {
+        const container = document.getElementById('privacyContent');
+        if (!container) return;
+
+        // init() runs on EVERY pane activation. A refetch mid-toggle would
+        // render the pre-toggle answer over the request that is still in
+        // flight, mirroring the 'minting' guard in _loadAppTokens.
+        if (this._consentPending) return;
+
+        const token = window.authManager && window.authManager.getToken && window.authManager.getToken();
+        if (!token) {
+            this._consentPurposes = [];
+            this._renderConsentCard();
+            return;
+        }
+
+        let res = null;
+        try {
+            res = await window.apiClient.getConsent(token);
+        } catch {
+            res = null;
+        }
+        if (res && Array.isArray(res.purposes)) {
+            this._consentPurposes = res.purposes;
+            this._consentError = '';
+        } else {
+            this._consentPurposes = [];
+            this._consentError = 'Could not load your privacy choices.';
+        }
+        this._renderConsentCard();
+    }
+
+    _consentGranted(purpose) {
+        const row = (this._consentPurposes || []).find(p => p && p.purpose === purpose);
+        return Boolean(row && row.granted);
+    }
+
+    _renderConsentCard() {
+        const container = document.getElementById('privacyContent');
+        if (!container) return;
+        this._clearContainer(container);
+
+        const token = window.authManager && window.authManager.getToken && window.authManager.getToken();
+        if (!token) {
+            const msg = document.createElement('div');
+            msg.className = 'settings-empty';
+            msg.textContent = 'Sign in to manage your privacy choices.';
+            container.appendChild(msg);
+            return;
+        }
+
+        const intro = document.createElement('p');
+        intro.className = 'privacy-intro';
+        intro.textContent = 'Choose what GrooveMap may do with your activity. Turning a purpose off stops it from that moment on.';
+        container.appendChild(intro);
+
+        for (const spec of CONSENT_PURPOSES) {
+            container.appendChild(this._buildConsentRow(spec));
+        }
+
+        const err = document.createElement('div');
+        err.id = 'consentError';
+        err.className = 'mb-2 min-h-[1.2rem] text-sm text-accent-red';
+        err.textContent = this._consentError || '';
+        container.appendChild(err);
+    }
+
+    _buildConsentRow(spec) {
+        const row = document.createElement('div');
+        row.className = 'privacy-row';
+        row.setAttribute('data-consent-row', spec.purpose);
+
+        const toggle = document.createElement('input');
+        toggle.type = 'checkbox';
+        toggle.id = `consentToggle_${spec.purpose}`;
+        toggle.setAttribute('data-consent-toggle', spec.purpose);
+        toggle.checked = this._consentGranted(spec.purpose);
+        // One request at a time: both controls go inert until the server has
+        // answered, so a second click cannot race the first.
+        toggle.disabled = Boolean(this._consentPending);
+        toggle.addEventListener('change', () => this._handleConsentToggle(spec.purpose, toggle.checked));
+
+        const label = document.createElement('label');
+        label.className = 'settings-label-inline';
+        label.htmlFor = toggle.id;
+        const strong = document.createElement('strong');
+        strong.textContent = spec.label;
+        const desc = document.createElement('span');
+        desc.className = 'privacy-purpose-desc';
+        desc.textContent = spec.description;
+        label.appendChild(strong);
+        label.appendChild(document.createTextNode(' '));
+        label.appendChild(desc);
+
+        row.appendChild(toggle);
+        row.appendChild(label);
+        return row;
+    }
+
+    _setConsentTogglesDisabled(disabled) {
+        document.querySelectorAll('[data-consent-toggle]').forEach(input => { input.disabled = disabled; });
+    }
+
+    async _handleConsentToggle(purpose, granted) {
+        const token = window.authManager && window.authManager.getToken && window.authManager.getToken();
+        if (!token) return;
+
+        this._consentPending = purpose;
+        this._consentError = '';
+        // Disable in place rather than re-rendering: replacing the control the
+        // user just clicked detaches it mid-gesture, and the only visible
+        // difference is the checkbox going inert, which this does directly.
+        this._setConsentTogglesDisabled(true);
+        const errEl = document.getElementById('consentError');
+        if (errEl) errEl.textContent = '';
+
+        let res = null;
+        try {
+            res = await window.apiClient.setConsent(token, purpose, granted);
+        } catch {
+            res = null;
+        }
+        this._consentPending = null;
+
+        if (res && typeof res.granted === 'boolean') {
+            // Render the server's answer, not the click: a refused change must
+            // leave the control showing what the server actually stored.
+            const next = (this._consentPurposes || []).filter(p => p && p.purpose !== res.purpose);
+            next.push({ purpose: res.purpose, granted: res.granted });
+            this._consentPurposes = next;
+        } else {
+            this._consentError = 'Could not save that choice — please try again.';
+        }
+        this._renderConsentCard();
+    }
+
+    // ------------------------------------------------------------------ //
+    // Export card
+    // ------------------------------------------------------------------ //
+
+    _renderExportCard() {
+        const container = document.getElementById('exportContent');
+        if (!container) return;
+        this._clearContainer(container);
+
+        const token = window.authManager && window.authManager.getToken && window.authManager.getToken();
+        if (!token) {
+            const msg = document.createElement('div');
+            msg.className = 'settings-empty';
+            msg.textContent = 'Sign in to export your data.';
+            container.appendChild(msg);
+            return;
+        }
+
+        const intro = document.createElement('p');
+        intro.className = 'export-intro';
+        intro.textContent = 'Download everything keyed to your account as a JSON Lines file — collection, wantlist, recommendations, and activity.';
+        container.appendChild(intro);
+
+        const btn = document.createElement('button');
+        btn.id = 'exportDataBtn';
+        btn.type = 'button';
+        btn.className = 'btn-primary';
+        btn.disabled = this._exportState === 'working';
+        const icon = document.createElement('span');
+        icon.className = 'material-symbols-outlined mr-1';
+        icon.style.fontSize = '18px';
+        icon.textContent = 'download';
+        btn.appendChild(icon);
+        btn.appendChild(document.createTextNode(this._exportState === 'working' ? 'Preparing…' : 'Download my data'));
+        btn.addEventListener('click', () => this._handleExport());
+        container.appendChild(btn);
+
+        const note = document.createElement('div');
+        note.id = 'exportNote';
+        note.className = 'mt-2 min-h-[1.2rem] text-sm text-accent-green';
+        note.textContent = this._exportState === 'done' ? 'Your export has been downloaded.' : '';
+        container.appendChild(note);
+
+        const err = document.createElement('div');
+        err.id = 'exportError';
+        err.className = 'mt-2 min-h-[1.2rem] text-sm text-accent-red';
+        err.textContent = this._exportError || '';
+        container.appendChild(err);
+    }
+
+    _downloadBlob(blob, filename) {
+        const urlApi = window.URL;
+        if (!urlApi || typeof urlApi.createObjectURL !== 'function') return false;
+        const href = urlApi.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = href;
+        link.download = filename;
+        // Firefox only honours a programmatic click on a connected anchor.
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        if (typeof urlApi.revokeObjectURL === 'function') urlApi.revokeObjectURL(href);
+        return true;
+    }
+
+    async _handleExport() {
+        const token = window.authManager && window.authManager.getToken && window.authManager.getToken();
+        if (!token) return;
+
+        this._exportState = 'working';
+        this._exportError = '';
+        this._renderExportCard();
+
+        let blob = null;
+        try {
+            blob = await window.apiClient.requestExport(token);
+        } catch {
+            blob = null;
+        }
+
+        if (!blob) {
+            this._exportState = 'error';
+            this._exportError = 'Export failed — please try again.';
+        } else if (!this._downloadBlob(blob, 'groovemap-export.ndjson')) {
+            this._exportState = 'error';
+            this._exportError = 'This browser could not start the download.';
+        } else {
+            this._exportState = 'done';
+        }
+        this._renderExportCard();
+    }
+
+    // ------------------------------------------------------------------ //
+    // Delete account card
+    //
+    // The confirm step is an in-card panel in the style of the 2FA disable
+    // confirm: same credential fields, same error region, same button pair.
+    // ------------------------------------------------------------------ //
+
+    _renderDeleteAccountCard() {
+        const container = document.getElementById('deleteAccountContent');
+        if (!container) return;
+        this._clearContainer(container);
+
+        const token = window.authManager && window.authManager.getToken && window.authManager.getToken();
+        if (!token && this._deleteView !== 'done') {
+            const msg = document.createElement('div');
+            msg.className = 'settings-empty';
+            msg.textContent = 'Sign in to delete your account.';
+            container.appendChild(msg);
+            return;
+        }
+
+        switch (this._deleteView) {
+            case 'confirm': this._renderDeleteConfirm(container); break;
+            case 'done':    this._renderDeleteReceipt(container); break;
+            default:        this._renderDeleteIdle(container); break;
+        }
+    }
+
+    _renderDeleteIdle(container) {
+        const warning = document.createElement('p');
+        warning.className = 'delete-account-intro';
+        warning.textContent = 'Deleting your account erases your collection, wantlist, recommendations, and activity across every store. This cannot be undone.';
+        container.appendChild(warning);
+
+        const btn = document.createElement('button');
+        btn.id = 'deleteAccountBtn';
+        btn.type = 'button';
+        btn.className = 'btn-danger';
+        const icon = document.createElement('span');
+        icon.className = 'material-symbols-outlined mr-1';
+        icon.style.fontSize = '18px';
+        icon.textContent = 'delete_forever';
+        btn.appendChild(icon);
+        btn.appendChild(document.createTextNode('Delete my account'));
+        btn.addEventListener('click', () => {
+            this._deleteView = 'confirm';
+            this._renderDeleteAccountCard();
+        });
+        container.appendChild(btn);
+    }
+
+    _twoFaRequiredForErasure() {
+        const user = window.authManager && window.authManager.getUser && window.authManager.getUser();
+        return Boolean(user && user.totp_enabled);
+    }
+
+    _renderDeleteConfirm(container) {
+        const instructions = document.createElement('p');
+        instructions.className = 'text-sm text-text-mid mb-3';
+        instructions.textContent = 'This permanently erases your account and everything keyed to it — collection, wantlist, recommendations, and activity. It cannot be undone. Confirm with your password to continue.';
+        container.appendChild(instructions);
+
+        if (this._twoFaRequiredForErasure()) {
+            const codeLabel = document.createElement('label');
+            codeLabel.className = 'settings-label mb-1 block';
+            codeLabel.textContent = 'Authenticator Code';
+            container.appendChild(codeLabel);
+
+            const inputGroup = document.createElement('div');
+            inputGroup.className = 'twofa-code-inputs';
+            for (let i = 0; i < 6; i++) {
+                const inp = document.createElement('input');
+                inp.type = 'text';
+                inp.inputMode = 'numeric';
+                inp.maxLength = 1;
+                inp.className = 'form-input-dark text-center';
+                inp.style.width = '2.5rem';
+                inp.style.fontSize = '1.25rem';
+                inp.dataset.erasureTotp = String(i);
+                inputGroup.appendChild(inp);
+            }
+            container.appendChild(inputGroup);
+            this._bindTotpInputs('erasureTotp');
+        }
+
+        const pwLabel = document.createElement('label');
+        pwLabel.className = 'settings-label mb-1 block';
+        pwLabel.htmlFor = 'erasurePassword';
+        pwLabel.textContent = 'Password';
+        container.appendChild(pwLabel);
+
+        const pwInput = document.createElement('input');
+        pwInput.type = 'password';
+        pwInput.className = 'form-input-dark mb-3';
+        pwInput.id = 'erasurePassword';
+        pwInput.autocomplete = 'current-password';
+        pwInput.placeholder = 'Enter your password';
+        container.appendChild(pwInput);
+
+        const errorEl = document.createElement('div');
+        errorEl.className = 'text-sm text-accent-red min-h-[1.2rem] mb-2';
+        errorEl.id = 'erasureError';
+        container.appendChild(errorEl);
+
+        const btnRow = document.createElement('div');
+        btnRow.className = 'flex gap-2';
+
+        const confirmBtn = document.createElement('button');
+        confirmBtn.id = 'erasureConfirmBtn';
+        confirmBtn.className = 'btn-danger';
+        confirmBtn.type = 'button';
+        confirmBtn.textContent = 'Delete account';
+        confirmBtn.addEventListener('click', () => this._handleErasure());
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.id = 'erasureCancelBtn';
+        cancelBtn.className = 'btn-secondary';
+        cancelBtn.type = 'button';
+        cancelBtn.textContent = 'Cancel';
+        cancelBtn.addEventListener('click', () => {
+            this._deleteView = 'idle';
+            this._renderDeleteAccountCard();
+        });
+
+        btnRow.appendChild(confirmBtn);
+        btnRow.appendChild(cancelBtn);
+        container.appendChild(btnRow);
+    }
+
+    _renderDeleteReceipt(container) {
+        const heading = document.createElement('p');
+        heading.className = 'delete-account-intro';
+        heading.textContent = 'Your account has been deleted. You are now signed out.';
+        container.appendChild(heading);
+        this._appendErasureReceiptBody(container, this._erasureResult || {}, 'card');
+    }
+
+    /**
+     * Append the erasure id and any partial-failure notice to a container.
+     *
+     * Shared by the settings card and the signed-out banner. Element ids are
+     * suffixed per surface because both can exist at once: the card is still in
+     * the DOM, behind the signed-out view, while the banner is the copy the
+     * user can actually read. The unsuffixed ids stay on the banner, since that
+     * is the surface the receipt is now delivered on.
+     *
+     * @param {HTMLElement} container - Where to append
+     * @param {object} result - The 202 body from requestErasure
+     * @param {string} surface - 'card' or 'banner'
+     */
+    _appendErasureReceiptBody(container, result, surface) {
+        const suffix = surface === 'card' ? 'Card' : '';
+
+        const idRow = document.createElement('div');
+        idRow.className = 'settings-field';
+        const idLabel = document.createElement('span');
+        idLabel.className = 'settings-label';
+        idLabel.textContent = 'Erasure id';
+        const idValue = document.createElement('code');
+        idValue.id = `erasureId${suffix}`;
+        idValue.className = 'settings-value';
+        idValue.textContent = result.erasure_id || '';
+        idRow.appendChild(idLabel);
+        idRow.appendChild(idValue);
+        container.appendChild(idRow);
+
+        const incomplete = Array.isArray(result.incomplete) ? result.incomplete : [];
+        if (!incomplete.length) return;
+
+        const notice = document.createElement('div');
+        notice.id = `erasureIncomplete${suffix}`;
+        notice.className = 'recovery-warning';
+        const icon = document.createElement('span');
+        icon.className = 'material-symbols-outlined';
+        icon.style.fontSize = '20px';
+        icon.style.color = '#eab308';
+        icon.textContent = 'warning';
+        notice.appendChild(icon);
+
+        const body = document.createElement('div');
+        const lead = document.createElement('div');
+        lead.textContent = 'Some stores did not finish. Keep this erasure id and contact support.';
+        body.appendChild(lead);
+        const list = document.createElement('ul');
+        list.className = 'erasure-incomplete-list';
+        for (const failure of incomplete) {
+            const item = document.createElement('li');
+            item.textContent = String(failure);
+            list.appendChild(item);
+        }
+        body.appendChild(list);
+        notice.appendChild(body);
+        container.appendChild(notice);
+    }
+
+    /**
+     * Render the held receipt onto the signed-out view, once.
+     *
+     * Called after the session clear, when the settings pane is no longer
+     * reachable. Renders nothing when no receipt is held — which is the state
+     * after a dismiss, and after a reload, since the receipt is memory only.
+     */
+    _renderErasureReceiptBanner() {
+        const banner = document.getElementById('erasureReceiptBanner');
+        if (!banner) return;
+        this._clearContainer(banner);
+
+        if (!pendingErasureReceipt) {
+            banner.hidden = true;
+            return;
+        }
+
+        const heading = document.createElement('p');
+        heading.className = 'erasure-receipt-heading';
+        heading.textContent = 'Your account has been deleted. You are now signed out.';
+        banner.appendChild(heading);
+
+        this._appendErasureReceiptBody(banner, pendingErasureReceipt, 'banner');
+
+        const keep = document.createElement('p');
+        keep.className = 'erasure-receipt-note';
+        keep.textContent = 'Keep this id if you need to ask about the deletion. It is not stored anywhere in this browser.';
+        banner.appendChild(keep);
+
+        const dismiss = document.createElement('button');
+        dismiss.id = 'erasureReceiptDismissBtn';
+        dismiss.type = 'button';
+        dismiss.className = 'erasure-receipt-dismiss';
+        dismiss.setAttribute('aria-label', 'Dismiss the deletion receipt');
+        dismiss.textContent = 'Dismiss';
+        dismiss.addEventListener('click', () => {
+            // Dropping the held copy is what makes this a one-time notice:
+            // nothing can render it again.
+            pendingErasureReceipt = null;
+            this._renderErasureReceiptBanner();
+        });
+        banner.appendChild(dismiss);
+
+        banner.hidden = false;
+    }
+
+    async _handleErasure() {
+        const errorEl = document.getElementById('erasureError');
+        if (!errorEl) return;
+        errorEl.textContent = '';
+
+        const password = document.getElementById('erasurePassword')?.value || '';
+        const needsCode = this._twoFaRequiredForErasure();
+        const code = needsCode ? this._collectTotpCode('erasureTotp') : null;
+
+        if (!password) {
+            errorEl.textContent = 'Password is required';
+            return;
+        }
+        if (needsCode && !/^\d{6}$/.test(code)) {
+            errorEl.textContent = 'Please enter a 6-digit code';
+            return;
+        }
+
+        const token = window.authManager && window.authManager.getToken && window.authManager.getToken();
+        if (!token) { errorEl.textContent = 'Not authenticated'; return; }
+
+        // Disable in place rather than re-rendering: a re-render would drop the
+        // password the user just typed, which the retry path still needs.
+        const confirmBtn = document.getElementById('erasureConfirmBtn');
+        const cancelBtn = document.getElementById('erasureCancelBtn');
+        if (confirmBtn) confirmBtn.disabled = true;
+        if (cancelBtn) cancelBtn.disabled = true;
+
+        let res;
+        try {
+            res = await window.apiClient.requestErasure(token, password, code);
+        } catch {
+            res = null;
+        }
+
+        if (!res || !res.ok) {
+            // The panel stays in the confirm state with the detail inline so the
+            // caller can correct the credential. Note that the API answers a wrong
+            // password with 401, and ApiTransport ends the session on any 401 —
+            // the same thing the 2FA disable card has always done — so the pane
+            // itself goes behind the signed-out view. This card never clears the
+            // session on a rejection of its own accord.
+            const detail = (res && res.body && res.body.detail) ? res.body.detail : 'Could not delete your account — please try again.';
+            errorEl.textContent = detail;
+            if (confirmBtn) confirmBtn.disabled = false;
+            if (cancelBtn) cancelBtn.disabled = false;
+            if (needsCode) this._clearTotpInputs('erasureTotp');
+            return;
+        }
+
+        // Render the receipt before the session goes away: the erasure id is the
+        // only durable handle the user has on a partially completed erasure.
+        this._erasureResult = res.body || {};
+        this._deleteView = 'done';
+        this._renderDeleteAccountCard();
+
+        // Hold the receipt outside the pane's state before clearing the
+        // session. The clear switches the browser off Settings, so the card
+        // above is not the copy anyone reads.
+        pendingErasureReceipt = this._erasureResult;
+
+        window.authManager.clear();
+        window.authManager.notify();
+
+        // Now that the signed-out view is up, put the receipt where it is
+        // visible, with a dismiss control.
+        this._renderErasureReceiptBanner();
     }
 }
 

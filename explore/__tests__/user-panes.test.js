@@ -72,6 +72,7 @@ describe('UserPanes', () => {
             verifyDiscogs: vi.fn().mockResolvedValue(null),
             revokeDiscogs: vi.fn().mockResolvedValue(null),
             getDiscogsStatus: vi.fn().mockResolvedValue(null),
+            postActivityEvent: vi.fn().mockResolvedValue({ ok: true, status: 202, body: null }),
         };
 
         window.authManager = {
@@ -2107,6 +2108,213 @@ describe('UserPanes', () => {
 
             const wrap = userPanes._buildGapTable(releases, 1, 0, vi.fn(), false);
             expect(wrap.querySelector('.pane-pagination')).toBeNull();
+        });
+    });
+
+    describe('recommendation outcome events', () => {
+        /** A recommendation as the API now returns it: impression_id and gm_id on every item. */
+        function recWithImpression(overrides = {}) {
+            return {
+                title: 'Dummy',
+                artist: 'Portishead',
+                year: 1994,
+                score: 0.87,
+                impression_id: 'imp-1',
+                gm_id: 'gm-release-1',
+                ...overrides,
+            };
+        }
+
+        function renderOne(rec) {
+            const container = document.createElement('div');
+            document.body.appendChild(container);
+            userPanes._renderRecommendations(container, { recommendations: [rec] });
+            return container;
+        }
+
+        beforeEach(() => {
+            window.exploreApp = {
+                _setSearchType: vi.fn(),
+                currentQuery: '',
+                _switchPane: vi.fn(),
+                _loadExplore: vi.fn(),
+            };
+            const searchInput = document.createElement('input');
+            searchInput.id = 'searchInput';
+            document.body.appendChild(searchInput);
+        });
+
+        it('keeps impression_id and gm_id on the rendered row', () => {
+            const item = renderOne(recWithImpression()).querySelector('.recommendation-item');
+
+            expect(item.dataset.impressionId).toBe('imp-1');
+            expect(item.dataset.gmId).toBe('gm-release-1');
+        });
+
+        it('emits recommendation.opened on the click-through', () => {
+            const container = renderOne(recWithImpression());
+
+            container.querySelector('.release-list-title a').click();
+
+            expect(window.apiClient.postActivityEvent).toHaveBeenCalledWith(
+                'test-token', 'recommendation.opened', 'imp-1', 'gm-release-1',
+            );
+        });
+
+        it('still navigates when the opened post rejects', () => {
+            window.apiClient.postActivityEvent.mockRejectedValue(new TypeError('Failed to fetch'));
+            const container = renderOne(recWithImpression());
+
+            expect(() => container.querySelector('.release-list-title a').click()).not.toThrow();
+
+            expect(window.exploreApp._loadExplore).toHaveBeenCalledWith('Portishead', 'artist');
+        });
+
+        it('still navigates when the client throws synchronously', () => {
+            window.apiClient.postActivityEvent.mockImplementation(() => {
+                throw new Error('client exploded');
+            });
+            const container = renderOne(recWithImpression());
+
+            expect(() => container.querySelector('.release-list-title a').click()).not.toThrow();
+
+            expect(window.exploreApp._loadExplore).toHaveBeenCalledWith('Portishead', 'artist');
+        });
+
+        it('emits recommendation.saved and shows the saved state', () => {
+            const container = renderOne(recWithImpression());
+            const save = container.querySelector('[data-outcome="save"]');
+
+            save.click();
+
+            expect(window.apiClient.postActivityEvent).toHaveBeenCalledWith(
+                'test-token', 'recommendation.saved', 'imp-1', 'gm-release-1',
+            );
+            expect(save.getAttribute('aria-pressed')).toBe('true');
+            expect(save.getAttribute('aria-label')).toBe('Saved Dummy by Portishead');
+            expect(container.querySelector('.recommendation-item').classList
+                .contains('recommendation-item--saved')).toBe(true);
+        });
+
+        it('records nothing on a repeat save — the vocabulary has no un-save term', () => {
+            const container = renderOne(recWithImpression());
+            const save = container.querySelector('[data-outcome="save"]');
+
+            save.click();
+            save.click();
+
+            expect(window.apiClient.postActivityEvent).toHaveBeenCalledTimes(1);
+        });
+
+        it('emits recommendation.dismissed and collapses the row away', () => {
+            vi.useFakeTimers();
+            const container = renderOne(recWithImpression());
+            const item = container.querySelector('.recommendation-item');
+
+            container.querySelector('[data-outcome="dismiss"]').click();
+
+            expect(window.apiClient.postActivityEvent).toHaveBeenCalledWith(
+                'test-token', 'recommendation.dismissed', 'imp-1', 'gm-release-1',
+            );
+            expect(item.classList.contains('rec-outcome-collapsing')).toBe(true);
+            expect(item.getAttribute('aria-hidden')).toBe('true');
+
+            vi.advanceTimersByTime(UserPanes.OUTCOME_COLLAPSE_MS);
+            expect(container.querySelector('.recommendation-item')).toBeNull();
+            vi.useRealTimers();
+        });
+
+        it('emits recommendation.hidden and collapses the row away', () => {
+            vi.useFakeTimers();
+            const container = renderOne(recWithImpression());
+            const item = container.querySelector('.recommendation-item');
+
+            container.querySelector('[data-outcome="hide"]').click();
+
+            expect(window.apiClient.postActivityEvent).toHaveBeenCalledWith(
+                'test-token', 'recommendation.hidden', 'imp-1', 'gm-release-1',
+            );
+            expect(item.classList.contains('rec-outcome-collapsing')).toBe(true);
+
+            vi.advanceTimersByTime(UserPanes.OUTCOME_COLLAPSE_MS);
+            expect(container.querySelector('.recommendation-item')).toBeNull();
+            vi.useRealTimers();
+        });
+
+        it('collapses a dismissed row exactly once', () => {
+            vi.useFakeTimers();
+            const container = renderOne(recWithImpression());
+            const dismiss = container.querySelector('[data-outcome="dismiss"]');
+
+            dismiss.click();
+            dismiss.click();
+
+            expect(window.apiClient.postActivityEvent).toHaveBeenCalledTimes(1);
+            vi.advanceTimersByTime(UserPanes.OUTCOME_COLLAPSE_MS);
+            vi.useRealTimers();
+        });
+
+        it('sends null for item_id when the item carries no gm_id', () => {
+            const container = renderOne(recWithImpression({ gm_id: undefined }));
+
+            container.querySelector('[data-outcome="save"]').click();
+
+            expect(window.apiClient.postActivityEvent).toHaveBeenCalledWith(
+                'test-token', 'recommendation.saved', 'imp-1', null,
+            );
+        });
+
+        it('renders no controls and emits nothing for an item with no impression_id', () => {
+            const container = renderOne(recWithImpression({ impression_id: null }));
+
+            expect(container.querySelector('.rec-outcome-actions')).toBeNull();
+            container.querySelector('.release-list-title a').click();
+
+            expect(window.apiClient.postActivityEvent).not.toHaveBeenCalled();
+        });
+
+        it('renders no controls and emits nothing for an anonymous session', () => {
+            window.authManager.getToken.mockReturnValue(null);
+            const container = renderOne(recWithImpression());
+
+            expect(container.querySelector('.rec-outcome-actions')).toBeNull();
+            container.querySelector('.release-list-title a').click();
+
+            expect(window.apiClient.postActivityEvent).not.toHaveBeenCalled();
+            expect(window.exploreApp._loadExplore).toHaveBeenCalledWith('Portishead', 'artist');
+        });
+
+        it('exposes the controls as focusable buttons with accessible names', () => {
+            const container = renderOne(recWithImpression());
+            const buttons = [...container.querySelectorAll('.rec-outcome-actions button')];
+
+            expect(buttons.map(b => b.dataset.outcome)).toEqual(['save', 'dismiss', 'hide']);
+            buttons.forEach(btn => {
+                // A real button is reachable by Tab and activates on Enter and
+                // Space without any key handling of our own.
+                expect(btn.tagName).toBe('BUTTON');
+                expect(btn.type).toBe('button');
+                expect(btn.getAttribute('aria-label')).toBeTruthy();
+                expect(btn.hasAttribute('tabindex')).toBe(false);
+                expect(btn.querySelector('.rec-outcome-icon').getAttribute('aria-hidden')).toBe('true');
+            });
+
+            buttons[0].focus();
+            expect(document.activeElement).toBe(buttons[0]);
+        });
+
+        it('activates a control from the keyboard via the button default action', () => {
+            const container = renderOne(recWithImpression());
+            const save = container.querySelector('[data-outcome="save"]');
+
+            save.focus();
+            // jsdom does not synthesise the click a browser fires for Enter or
+            // Space on a focused button, so drive the default action directly.
+            document.activeElement.click();
+
+            expect(window.apiClient.postActivityEvent).toHaveBeenCalledWith(
+                'test-token', 'recommendation.saved', 'imp-1', 'gm-release-1',
+            );
         });
     });
 });

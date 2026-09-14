@@ -607,6 +607,16 @@ body {
     </header>
 
     <!-- ============================================================
+         Erasure receipt
+         Deleting an account clears the session, which switches the browser
+         away from Settings, so the receipt cannot live in the settings card
+         that produced it. This region sits outside every pane and survives
+         that switch; settings.js fills it once and the dismiss control
+         empties it.
+         ============================================================ -->
+    <div id="erasureReceiptBanner" class="erasure-receipt-banner" role="status" aria-live="polite" hidden></div>
+
+    <!-- ============================================================
          Main content
          ============================================================ -->
     <div class="main-content">
@@ -1176,6 +1186,39 @@ body {
                         <h3>Connected Apps</h3>
                     </div>
                     <div class="settings-card-body" id="appTokensContent">
+                        <!-- Populated dynamically by settings.js -->
+                    </div>
+                </div>
+
+                <!-- Privacy Card -->
+                <div class="settings-card" id="settingsPrivacyCard">
+                    <div class="settings-card-header">
+                        <span class="material-symbols-outlined">privacy_tip</span>
+                        <h3>Privacy</h3>
+                    </div>
+                    <div class="settings-card-body" id="privacyContent">
+                        <!-- Populated dynamically by settings.js -->
+                    </div>
+                </div>
+
+                <!-- Export Card -->
+                <div class="settings-card" id="settingsExportCard">
+                    <div class="settings-card-header">
+                        <span class="material-symbols-outlined">download</span>
+                        <h3>Export Your Data</h3>
+                    </div>
+                    <div class="settings-card-body" id="exportContent">
+                        <!-- Populated dynamically by settings.js -->
+                    </div>
+                </div>
+
+                <!-- Delete Account Card -->
+                <div class="settings-card" id="settingsDeleteAccountCard">
+                    <div class="settings-card-header">
+                        <span class="material-symbols-outlined">delete_forever</span>
+                        <h3>Delete Account</h3>
+                    </div>
+                    <div class="settings-card-body" id="deleteAccountContent">
                         <!-- Populated dynamically by settings.js -->
                     </div>
                 </div>

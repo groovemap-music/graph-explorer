@@ -2,6 +2,9 @@ const SETTINGS_STATE_FIELDS = [
     '_initialized', '_twoFaState', '_setupData', '_recoveryCodes',
     '_appTokensView', '_activeTokens', '_revokedTokens',
     '_mintedPlaintext', '_mintedTokenMeta',
+    '_consentPurposes', '_consentPending', '_consentError',
+    '_exportState', '_exportError',
+    '_deleteView', '_erasureResult',
 ];
 
 class SettingsState {
@@ -15,6 +18,13 @@ class SettingsState {
         this._revokedTokens = [];
         this._mintedPlaintext = null;
         this._mintedTokenMeta = null;
+        this._consentPurposes = [];
+        this._consentPending = null;
+        this._consentError = '';
+        this._exportState = 'idle';
+        this._exportError = '';
+        this._deleteView = 'idle';
+        this._erasureResult = null;
     }
 
     exposeOn(owner) {
@@ -34,6 +44,9 @@ class SettingsState {
         this._mintedPlaintext = null;
         this._mintedTokenMeta = null;
         this._appTokensView = 'list';
+        // The erasure confirm view holds a password field; leaving the pane
+        // drops it the way it drops a half-entered 2FA setup.
+        this._deleteView = 'idle';
     }
 }
 
