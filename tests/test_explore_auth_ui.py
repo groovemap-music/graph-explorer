@@ -548,3 +548,93 @@ class TestExploreNewStaticFiles:
         page.wait_for_timeout(500)
         defined = page.evaluate("typeof window.UserPanes !== 'undefined'")
         assert defined, "window.UserPanes must be defined"
+
+
+def _open_settings(page: Page, test_server: str) -> None:
+    """Sign in and open the Account Settings pane from the user dropdown."""
+    _set_logged_in(page, test_server)
+    page.locator("#userMenuToggle").click()
+    page.locator("#accountSettingsBtn").click()
+    expect(page.locator("#settingsPane")).to_have_class(re.compile(r"\bactive\b"), timeout=5000)
+
+
+@pytest.mark.e2e
+@pytest.mark.usefixtures("test_server")
+class TestExploreSettingsPrivacyExportErasure:
+    """E2E tests for the Privacy, Export, and Delete Account settings cards."""
+
+    def test_privacy_card_renders_both_purposes_from_the_server(self, page: Page, test_server: str) -> None:
+        """Both published purposes render with the state the API reported."""
+        _open_settings(page, test_server)
+
+        analytics = page.locator('[data-consent-toggle="product_analytics"]')
+        training = page.locator('[data-consent-toggle="model_training"]')
+        expect(analytics).to_be_checked(timeout=5000)
+        expect(training).not_to_be_checked(timeout=5000)
+
+    def test_privacy_toggle_writes_through_and_reflects_the_answer(self, page: Page, test_server: str) -> None:
+        """Granting a purpose persists and the control shows the stored state."""
+        _open_settings(page, test_server)
+
+        training = page.locator('[data-consent-toggle="model_training"]')
+        training.check()
+        expect(page.locator('[data-consent-toggle="model_training"]')).to_be_checked(timeout=5000)
+
+        stored = page.request.get(
+            f"{test_server}/api/user/consent",
+            headers={"Authorization": f"Bearer {_MOCK_TOKEN}"},
+        ).json()
+        granted = {row["purpose"]: row["granted"] for row in stored["purposes"]}
+        assert granted["model_training"] is True
+
+    def test_export_downloads_the_ndjson_file(self, page: Page, test_server: str) -> None:
+        """The export button downloads the NDJSON body under the published name."""
+        _open_settings(page, test_server)
+
+        with page.expect_download(timeout=15000) as download_info:
+            page.locator("#exportDataBtn").click()
+        assert download_info.value.suggested_filename == "groovemap-export.ndjson"
+        expect(page.locator("#exportNote")).to_contain_text("downloaded", timeout=5000)
+
+    def test_delete_account_confirm_requires_the_password(self, page: Page, test_server: str) -> None:
+        """Confirming with no password reports the requirement and calls nothing."""
+        _open_settings(page, test_server)
+
+        page.locator("#deleteAccountBtn").click()
+        page.locator("#erasureConfirmBtn").click()
+
+        expect(page.locator("#erasureError")).to_contain_text("Password is required", timeout=5000)
+        expect(page.locator("#erasurePassword")).to_be_visible()
+
+    def test_delete_account_rejects_a_wrong_password_and_keeps_the_panel(self, page: Page, test_server: str) -> None:
+        """A rejected credential reports the detail inline and leaves the panel standing.
+
+        The API answers a wrong erasure password with 401, which ApiTransport treats as
+        an expired session for every route alike, so the pane is hidden behind the
+        signed-out view even though the confirm panel itself is intact. The 2FA disable
+        card has answered a wrong password the same way since it was written; the
+        settings card does not clear the session itself.
+        """
+        _open_settings(page, test_server)
+
+        page.locator("#deleteAccountBtn").click()
+        page.locator("#erasurePassword").fill("not-the-password")
+        page.locator("#erasureConfirmBtn").click()
+
+        expect(page.locator("#erasureError")).to_contain_text("Incorrect password", timeout=5000)
+        expect(page.locator("#erasurePassword")).to_have_count(1)
+        expect(page.locator("#erasureConfirmBtn")).not_to_be_disabled()
+        expect(page.locator("#erasureId")).to_have_count(0)
+
+    def test_delete_account_shows_the_erasure_id_and_signs_out(self, page: Page, test_server: str) -> None:
+        """A successful erasure shows its id, clears the session, and signs the user out."""
+        _open_settings(page, test_server)
+
+        page.locator("#deleteAccountBtn").click()
+        page.locator("#erasurePassword").fill("testpassword")
+        page.locator("#erasureConfirmBtn").click()
+
+        expect(page.locator("#erasureId")).to_have_text("00000000-0000-0000-0000-0000000000ff", timeout=5000)
+        expect(page.locator("#navLoginBtn")).to_be_visible(timeout=5000)
+        expect(page.locator("#userDropdown")).to_have_class(re.compile(r"\bhidden\b"), timeout=5000)
+        assert page.evaluate("window.localStorage.getItem('auth_token')") is None

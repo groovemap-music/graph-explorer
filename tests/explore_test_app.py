@@ -261,6 +261,80 @@ def create_test_app() -> FastAPI:
         return JSONResponse(content={"status": {rid: {"in_collection": False, "in_wantlist": False} for rid in release_ids}})
 
     # ------------------------------------------------------------------ #
+    # Consent, export, and erasure endpoints
+    # ------------------------------------------------------------------ #
+
+    consent_state: dict[str, bool] = {"product_analytics": True, "model_training": False}
+
+    @app.get("/api/user/consent")
+    async def user_consent(authorization: str | None = Header(default=None)) -> JSONResponse:
+        """Return both published purposes in vocabulary order."""
+        if not authorization or not authorization.startswith("Bearer "):
+            return JSONResponse(content={"detail": "Not authenticated"}, status_code=401)
+        return JSONResponse(
+            content={
+                "purposes": [
+                    {
+                        "purpose": purpose,
+                        "granted": granted,
+                        "granted_at": "2026-01-01T00:00:00+00:00" if granted else None,
+                        "revoked_at": None,
+                    }
+                    for purpose, granted in consent_state.items()
+                ]
+            }
+        )
+
+    @app.put("/api/user/consent/{purpose}")
+    async def user_consent_set(
+        purpose: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ) -> JSONResponse:
+        """Record the decision for one purpose and echo the stored state."""
+        if not authorization or not authorization.startswith("Bearer "):
+            return JSONResponse(content={"detail": "Not authenticated"}, status_code=401)
+        if purpose not in consent_state:
+            return JSONResponse(content={"detail": f"Unknown purpose {purpose!r}"}, status_code=422)
+        body = await request.json()
+        granted = bool(body.get("granted"))
+        changed = consent_state[purpose] != granted
+        consent_state[purpose] = granted
+        return JSONResponse(content={"purpose": purpose, "granted": granted, "changed": changed})
+
+    @app.get("/api/user/export")
+    async def user_export(authorization: str | None = Header(default=None)) -> Response:
+        """Return a short NDJSON body the browser downloads as a file."""
+        if not authorization or not authorization.startswith("Bearer "):
+            return JSONResponse(content={"detail": "Not authenticated"}, status_code=401)
+        lines = [
+            json.dumps({"kind": "user", "record": MOCK_USER}),
+            json.dumps({"kind": "collection_item", "record": {"release_id": "10"}}),
+        ]
+        return Response(content="\n".join(lines) + "\n", media_type="application/x-ndjson")
+
+    @app.post("/api/user/erasure", status_code=202)
+    async def user_erasure(
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ) -> JSONResponse:
+        """Accept the mock password; reject anything else the way the API does."""
+        if not authorization or not authorization.startswith("Bearer "):
+            return JSONResponse(content={"detail": "Not authenticated"}, status_code=401)
+        body = await request.json()
+        if body.get("password") != "testpassword":
+            return JSONResponse(content={"detail": "Incorrect password"}, status_code=401)
+        return JSONResponse(
+            content={
+                "erasure_id": "00000000-0000-0000-0000-0000000000ff",
+                "events_deleted": 2,
+                "impressions_deleted": 1,
+                "incomplete": [],
+            },
+            status_code=202,
+        )
+
+    # ------------------------------------------------------------------ #
     # Sync endpoints
     # ------------------------------------------------------------------ #
 
