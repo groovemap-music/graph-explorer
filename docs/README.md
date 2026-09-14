@@ -3,6 +3,7 @@
 - [Architecture](architecture.md)
 - [Configuration](configuration.md)
 - [User guide and accessibility](user-guide.md)
+- [Activity events and account data controls](activity-and-account-data.md)
 - [Architecture decisions](architecture-decisions.md)
 - [Release compliance](release-compliance.md)
 - [History rewrite approval gate](history-rewrite-gate.md)
