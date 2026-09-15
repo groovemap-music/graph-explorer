@@ -3092,3 +3092,223 @@ select option {
     color: var(--text-high);
     border-color: var(--text-mid);
 }
+
+/* ==============================================================
+   "Will it fit?" — the item-in-hand fit profile pane
+   ============================================================== */
+
+.fit-pane-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1rem;
+}
+
+.fit-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.fit-candidates {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+}
+
+.fit-candidate {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-high);
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+}
+
+.fit-candidate:hover {
+    border-color: var(--accent-green);
+}
+
+.fit-candidate:focus-visible {
+    outline: 2px solid var(--accent-green);
+    outline-offset: 2px;
+}
+
+.fit-candidate.active {
+    border-color: var(--accent-green);
+    background: rgba(74, 222, 128, 0.08);
+}
+
+.fit-candidate-name {
+    font-weight: 600;
+}
+
+.fit-candidate-meta,
+.fit-card-meta {
+    color: var(--text-mid);
+    font-size: 0.8125rem;
+}
+
+.fit-candidate-badges,
+.fit-card-badges {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-left: auto;
+    flex-wrap: wrap;
+}
+
+.fit-media-badge,
+.fit-rarity-badge,
+.fit-confidence {
+    font-size: 0.6875rem;
+    padding: 0.125rem 0.4rem;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    color: var(--text-mid);
+    white-space: nowrap;
+}
+
+/* The identity marker, not a fit marker: "exact release" says the service
+   scored the pressing in the collector's hand, "master only" says it scored the
+   record but maybe not this edition. Coloured apart from the score bars so the
+   two are never read as the same axis. */
+.fit-confidence-exact {
+    color: var(--accent-green);
+    border-color: var(--accent-green);
+    background: rgba(74, 222, 128, 0.1);
+}
+
+.fit-confidence-master {
+    color: #fbbf24;
+    border-color: #fbbf24;
+    background: rgba(251, 191, 36, 0.1);
+}
+
+.fit-card {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.fit-card--saved {
+    border-color: var(--accent-green);
+}
+
+.fit-card-header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.fit-card-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+}
+
+.fit-overall {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.fit-overall-label {
+    font-weight: 600;
+}
+
+.fit-overall-value {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+}
+
+.fit-components {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.fit-component {
+    display: grid;
+    grid-template-columns: 7rem 1fr 3rem;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.fit-component-score {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    color: var(--text-mid);
+}
+
+.fit-evidence {
+    grid-column: 2 / -1;
+    margin: 0;
+    padding-left: 1rem;
+    color: var(--text-mid);
+    font-size: 0.8125rem;
+}
+
+.fit-bar {
+    height: 0.5rem;
+    border-radius: 999px;
+    background: var(--border-color);
+    overflow: hidden;
+}
+
+.fit-overall-bar {
+    height: 0.75rem;
+}
+
+.fit-bar-fill {
+    height: 100%;
+    background: var(--accent-green);
+}
+
+.fit-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+/* The scoring procedure, in small print and always shown: the components a
+   collector just read are a version's judgement, not a fact about the record. */
+.fit-version {
+    margin: 0;
+    color: var(--text-mid);
+    font-size: 0.75rem;
+}
+
+.fit-notice {
+    margin: 0;
+    font-size: 0.875rem;
+}
+
+/* The card collapses on dismiss or hide exactly as a recommendation row does —
+   the outcome is already recorded server side, so there is nothing to undo. */
+.fit-card.rec-outcome-collapsing {
+    overflow: hidden;
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    opacity: 0;
+    pointer-events: none;
+    transition: max-height 0.15s ease, opacity 0.15s ease, padding 0.15s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .fit-card.rec-outcome-collapsing {
+        transition: none;
+    }
+}

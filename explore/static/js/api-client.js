@@ -532,6 +532,37 @@ class ApiClient {
         return this._transport.readJson(response);
     }
 
+    // --- CrateFit (the item-in-hand fit profile) ---
+
+    /**
+     * Fetch the decomposed fit profile for one candidate release.
+     *
+     * The profile is always computed against the *caller's own* collection, so
+     * the token is not optional decoration: without one there is no collection
+     * to answer about and the method returns null rather than issuing a request
+     * the server would only reject.
+     *
+     * Returns null for every non-OK status — a 404 for a release the graph does
+     * not carry reads the same to the pane as a 503 from a cold service, and the
+     * pane says "no profile" either way. A 401 is the exception that still has a
+     * side effect: `_checkAuthResponse` reconciles auth state before the null is
+     * returned, so an expired token logs the session out instead of leaving the
+     * nav claiming a user the API no longer recognises.
+     *
+     * @param {string} token - JWT auth token
+     * @param {string} releaseId - The Discogs release id of the candidate
+     * @returns {Promise<Object|null>} The fit profile, or null
+     */
+    async getFitProfile(token, releaseId) {
+        if (!token || !releaseId) return null;
+        const response = await this._transport.fetch(`/api/fit/release/${encodeURIComponent(releaseId)}`, {
+            headers: { 'Authorization': `Bearer ${token}` },
+        });
+        this._checkAuthResponse(response);
+        if (!response.ok) return null;
+        return this._transport.readJson(response);
+    }
+
     // --- Activity outcomes, consent, export, and erasure (ADR 0010) ---
 
     /**

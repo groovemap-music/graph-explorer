@@ -1,7 +1,7 @@
 # Activity events and account data controls
 
-The explorer records what a signed-in collector does with a recommendation, and gives that
-collector three controls over the resulting data: consent per purpose, a full export, and
+The explorer records what a signed-in collector does with a recommendation or a fit profile, and
+gives that collector three controls over the resulting data: consent per purpose, a full export, and
 account deletion. Both halves are decided together in
 [ADR 0010](https://github.com/groovemap-music/design/blob/main/docs/adr/0010-first-party-events-consent-and-deletion.md),
 which owns the event vocabulary, the consent purposes, and the erasure procedure. This
@@ -25,6 +25,22 @@ nothing at all.
 | Discover | Dismiss | `recommendation.dismissed` |
 | Discover | Hide | `recommendation.hidden` |
 | Search | Opening a hit that carries an impression | `recommendation.opened` |
+| Will it fit? | Save | `recommendation.saved` |
+| Will it fit? | Dismiss | `recommendation.dismissed` |
+| Will it fit? | Hide | `recommendation.hidden` |
+
+The fit pane uses the recommendation terms rather than fit-specific ones, and that is not a
+placeholder. A fit profile *is* a ranked showing of one candidate, which is what the version 1
+vocabulary's `recommendation` surface names; `catalog-api` records the impression against that
+surface under the `cratefit_v0` policy id, and the policy id is what tells a fit row apart from a
+Discover row in the stored data. When the vocabulary gains a fit surface, the terms this pane posts
+are what change.
+
+Reading a profile records nothing from the browser. The showing is written server side when
+`catalog-api` composes the response, exactly as a recommendation impression is, and the
+`impression_id` it returns is what the three controls attribute an outcome to. There is no fit
+equivalent of the Discover click-through: the pane is where the release is read, so there is
+nothing to open.
 
 Search records only the open. Hits are already logged server side as
 `search.result_impression` when the API returns them, and the version 1 vocabulary has no
@@ -41,7 +57,9 @@ written by `catalog-api` when it composes the response, not by the page that ren
   rendered, and the click-through emits no event. This is not a consent question — an
   anonymous visitor has no subject to attribute an event to.
 - **An item with no `impression_id` records nothing**, and renders no outcome controls,
-  because there is nothing for an outcome to attach to.
+  because there is nothing for an outcome to attach to. A fit profile for a release the alias
+  table carries no native id for comes back with a null `impression_id` for exactly this reason,
+  and its card renders no Save, Dismiss, or Hide.
 - **Consent is enforced upstream.** The browser posts the same events whatever the consent
   state; `catalog-api` decides what is durably written. Revoking a purpose in the Privacy
   card is not a client-side mute.
@@ -56,15 +74,15 @@ the interface depends on it.
 
 ### Save, Dismiss, and Hide in the interface
 
-The three controls are real buttons on each recommendation row, reachable by Tab and
-activated by Enter and Space with no key handling of the application's own. The glyph is
-`aria-hidden` and the accessible name comes from an `aria-label` naming the release.
+The three controls are real buttons on each recommendation row and on a fit profile card,
+reachable by Tab and activated by Enter and Space with no key handling of the application's own.
+The glyph is `aria-hidden` and the accessible name comes from an `aria-label` naming the release.
 
 - **Save** marks the row and is terminal. The vocabulary has no un-save verb, so a repeat
   click records nothing.
-- **Dismiss** and **Hide** collapse the row and remove it. There is no undo: the outcome is
-  already recorded upstream, so an undo affordance would promise a retraction the browser
-  cannot perform.
+- **Dismiss** and **Hide** collapse the row — or, in the fit pane, the whole profile card — and
+  remove it. There is no undo: the outcome is already recorded upstream, so an undo affordance
+  would promise a retraction the browser cannot perform.
 
 ## Account data controls
 
