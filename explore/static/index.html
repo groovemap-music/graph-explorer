@@ -850,7 +850,18 @@ body {
                             <span class="material-symbols-outlined mr-1" style="font-size:18px">search</span>Search
                         </button>
                     </div>
-                    <div class="search-pane-filters">
+                    <!-- Which route the box asks. Text searches titles and names;
+                         the three others resolve one catalogue marking (ADR 0011)
+                         straight to the release that carries it, which is the only
+                         thing a collector holding a record can always read. -->
+                    <div class="search-mode-toggle" id="searchModeToggle" role="group" aria-label="Search mode">
+                        <span class="search-filter-label">Look up by</span>
+                        <button class="search-chip search-chip-sm active" type="button" data-search-mode="text" aria-pressed="true">Text</button>
+                        <button class="search-chip search-chip-sm" type="button" data-search-mode="barcode" aria-pressed="false">Barcode</button>
+                        <button class="search-chip search-chip-sm" type="button" data-search-mode="catalog_number" aria-pressed="false">Catalogue number</button>
+                        <button class="search-chip search-chip-sm" type="button" data-search-mode="matrix" aria-pressed="false">Matrix</button>
+                    </div>
+                    <div class="search-pane-filters" id="searchPaneFilters">
                         <div class="search-type-chips" id="searchTypeChips">
                             <button class="search-chip active" data-search-type="artist">Artist</button>
                             <button class="search-chip active" data-search-type="label">Label</button>
@@ -867,6 +878,7 @@ body {
                         </div>
                         <div class="search-genre-filter" id="searchGenreFilter"></div>
                         <div class="search-media-filter" id="searchMediaFilter"></div>
+                        <div class="search-country-filter" id="searchCountryFilter"></div>
                     </div>
                 </div>
 
@@ -909,6 +921,17 @@ body {
                     </div>
 
                     <div class="fit-picker" id="fitPicker" hidden>
+                        <!-- The picker takes a title or a marking for the same
+                             reason the search box does: the record in the
+                             collector's hand may have a barcode they can scan and
+                             a label they cannot read. -->
+                        <div class="search-mode-toggle" id="fitModeToggle" role="group" aria-label="Find the release by">
+                            <span class="search-filter-label">Find by</span>
+                            <button class="search-chip search-chip-sm active" type="button" data-fit-mode="text" aria-pressed="true">Title</button>
+                            <button class="search-chip search-chip-sm" type="button" data-fit-mode="barcode" aria-pressed="false">Barcode</button>
+                            <button class="search-chip search-chip-sm" type="button" data-fit-mode="catalog_number" aria-pressed="false">Catalogue number</button>
+                            <button class="search-chip search-chip-sm" type="button" data-fit-mode="matrix" aria-pressed="false">Matrix</button>
+                        </div>
                         <div class="search-pane-input-row">
                             <div class="search-pane-input-wrap">
                                 <span class="material-symbols-outlined search-pane-icon">album</span>

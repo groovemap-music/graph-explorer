@@ -45,6 +45,16 @@ flowchart LR
 - The image and wheel are built entirely from this repository plus the exact reviewed
   `python-libraries` commit prepared as a wheel before the isolated image build.
 
+Catalogue identifiers are owned upstream under
+[ADR 0011](https://github.com/groovemap-music/design/blob/main/docs/adr/0011-catalog-identifiers-and-manufacturing-credits.md).
+The browser sends a barcode, catalogue number, or matrix inscription to `/api/lookup` exactly as
+the collector typed it and renders what comes back; which namespaces are addressable and how each
+normalizes its value are decided by `catalog-api`, and nothing about that normalization is
+reimplemented here. The identifier type labels in `explore/static/js/app.js` are presentation
+only, and a type the map has no word for is rendered as the producer named it. Release country is
+matched by the producer exactly as the catalog stores it, so the country chips send back the
+string they were given.
+
 The media taxonomy is likewise owned upstream. `catalog-api` classifies every release into
 canonical media families and mediums, and the browser only renders what the collection media
 endpoint and each release's `media` block report — the family label map in

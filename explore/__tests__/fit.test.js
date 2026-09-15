@@ -67,7 +67,13 @@ function setupFitDOM() {
         <div class="pane" id="fitPane">
             <div class="user-pane-empty" id="fitSignedOut" hidden></div>
             <div class="fit-picker" id="fitPicker" hidden>
-                <input type="text" id="fitSearchInput">
+                <div id="fitModeToggle">
+                    <button type="button" class="search-chip active" data-fit-mode="text" aria-pressed="true">Title</button>
+                    <button type="button" class="search-chip" data-fit-mode="barcode" aria-pressed="false">Barcode</button>
+                    <button type="button" class="search-chip" data-fit-mode="catalog_number" aria-pressed="false">Catalogue number</button>
+                    <button type="button" class="search-chip" data-fit-mode="matrix" aria-pressed="false">Matrix</button>
+                </div>
+                <input type="text" id="fitSearchInput" placeholder="Find the release in your hand...">
                 <button id="fitSearchBtn"></button>
                 <button id="fitRunBtn" disabled></button>
                 <div class="fit-candidates" id="fitCandidates"></div>
@@ -93,6 +99,7 @@ describe('FitPane', () => {
         setupFitDOM();
         window.apiClient = {
             search: vi.fn(),
+            lookup: vi.fn(),
             getFitProfile: vi.fn(),
             postActivityEvent: vi.fn().mockResolvedValue({ ok: true, status: 202, body: null }),
         };
@@ -546,6 +553,162 @@ describe('FitPane', () => {
             pane.emitOutcome('recommendation.saved', SPARSE_PROFILE);
 
             expect(window.apiClient.postActivityEvent).not.toHaveBeenCalled();
+        });
+    });
+    // ------------------------------------------------------------------ //
+    // Identifier lookup in the picker (ADR 0011)
+    // ------------------------------------------------------------------ //
+
+    describe('lookup mode', () => {
+        /** One barcode, two catalogs: only the Discogs row can be scored. */
+        const RESOLVED = {
+            provider: 'barcode',
+            value: '5 012394 144777',
+            normalized: '5012394144777',
+            gm_id: 'gm:release:249504',
+            releases: [
+                { id: '249504', source: 'discogs', title: 'Never Gonna Give You Up', artist: 'Rick Astley', year: 1987, media_families: ['vinyl'] },
+                { id: 'mb-1', source: 'musicbrainz', title: 'Never Gonna Give You Up', artist: null, year: 1987, media_families: ['vinyl'] },
+            ],
+        };
+
+        function selectMode(mode) {
+            document.querySelector(`[data-fit-mode="${mode}"]`).click();
+        }
+
+        beforeEach(() => {
+            pane.init();
+        });
+
+        it('marks the chosen mode as pressed', () => {
+            selectMode('barcode');
+
+            expect(document.querySelector('[data-fit-mode="barcode"]').getAttribute('aria-pressed')).toBe('true');
+            expect(document.querySelector('[data-fit-mode="text"]').getAttribute('aria-pressed')).toBe('false');
+        });
+
+        it('names the marking it is asking for in the input', () => {
+            selectMode('matrix');
+
+            const input = document.getElementById('fitSearchInput');
+            expect(input.placeholder).toContain('matrix');
+            expect(input.getAttribute('aria-label')).toBe('Matrix of the release in your hand');
+        });
+
+        it('sends the typed value to the lookup route instead of search', async () => {
+            window.apiClient.lookup.mockResolvedValue(RESOLVED);
+            selectMode('barcode');
+
+            await pane.findCandidates('5 012394 144777');
+
+            expect(window.apiClient.lookup).toHaveBeenCalledWith('barcode', '5 012394 144777');
+            expect(window.apiClient.search).not.toHaveBeenCalled();
+        });
+
+        it('looks up a value shorter than the search route would accept', async () => {
+            window.apiClient.lookup.mockResolvedValue(RESOLVED);
+            selectMode('catalog_number');
+
+            await pane.findCandidates('ST1');
+
+            expect(window.apiClient.lookup).toHaveBeenCalledWith('catalog_number', 'ST1');
+        });
+
+        it('offers every resolved row as a candidate and names its catalog', async () => {
+            window.apiClient.lookup.mockResolvedValue(RESOLVED);
+            selectMode('barcode');
+
+            await pane.findCandidates('5 012394 144777');
+
+            const options = document.querySelectorAll('.fit-candidate');
+            expect(options.length).toBe(2);
+            expect(Array.from(document.querySelectorAll('.fit-source-badge')).map(el => el.textContent))
+                .toEqual(['discogs', 'musicbrainz']);
+        });
+
+        it('leaves a row the fit route cannot score unselectable', async () => {
+            window.apiClient.lookup.mockResolvedValue(RESOLVED);
+            selectMode('barcode');
+
+            await pane.findCandidates('5 012394 144777');
+
+            const options = document.querySelectorAll('.fit-candidate');
+            expect(options[0].disabled).toBe(false);
+            expect(options[1].disabled).toBe(true);
+            expect(options[1].classList.contains('fit-candidate-unscoreable')).toBe(true);
+        });
+
+        it('enables the run button once the scoreable row is chosen', async () => {
+            window.apiClient.lookup.mockResolvedValue(RESOLVED);
+            selectMode('barcode');
+            await pane.findCandidates('5 012394 144777');
+
+            document.querySelectorAll('.fit-candidate')[0].click();
+
+            expect(document.getElementById('fitRunBtn').disabled).toBe(false);
+        });
+
+        it('scores the release the identifier resolved to', async () => {
+            window.apiClient.lookup.mockResolvedValue(RESOLVED);
+            window.apiClient.getFitProfile.mockResolvedValue(FULL_PROFILE);
+            selectMode('barcode');
+            await pane.findCandidates('5 012394 144777');
+            document.querySelectorAll('.fit-candidate')[0].click();
+
+            await pane.loadProfile();
+
+            expect(window.apiClient.getFitProfile).toHaveBeenCalledWith('valid-token', '249504');
+            expect(document.querySelector('.fit-card')).not.toBeNull();
+        });
+
+        it('reports a miss in the producer\'s own words', async () => {
+            window.apiClient.lookup.mockResolvedValue({ notFound: true, error: "No release found for barcode '0'" });
+            selectMode('barcode');
+
+            await pane.findCandidates('0');
+
+            expect(document.querySelector('.fit-notice').textContent).toBe("No release found for barcode '0'");
+        });
+
+        it('asks for a value before issuing a request', async () => {
+            selectMode('barcode');
+
+            await pane.findCandidates('   ');
+
+            expect(window.apiClient.lookup).not.toHaveBeenCalled();
+            expect(document.querySelector('.fit-notice').textContent).toContain('Scan or type a barcode');
+        });
+
+        it('survives a network-level rejection', async () => {
+            window.apiClient.lookup.mockRejectedValue(new TypeError('Failed to fetch'));
+            selectMode('barcode');
+
+            await pane.findCandidates('5012394144777');
+
+            expect(document.querySelector('.fit-notice').textContent).toContain('Could not look that up');
+        });
+
+        it('clears the shortlist when the mode changes', async () => {
+            window.apiClient.lookup.mockResolvedValue(RESOLVED);
+            selectMode('barcode');
+            await pane.findCandidates('5 012394 144777');
+            document.querySelectorAll('.fit-candidate')[0].click();
+
+            selectMode('text');
+
+            expect(document.getElementById('fitCandidates').children.length).toBe(0);
+            expect(document.getElementById('fitRunBtn').disabled).toBe(true);
+        });
+
+        it('returns to searching titles when the mode goes back', async () => {
+            window.apiClient.search.mockResolvedValue({ results: [RELEASE_HIT], total: 1 });
+            selectMode('barcode');
+            selectMode('text');
+
+            await pane.findCandidates('never gonna');
+
+            expect(window.apiClient.search).toHaveBeenCalled();
+            expect(window.apiClient.lookup).not.toHaveBeenCalled();
         });
     });
 });

@@ -3110,3 +3110,144 @@ describe('ExploreApp - password reset and 2FA UI handlers', () => {
         });
     });
 });
+
+// ------------------------------------------------------------------
+// The release view: markings, credits, and country (ADR 0011)
+// ------------------------------------------------------------------
+
+describe('ExploreApp release detail', () => {
+    /** A release as the producer now returns it, blocks and all. */
+    const RELEASE = {
+        id: '249504',
+        name: 'Never Gonna Give You Up',
+        year: 1987,
+        country: 'UK',
+        identifiers: [
+            { type: 'barcode', value: '5 012394 144777', description: null },
+            { type: 'matrix_runout', value: 'PB 41447-A2', description: 'A side runout' },
+            { type: 'label_code', value: 'LC 0287', description: null },
+        ],
+        companies: [
+            { name: 'Damont', discogs_id: 12345, role: 'Pressed By', role_category: 'pressing', catno: null },
+            { name: 'BMG', discogs_id: 999, role: 'Distributed By', role_category: 'distribution', catno: null },
+        ],
+    };
+
+    /** Render one release and hand back the section with that heading. */
+    function sectionFor(details, heading) {
+        const app = new ExploreApp();
+        const nodes = app._renderDetails(details, 'release', details.id);
+        const host = document.createElement('div');
+        host.append(...nodes);
+        return host.querySelector(`[data-detail-section="${heading}"]`);
+    }
+
+    /** Render one release and hand back its stat rows as label/value pairs. */
+    function statsFor(details) {
+        const app = new ExploreApp();
+        const nodes = app._renderDetails(details, 'release', details.id);
+        const host = document.createElement('div');
+        host.append(...nodes);
+        return Array.from(host.querySelectorAll('.detail-stat')).map(el => [
+            el.querySelector('.label').textContent,
+            el.querySelector('.value').textContent,
+        ]);
+    }
+
+    beforeEach(() => {
+        setupAppDOM();
+        setupGlobalMocks();
+        globalThis.d3 = createD3Mock();
+    });
+
+    describe('country', () => {
+        it('shows the country beside the year', () => {
+            expect(statsFor(RELEASE)).toEqual([['Year', '1987'], ['Country', 'UK']]);
+        });
+
+        it('shows no country row when the catalog gave none', () => {
+            expect(statsFor({ ...RELEASE, country: null })).toEqual([['Year', '1987']]);
+        });
+    });
+
+    describe('identifiers', () => {
+        it('lists each marking as its type and value', () => {
+            const rows = Array.from(sectionFor(RELEASE, 'identifiers').querySelectorAll('.detail-row'))
+                .map(el => [el.querySelector('.term').textContent, el.querySelector('.value').textContent]);
+
+            expect(rows).toEqual([
+                ['Barcode', '5 012394 144777'],
+                ['Matrix / runout', 'PB 41447-A2 (A side runout)'],
+                ['Label code', 'LC 0287'],
+            ]);
+        });
+
+        it('keeps the order the producer published them in', () => {
+            const values = Array.from(sectionFor(RELEASE, 'identifiers').querySelectorAll('.value'))
+                .map(el => el.textContent);
+
+            expect(values[0]).toContain('5 012394 144777');
+            expect(values[1]).toContain('PB 41447-A2');
+        });
+
+        it('shows a type it has no word for as the producer named it', () => {
+            const details = { ...RELEASE, identifiers: [{ type: 'other_marking', value: 'XYZ', description: null }] };
+
+            const term = sectionFor(details, 'identifiers').querySelector('.term');
+
+            expect(term.textContent).toBe('other_marking');
+        });
+
+        it('renders no section for a release with no markings', () => {
+            expect(sectionFor({ ...RELEASE, identifiers: [] }, 'identifiers')).toBeNull();
+        });
+
+        it('renders no section when the producer sent no block at all', () => {
+            const details = { ...RELEASE };
+            delete details.identifiers;
+
+            expect(sectionFor(details, 'identifiers')).toBeNull();
+        });
+
+        it('drops an entry with no value rather than rendering an empty row', () => {
+            const details = { ...RELEASE, identifiers: [{ type: 'barcode', value: '', description: null }] };
+
+            expect(sectionFor(details, 'identifiers')).toBeNull();
+        });
+    });
+
+    describe('credits', () => {
+        it('lists each company as its role and name', () => {
+            const rows = Array.from(sectionFor(RELEASE, 'credits').querySelectorAll('.detail-row'))
+                .map(el => [el.querySelector('.term').textContent, el.querySelector('.value').textContent]);
+
+            expect(rows).toEqual([['Pressed By', 'Damont'], ['Distributed By', 'BMG']]);
+        });
+
+        it('keeps the provider\'s own word for the role', () => {
+            const details = { ...RELEASE, companies: [{ name: 'Abbey Road', role: 'Lacquer Cut At', role_category: 'mastering' }] };
+
+            expect(sectionFor(details, 'credits').querySelector('.term').textContent).toBe('Lacquer Cut At');
+        });
+
+        it('renders no section for a release with no credits', () => {
+            expect(sectionFor({ ...RELEASE, companies: [] }, 'credits')).toBeNull();
+        });
+
+        it('renders no section when the producer sent no block at all', () => {
+            const details = { ...RELEASE };
+            delete details.companies;
+
+            expect(sectionFor(details, 'credits')).toBeNull();
+        });
+    });
+
+    it('renders the markings as text, never as markup', () => {
+        const details = { ...RELEASE, identifiers: [{ type: 'barcode', value: '<img src=x onerror=alert(1)>', description: null }] };
+
+        const section = sectionFor(details, 'identifiers');
+
+        expect(section.querySelector('img')).toBeNull();
+        expect(section.querySelector('.value').textContent).toBe('<img src=x onerror=alert(1)>');
+    });
+});
