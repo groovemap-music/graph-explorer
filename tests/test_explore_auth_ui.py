@@ -810,3 +810,131 @@ class TestExploreRecommendationOutcomes:
         assert rendered == 0
         page.wait_for_timeout(500)
         assert _recorded_events(page, test_server) == []
+
+
+_FIT_IMPRESSION = "33333333-3333-3333-3333-333333333333"
+_FIT_GM_ID = "gm:release:249504"
+_FIT_TITLE = "Never Gonna Give You Up"
+
+
+def _open_fit(page: Page, test_server: str) -> None:
+    """Sign in, clear the recorded event log, and open the fit pane."""
+    _set_logged_in(page, test_server)
+    page.request.delete(f"{test_server}/api/activity/events")
+    page.locator('[data-pane="fit"]').click()
+    expect(page.locator("#fitPane")).to_have_class(re.compile(r"\bactive\b"), timeout=5000)
+    expect(page.locator("#fitPicker")).to_be_visible(timeout=5000)
+
+
+def _pick_and_score(page: Page, test_server: str) -> None:
+    """Walk the whole surface: type, find, pick a candidate, and ask for the fit."""
+    _open_fit(page, test_server)
+    page.locator("#fitSearchInput").fill("Never Gonna")
+    page.locator("#fitSearchBtn").click()
+    expect(page.locator(".fit-candidate").first).to_be_visible(timeout=8000)
+    page.locator(".fit-candidate").first.click()
+    expect(page.locator("#fitRunBtn")).to_be_enabled(timeout=5000)
+    page.locator("#fitRunBtn").click()
+    expect(page.locator(".fit-card")).to_be_visible(timeout=8000)
+
+
+@pytest.mark.e2e
+@pytest.mark.usefixtures("test_server")
+class TestExploreFitPane:
+    """E2E tests for the item-in-hand fit pane: pick, fit, and one outcome."""
+
+    def test_an_anonymous_session_sees_the_prompt_and_no_picker(self, page: Page, test_server: str) -> None:
+        """The pane is reachable signed out and answers with a sign-in prompt."""
+        page.goto(test_server, wait_until="domcontentloaded", timeout=30000)
+        _wait_for_alpine(page)
+        page.evaluate("window.localStorage.removeItem('auth_token')")
+        page.reload(wait_until="domcontentloaded", timeout=30000)
+        _wait_for_alpine(page)
+
+        page.locator('[data-pane="fit"]').click()
+
+        expect(page.locator("#fitPane")).to_have_class(re.compile(r"\bactive\b"), timeout=5000)
+        expect(page.locator("#fitSignedOut")).to_be_visible(timeout=5000)
+        expect(page.locator("#fitPicker")).to_be_hidden()
+
+    def test_the_picker_finds_a_candidate_release(self, page: Page, test_server: str) -> None:
+        """A query over the release type produces a pickable hit with its metadata."""
+        _open_fit(page, test_server)
+
+        page.locator("#fitSearchInput").fill("Never Gonna")
+        page.locator("#fitSearchBtn").click()
+
+        candidate = page.locator(".fit-candidate").first
+        expect(candidate).to_be_visible(timeout=8000)
+        expect(candidate).to_have_attribute("data-release-id", "249504", timeout=5000)
+        expect(candidate.locator(".fit-candidate-name")).to_have_text(_FIT_TITLE)
+
+    def test_the_action_waits_for_a_candidate(self, page: Page, test_server: str) -> None:
+        """Nothing is scored until a release has been picked."""
+        _open_fit(page, test_server)
+
+        expect(page.locator("#fitRunBtn")).to_be_disabled()
+
+        page.locator("#fitSearchInput").fill("Never Gonna")
+        page.locator("#fitSearchBtn").click()
+        expect(page.locator(".fit-candidate").first).to_be_visible(timeout=8000)
+        expect(page.locator("#fitRunBtn")).to_be_disabled()
+
+        page.locator(".fit-candidate").first.click()
+        expect(page.locator("#fitRunBtn")).to_be_enabled(timeout=5000)
+
+    def test_the_profile_card_shows_the_whole_decomposition(self, page: Page, test_server: str) -> None:
+        """Overall bar, five named component rows with evidence, confidence, and version."""
+        _pick_and_score(page, test_server)
+
+        expect(page.locator(".fit-card-title")).to_have_text(_FIT_TITLE, timeout=5000)
+        expect(page.locator(".fit-overall-value")).to_have_text("62%")
+        expect(page.locator(".fit-overall-bar")).to_have_attribute("aria-valuenow", "62")
+        expect(page.locator(".fit-component")).to_have_count(5)
+        for component in ("affinity", "novelty", "bridge", "depth", "redundancy"):
+            expect(page.locator(f'.fit-component[data-component="{component}"]')).to_have_count(1)
+        expect(page.locator('.fit-component[data-component="affinity"] .fit-evidence li').first).to_contain_text("shares artist Rick Astley")
+        expect(page.locator(".fit-confidence")).to_have_text("exact release")
+        expect(page.locator(".fit-version")).to_have_text("Scored by cratefit_v0")
+
+    def test_the_card_carries_the_impression_the_profile_was_served_under(self, page: Page, test_server: str) -> None:
+        """An outcome is attributed to the showing, so the card keeps its ids."""
+        _pick_and_score(page, test_server)
+
+        card = page.locator(".fit-card")
+        expect(card).to_have_attribute("data-impression-id", _FIT_IMPRESSION, timeout=5000)
+        expect(card).to_have_attribute("data-gm-id", _FIT_GM_ID)
+
+    def test_the_landing_point_centres_on_the_candidate(self, page: Page, test_server: str) -> None:
+        """The snapshot puts the release in the middle and its evidence around it."""
+        _pick_and_score(page, test_server)
+
+        centre = page.evaluate("() => window.exploreApp.graph.centerName")
+        assert centre == _FIT_TITLE
+        assert page.evaluate("() => window.exploreApp.graph.centerType") == "release"
+        satellites = page.evaluate("() => window.exploreApp.graph.nodes.filter(n => !n.isCenter).map(n => n.name)")
+        assert "Rick Astley" in satellites
+
+        page.locator("#fitLandingBtn").click()
+        expect(page.locator("#explorePane")).to_have_class(re.compile(r"\bactive\b"), timeout=5000)
+
+    def test_saving_the_profile_records_the_outcome(self, page: Page, test_server: str) -> None:
+        """Save emits recommendation.saved against the profile's own impression."""
+        _pick_and_score(page, test_server)
+
+        page.locator('[data-outcome="save"]').click()
+
+        event = _expect_recorded(page, test_server, "recommendation.saved")
+        assert event["impression_id"] == _FIT_IMPRESSION
+        assert event["item_id"] == _FIT_GM_ID
+        expect(page.locator('[data-outcome="save"]')).to_have_attribute("aria-pressed", "true", timeout=5000)
+
+    def test_dismissing_the_profile_records_the_outcome_and_collapses_the_card(self, page: Page, test_server: str) -> None:
+        """Dismiss emits recommendation.dismissed and takes the card away."""
+        _pick_and_score(page, test_server)
+
+        page.locator('[data-outcome="dismiss"]').click()
+
+        event = _expect_recorded(page, test_server, "recommendation.dismissed")
+        assert event["impression_id"] == _FIT_IMPRESSION
+        expect(page.locator(".fit-card")).to_have_count(0, timeout=5000)

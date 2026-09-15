@@ -576,6 +576,11 @@ body {
                         <span class="material-symbols-outlined">badge</span>Credits
                     </a>
                 </li>
+                <li>
+                    <a class="nav-link" href="#" data-pane="fit">
+                        <span class="material-symbols-outlined">fact_check</span>Will it fit?
+                    </a>
+                </li>
             </ul>
         </nav>
 
@@ -880,6 +885,54 @@ body {
                 <div class="search-pane-results" id="searchResults"></div>
 
                 <div class="search-pane-pagination" id="searchPagination"></div>
+            </div>
+        </div>
+
+        <!-- ============================================================
+             Will it fit? — the item-in-hand fit profile (CrateFit v0)
+             Reachable signed out on purpose: the pane answers the question
+             with a sign-in prompt rather than vanishing from the nav, because
+             a collector standing in a shop needs to be told what to do, not
+             shown nothing. The picker is the part that is withheld — a fit
+             answer is computed against the caller's own collection, so there
+             is nothing to pick a candidate for until there is a session.
+             ============================================================ -->
+        <div class="pane" id="fitPane">
+            <div class="user-pane-header">
+                <h5><span class="material-symbols-outlined mr-2" style="font-size:20px;vertical-align:middle">fact_check</span>Will it fit?</h5>
+            </div>
+            <div class="user-pane-body">
+                <div class="fit-pane-container">
+                    <div class="user-pane-empty" id="fitSignedOut" hidden>
+                        <span class="material-symbols-outlined icon-3x mb-3">lock</span>
+                        <p>Log in and sync your collection to score a record against your own shelves.</p>
+                    </div>
+
+                    <div class="fit-picker" id="fitPicker" hidden>
+                        <div class="search-pane-input-row">
+                            <div class="search-pane-input-wrap">
+                                <span class="material-symbols-outlined search-pane-icon">album</span>
+                                <input type="text" class="form-input-dark search-pane-input" id="fitSearchInput"
+                                       placeholder="Find the release in your hand..." autocomplete="off"
+                                       aria-label="Find the release in your hand">
+                            </div>
+                            <button class="btn-outline-secondary search-pane-btn" id="fitSearchBtn">
+                                <span class="material-symbols-outlined mr-1" style="font-size:18px">search</span>Find
+                            </button>
+                            <button class="btn-primary search-pane-btn" id="fitRunBtn" disabled>
+                                <span class="material-symbols-outlined mr-1" style="font-size:18px">fact_check</span>Will it fit?
+                            </button>
+                        </div>
+                        <div class="fit-candidates" id="fitCandidates" role="listbox" aria-label="Candidate releases"></div>
+                    </div>
+
+                    <div class="loading-overlay" id="fitLoading">
+                        <div class="spinner" role="status"></div>
+                        <p class="mt-2 text-text-mid">Scoring against your collection...</p>
+                    </div>
+
+                    <div class="fit-profile" id="fitBody" aria-live="polite"></div>
+                </div>
             </div>
         </div>
 
@@ -1248,6 +1301,7 @@ body {
     <script src="js/user-pane-state.js"></script>
     <script src="js/user-panes.js"></script>
     <script src="js/search.js"></script>
+    <script src="js/fit.js"></script>
     <script src="js/insights.js"></script>
     <script src="js/genre-tree.js"></script>
     <script src="js/collaborators.js"></script>

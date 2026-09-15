@@ -1539,9 +1539,88 @@ describe('ApiClient', () => {
             await window.apiClient.setConsent('expired-token', 'analytics', true);
             await window.apiClient.requestExport('expired-token');
             await window.apiClient.requestErasure('expired-token', 'password');
+            await window.apiClient.getFitProfile('expired-token', '249504');
 
-            expect(window.authManager.clear).toHaveBeenCalledTimes(11);
-            expect(window.authManager.notify).toHaveBeenCalledTimes(11);
+            expect(window.authManager.clear).toHaveBeenCalledTimes(12);
+            expect(window.authManager.notify).toHaveBeenCalledTimes(12);
+        });
+    });
+
+    describe('getFitProfile', () => {
+        const profile = {
+            release: { id: '249504', gm_id: 'gm-rel-1', title: 'Never Gonna Give You Up', artist: 'Rick Astley', year: 1987, media_families: ['vinyl'], rarity: { score: 0.4, tier: 'common' } },
+            fit: 0.62,
+            components: {
+                affinity: { score: 0.5, evidence: ['shares artist Rick Astley with 2 releases you hold'] },
+                novelty: { score: 0.4, evidence: [] },
+                bridge: { score: 0.0, evidence: [] },
+                depth: { score: 0.2, evidence: [] },
+                redundancy: { score: 0.0, evidence: [] },
+            },
+            confidence: 'exact',
+            policy_id: 'cratefit_v0',
+            fit_version: 'cratefit_v0',
+            impression_id: 'imp-fit-1',
+        };
+
+        it('returns null without a token rather than issuing a request', async () => {
+            const fetchSpy = vi.fn();
+            vi.stubGlobal('fetch', fetchSpy);
+
+            expect(await window.apiClient.getFitProfile(null, '249504')).toBeNull();
+            expect(fetchSpy).not.toHaveBeenCalled();
+        });
+
+        it('returns null without a release id rather than issuing a request', async () => {
+            const fetchSpy = vi.fn();
+            vi.stubGlobal('fetch', fetchSpy);
+
+            expect(await window.apiClient.getFitProfile('token', '')).toBeNull();
+            expect(fetchSpy).not.toHaveBeenCalled();
+        });
+
+        it('GETs the contracted fit route with the bearer header and returns the profile', async () => {
+            let capturedUrl;
+            let capturedOptions;
+            vi.stubGlobal('fetch', async (url, options) => {
+                capturedUrl = url;
+                capturedOptions = options;
+                return { ok: true, status: 200, json: async () => profile };
+            });
+
+            const result = await window.apiClient.getFitProfile('valid-token', '249504');
+
+            expect(capturedUrl).toBe('/api/fit/release/249504');
+            expect(capturedOptions.headers.Authorization).toBe('Bearer valid-token');
+            expect(result).toEqual(profile);
+        });
+
+        it('percent-encodes the release id into the path', async () => {
+            let capturedUrl;
+            vi.stubGlobal('fetch', async (url) => {
+                capturedUrl = url;
+                return { ok: true, status: 200, json: async () => profile };
+            });
+
+            await window.apiClient.getFitProfile('valid-token', 'a b/c');
+
+            expect(capturedUrl).toBe('/api/fit/release/a%20b%2Fc');
+        });
+
+        it('returns null on a 404 for a release the graph does not carry', async () => {
+            vi.stubGlobal('fetch', async () => ({ ok: false, status: 404, json: async () => ({ error: "Release '1' not found" }) }));
+
+            expect(await window.apiClient.getFitProfile('valid-token', '1')).toBeNull();
+        });
+
+        it('returns null on a 401 and reconciles auth state', async () => {
+            window.authManager = { isLoggedIn: vi.fn().mockReturnValue(true), clear: vi.fn(), notify: vi.fn() };
+            vi.stubGlobal('fetch', async () => ({ ok: false, status: 401, json: async () => ({}) }));
+
+            expect(await window.apiClient.getFitProfile('expired-token', '249504')).toBeNull();
+            expect(window.authManager.clear).toHaveBeenCalledTimes(1);
+            expect(window.authManager.notify).toHaveBeenCalledTimes(1);
+            delete window.authManager;
         });
     });
 
