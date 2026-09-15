@@ -67,12 +67,15 @@ Outcome posts are fire-and-forget and never gate an interaction — see
 
 | Authority | Revision | Local evidence |
 | --- | --- | --- |
-| `catalog-api` graph-explorer route contract | `8578a07e0eb5a9108c8432e548e44797bc8f5fed` | [`contracts/catalog-api/graph-explorer/v1/source.json`](../contracts/catalog-api/graph-explorer/v1/source.json) and [`routes.json`](../contracts/catalog-api/graph-explorer/v1/routes.json) |
+| `catalog-api` graph-explorer route contract | `ec2db559e2a457dcac2acaa845adee62d4bfa5a2` | [`contracts/catalog-api/graph-explorer/v1/source.json`](../contracts/catalog-api/graph-explorer/v1/source.json) and [`routes.json`](../contracts/catalog-api/graph-explorer/v1/routes.json) |
 | `python-libraries` runtime package | `455523ec388fdb9862d7aca65d9434aa7073dcb5` | [`pyproject.toml`](../pyproject.toml) and `uv.lock` |
 | `design` generated brand assets | `59c9fd3c8bbdfa676e0b7bb3d463fc766c1f3c0d` | [`explore/static/brand/source.json`](../explore/static/brand/source.json) |
 
 `scripts/check-contracts.py` verifies the producer digest and checks every literal browser API
-route against the promoted route set. `scripts/check-brand.py` verifies the source revision and
-every asset digest. Editable brand sources are never copied here: [`scripts/promote-brand.sh`](../scripts/promote-brand.sh)
+route against the promoted route set. A registry entry may carry a `parameters` list beside its
+method and path, naming query parameters the producer promised this consumer; the checker
+validates the entry's shape and rejects a key it does not understand, so a producer field nobody
+here reads is a loud failure rather than an unverified promise. `scripts/check-brand.py` verifies
+the source revision and every asset digest. Editable brand sources are never copied here: [`scripts/promote-brand.sh`](../scripts/promote-brand.sh)
 accepts only a clean design checkout at the pinned revision and runs the producer renderer in
 check mode before replacing the generated asset tree.
