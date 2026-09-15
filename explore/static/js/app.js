@@ -354,6 +354,23 @@ class TimelineScrubber {
  * Coordinates pane switching, search, graph, trends, auth, and user panes.
  */
 class ExploreApp {
+    /**
+     * How the ADR 0011 identifier types are spelled on a release card.
+     *
+     * Only the types a collector has a word for. A type absent from this map is
+     * rendered as the producer named it rather than dropped: the vocabulary is
+     * allowed to grow, and an unrecognised marking is still a marking on the
+     * object in somebody's hand.
+     */
+    static IDENTIFIER_LABELS = {
+        barcode: 'Barcode',
+        catalog_number: 'Catalogue number',
+        matrix_runout: 'Matrix / runout',
+        label_code: 'Label code',
+        rights_society: 'Rights society',
+        asin: 'ASIN',
+    };
+
     constructor() {
         this.searchType = 'artist';
         this.currentQuery = '';
@@ -1340,10 +1357,20 @@ class ExploreApp {
             }
         } else if (type === 'release') {
             if (details.year) nodes.push(this._detailStat('Year', details.year));
+            // Country sits with the year rather than among the tags below: the two
+            // together are what name an edition, and a collector comparing a
+            // pressing to the object in their hand reads them as one line.
+            if (details.country) nodes.push(this._detailStat('Country', details.country));
             if (details.artists?.length) nodes.push(this._detailTags('Artists', details.artists));
             if (details.labels?.length) nodes.push(this._detailTags('Labels', details.labels));
             if (details.genres?.length) nodes.push(this._detailTags('Genres', details.genres));
             if (details.styles?.length) nodes.push(this._detailTags('Styles', details.styles));
+            // The markings on the object and the companies that made it (ADR 0011).
+            // Rendered in the order the producer published them: an identifiers
+            // block lists the runout inscriptions side by side, and resorting them
+            // would separate an A-side from its B-side.
+            nodes.push(...this._releaseIdentifiers(details.identifiers));
+            nodes.push(...this._releaseCredits(details.companies));
         } else if (type === 'label') {
             nodes.push(this._detailStat('Releases', details.release_count || 0));
             if (window.authManager.isLoggedIn() && details.id) {
@@ -1361,6 +1388,64 @@ class ExploreApp {
         }
 
         return nodes;
+    }
+
+    /**
+     * The catalogue markings printed on the record, as rows of type and value.
+     *
+     * The type is spelled for a person where the vocabulary has a name a
+     * collector would use, and shown raw otherwise. A type this map has not
+     * heard of is a real marking on a real object — hiding it, or calling it
+     * something it is not, would lose the one fact the collector can check.
+     *
+     * @param {Array<object>|undefined} identifiers - The ADR 0011 identifiers items
+     * @returns {Array<HTMLElement>} Zero or one section
+     */
+    _releaseIdentifiers(identifiers) {
+        const items = (identifiers || []).filter(item => item && item.value);
+        if (!items.length) return [];
+        return [this._detailRows('Identifiers', items.map(item => [
+            ExploreApp.IDENTIFIER_LABELS[item.type] || item.type || 'Identifier',
+            item.description ? `${item.value} (${item.description})` : String(item.value),
+        ]))];
+    }
+
+    /**
+     * Who made the record, as rows of role and company.
+     *
+     * The role is the producer's own word for it ("Pressed By", "Distributed
+     * By"): it is printed on the sleeve in those words, and normalising it into
+     * a house vocabulary would stop it matching what the collector is reading.
+     *
+     * @param {Array<object>|undefined} companies - The ADR 0011 companies items
+     * @returns {Array<HTMLElement>} Zero or one section
+     */
+    _releaseCredits(companies) {
+        const items = (companies || []).filter(item => item && item.name);
+        if (!items.length) return [];
+        return [this._detailRows('Credits', items.map(item => [item.role || 'Credited', String(item.name)]))];
+    }
+
+    _detailRows(label, rows) {
+        const section = document.createElement('div');
+        section.className = 'detail-section';
+        section.dataset.detailSection = label.toLowerCase();
+        const heading = document.createElement('h6');
+        heading.textContent = label;
+        section.appendChild(heading);
+        rows.forEach(([term, value]) => {
+            const row = document.createElement('div');
+            row.className = 'detail-row';
+            const termEl = document.createElement('span');
+            termEl.className = 'term';
+            termEl.textContent = term;
+            const valueEl = document.createElement('span');
+            valueEl.className = 'value';
+            valueEl.textContent = value;
+            row.append(termEl, valueEl);
+            section.appendChild(row);
+        });
+        return section;
     }
 
     _detailStat(label, value) {

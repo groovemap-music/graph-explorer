@@ -16,6 +16,17 @@ assert source["version"] == contract["version"] == 1
 assert len(source["producer_commit"]) == 40
 
 
+# An operation carries its method and path, and may carry the query parameters the producer
+# promised this consumer. The key set is checked rather than ignored so a producer that
+# starts publishing a field this checker does not understand is a loud failure here rather
+# than a silently unverified promise.
+OPERATION_KEYS = {"method", "path", "parameters"}
+for name, operation in contract["operations"].items():
+    assert set(operation) <= OPERATION_KEYS, f"unknown keys in operation {name}: {sorted(set(operation) - OPERATION_KEYS)}"
+    assert {"method", "path"} <= set(operation), f"operation {name} is missing method or path"
+    assert all(isinstance(parameter, str) for parameter in operation.get("parameters", ()))
+
+
 def route_pattern(path: str) -> re.Pattern[str]:
     """Convert a producer path template into a full-match expression."""
     pieces = re.split(r"(\{[^}]+\})", path)

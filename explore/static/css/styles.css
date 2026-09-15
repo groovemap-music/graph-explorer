@@ -688,6 +688,28 @@ select option {
     color: var(--text-high);
 }
 
+/* Identifiers and credits: a term and its value, where the value is the part a
+   collector compares against the object in their hand, so it wraps rather than
+   being clipped the way a one-line stat is. */
+.detail-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 4px 0;
+    font-size: 13px;
+}
+
+.detail-row .term {
+    color: var(--text-mid);
+    white-space: nowrap;
+}
+
+.detail-row .value {
+    color: var(--text-high);
+    text-align: right;
+    overflow-wrap: anywhere;
+}
+
 .detail-stat {
     display: flex;
     justify-content: space-between;
@@ -1520,10 +1542,21 @@ select option {
     margin-right: 0.25rem;
 }
 
-/* Type, genre & media chips */
+/* The mode toggle sits between the box and the filters: it changes which route
+   answers, so it reads above the things that only narrow an answer. */
+.search-mode-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.5rem;
+}
+
+/* Type, genre, media & country chips */
 .search-type-chips,
 .search-genre-chips,
-.search-media-chips {
+.search-media-chips,
+.search-country-chips {
     display: flex;
     flex-wrap: wrap;
     gap: 0.35rem;
@@ -1721,6 +1754,17 @@ select option {
     overflow: hidden;
 }
 
+/* Takes the relevance bar's column. An identifier match is exact, so the card
+   says what resolved it instead of how well it matched. */
+.search-resolved-by {
+    font-size: 0.65rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 0.25rem;
+    border: 1px solid var(--border-color);
+    color: var(--text-mid);
+    white-space: nowrap;
+}
+
 .search-relevance-bar {
     display: block;
     height: 100%;
@@ -1813,7 +1857,8 @@ select option {
         grid-template-columns: 60px 1fr auto;
     }
 
-    .search-result-relevance {
+    .search-result-relevance,
+    .search-resolved-by {
         display: none;
     }
 
@@ -3143,6 +3188,22 @@ select option {
 .fit-candidate.active {
     border-color: var(--accent-green);
     background: rgba(74, 222, 128, 0.08);
+}
+
+/* Resolved, but not by a catalog the fit route can score. Shown rather than
+   hidden: the collector's record *was* found, and saying so is a different
+   answer from finding nothing. */
+.fit-candidate-unscoreable {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.fit-candidate-unscoreable:hover {
+    border-color: var(--border-color);
+}
+
+.fit-source-badge {
+    text-transform: lowercase;
 }
 
 .fit-candidate-name {

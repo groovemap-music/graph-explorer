@@ -40,6 +40,31 @@ class FitPane {
     /** Minimum query length the search route accepts. */
     static MIN_QUERY = 3;
 
+    /** The picker's title mode, as opposed to one of the lookup namespaces. */
+    static TEXT_MODE = 'text';
+
+    /**
+     * The ADR 0011 alias namespaces the picker can resolve, spelled for a person.
+     * Mirrors the search pane's toggle, because it is the same gesture: the
+     * collector types whatever the object in their hand will give them.
+     */
+    static LOOKUP_MODES = [
+        ['barcode', 'Barcode'],
+        ['catalog_number', 'Catalogue number'],
+        ['matrix', 'Matrix'],
+    ];
+
+    /**
+     * The catalog whose release ids the fit route scores.
+     *
+     * One identifier resolves to every catalog that describes the pressing, but
+     * `/api/fit/release/{id}` takes a Discogs release id. Offering a MusicBrainz
+     * row as a scoreable candidate would send an id the route cannot read and
+     * return "no profile" for a record that is in fact scoreable under its other
+     * row, so those candidates are shown and named, and not selectable.
+     */
+    static SCOREABLE_SOURCE = 'discogs';
+
     constructor() {
         this._selected = null;
         this._profile = null;
@@ -49,6 +74,14 @@ class FitPane {
         this._searchRequestId = 0;
         this._profileRequestId = 0;
         this._bound = false;
+        this._mode = FitPane.TEXT_MODE;
+        this._textPlaceholder = '';
+    }
+
+    /** Spell one picker mode for a person. */
+    static modeLabel(mode) {
+        const found = FitPane.LOOKUP_MODES.find(([provider]) => provider === mode);
+        return found ? found[1] : mode;
     }
 
     // ------------------------------------------------------------------ //
@@ -73,6 +106,8 @@ class FitPane {
         const runBtn = document.getElementById('fitRunBtn');
         if (!input || !searchBtn || !runBtn) return;
 
+        this._textPlaceholder = input.placeholder;
+
         searchBtn.addEventListener('click', () => this.findCandidates(input.value));
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
@@ -81,7 +116,48 @@ class FitPane {
             }
         });
         runBtn.addEventListener('click', () => this.loadProfile());
+
+        const modeWrap = document.getElementById('fitModeToggle');
+        modeWrap?.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-fit-mode]');
+            if (!btn) return;
+            const mode = btn.dataset.fitMode || FitPane.TEXT_MODE;
+            if (mode !== this._mode) this.setMode(mode);
+        });
+
         this._bound = true;
+    }
+
+    /**
+     * Switch the picker between searching titles and resolving one identifier.
+     *
+     * The shortlist is cleared on the way across: candidates found by title are
+     * an answer to a different question than the row a barcode names, and
+     * leaving a selection standing would let the collector score a record they
+     * found before they changed what they were asking.
+     *
+     * @param {string} mode - FitPane.TEXT_MODE or a lookup provider namespace
+     */
+    setMode(mode) {
+        this._mode = mode;
+        const input = document.getElementById('fitSearchInput');
+        document.getElementById('fitModeToggle')?.querySelectorAll('[data-fit-mode]').forEach(el => {
+            const active = (el.dataset.fitMode || FitPane.TEXT_MODE) === mode;
+            el.classList.toggle('active', active);
+            el.setAttribute('aria-pressed', String(active));
+        });
+        if (input) {
+            const label = FitPane.modeLabel(mode);
+            input.placeholder = mode === FitPane.TEXT_MODE
+                ? this._textPlaceholder
+                : `Scan or type a ${label.toLowerCase()}...`;
+            input.setAttribute('aria-label', mode === FitPane.TEXT_MODE
+                ? 'Find the release in your hand'
+                : `${label} of the release in your hand`);
+        }
+        this._setCandidates([]);
+        const results = document.getElementById('fitCandidates');
+        if (results) results.replaceChildren();
     }
 
     /**
@@ -108,6 +184,7 @@ class FitPane {
             if (body) body.replaceChildren();
             const input = document.getElementById('fitSearchInput');
             if (input) input.value = '';
+            this.setMode(FitPane.TEXT_MODE);
             this._setRunEnabled(false);
         }
     }
@@ -117,18 +194,22 @@ class FitPane {
     // ------------------------------------------------------------------ //
 
     /**
-     * Find candidate releases for a query.
+     * Find candidate releases for what the collector typed.
      *
-     * Restricted to `types=release` because the fit route takes a release id:
-     * a master is not a pressing, and scoring the wrong pressing is exactly the
-     * error the profile's identity confidence exists to report.
+     * In title mode the search is restricted to `types=release` because the fit
+     * route takes a release id: a master is not a pressing, and scoring the
+     * wrong pressing is exactly the error the profile's identity confidence
+     * exists to report. In a lookup mode the identifier names the pressing
+     * outright, which is the stronger answer to the same question.
      *
-     * @param {string} query - What the collector typed
+     * @param {string} query - What the collector typed or scanned
      */
     async findCandidates(query) {
         const q = (query || '').trim();
         const results = document.getElementById('fitCandidates');
         if (!results) return;
+
+        if (this._mode !== FitPane.TEXT_MODE) return this._lookupCandidates(q, results);
 
         if (q.length < FitPane.MIN_QUERY) {
             this._setCandidates([]);
@@ -158,6 +239,69 @@ class FitPane {
             return;
         }
         this._setCandidates(data.results);
+    }
+
+    /**
+     * Resolve one identifier and offer what it resolved to as the shortlist.
+     *
+     * No minimum length: the three-character floor exists because the search
+     * route rejects a shorter query, and a catalogue number can legitimately be
+     * four characters long.
+     *
+     * @param {string} value - The identifier as typed or scanned
+     * @param {HTMLElement} results - The shortlist container
+     */
+    async _lookupCandidates(value, results) {
+        const label = FitPane.modeLabel(this._mode).toLowerCase();
+        if (!value) {
+            this._setCandidates([]);
+            this._renderNotice(results, `Scan or type a ${label} to find the release.`);
+            return;
+        }
+
+        const requestId = ++this._searchRequestId;
+        let data;
+        try {
+            data = await window.apiClient.lookup(this._mode, value);
+        } catch {
+            data = null;
+        }
+        if (requestId !== this._searchRequestId) return;
+
+        if (!data) {
+            this._setCandidates([]);
+            this._renderNotice(results, 'Could not look that up. Please try again.');
+            return;
+        }
+        // A miss is a fact about the record, not a failure, so it is reported
+        // in the producer's own words.
+        if (data.notFound || !(data.releases || []).length) {
+            this._setCandidates([]);
+            this._renderNotice(results, data.error || `No release carries that ${label}.`);
+            return;
+        }
+        this._setCandidates(FitPane.lookupCandidates(data));
+    }
+
+    /**
+     * Convert a lookup response into the hit shape the shortlist renders.
+     *
+     * @param {object} data - The lookup response
+     * @returns {Array<object>} Candidates in the search-hit shape
+     */
+    static lookupCandidates(data) {
+        return (data.releases || []).map(release => ({
+            id: release.id,
+            gm_id: data.gm_id,
+            name: release.title || '',
+            source: release.source,
+            resolved_by: data.provider,
+            metadata: {
+                artist: release.artist ?? null,
+                year: release.year ?? null,
+                media_families: release.media_families || [],
+            },
+        }));
     }
 
     _setCandidates(results) {
@@ -190,7 +334,8 @@ class FitPane {
             option.append(name, meta);
 
             const families = hit.metadata?.media_families || [];
-            if (families.length) {
+            const scoreable = FitPane.isScoreable(hit);
+            if (families.length || hit.resolved_by) {
                 const badges = document.createElement('span');
                 badges.className = 'fit-candidate-badges';
                 families.slice(0, 3).forEach(family => {
@@ -199,12 +344,44 @@ class FitPane {
                     badge.textContent = family;
                     badges.appendChild(badge);
                 });
+                // Which catalog the row came from, on a resolved candidate only.
+                // One identifier can resolve to a row in each catalog, and which
+                // one a candidate is decides whether it can be scored at all.
+                if (hit.resolved_by && hit.source) {
+                    const badge = document.createElement('span');
+                    badge.className = 'fit-media-badge fit-source-badge';
+                    badge.dataset.source = hit.source;
+                    badge.textContent = hit.source;
+                    badges.appendChild(badge);
+                }
                 option.appendChild(badges);
             }
 
-            option.addEventListener('click', () => this._select(hit, option));
+            if (!scoreable) {
+                option.disabled = true;
+                option.classList.add('fit-candidate-unscoreable');
+                option.setAttribute('aria-disabled', 'true');
+                option.title = `Scoring reads ${FitPane.SCOREABLE_SOURCE} releases; this row came from ${hit.source}.`;
+            } else {
+                option.addEventListener('click', () => this._select(hit, option));
+            }
             container.appendChild(option);
         });
+    }
+
+    /**
+     * Whether the fit route can score this candidate.
+     *
+     * A hit with no `source` is a search hit, which is a Discogs release by
+     * construction. A resolved hit names its catalog, and only the Discogs row
+     * carries an id `/api/fit/release/{id}` can read.
+     *
+     * @param {object} hit - A candidate in the search-hit shape
+     * @returns {boolean}
+     */
+    static isScoreable(hit) {
+        if (!hit || !hit.id) return false;
+        return !hit.source || hit.source === FitPane.SCOREABLE_SOURCE;
     }
 
     _select(hit, option) {
@@ -216,7 +393,7 @@ class FitPane {
         option.setAttribute('aria-selected', 'true');
         option.classList.add('active');
         this._selected = hit;
-        this._setRunEnabled(Boolean(hit && hit.id));
+        this._setRunEnabled(FitPane.isScoreable(hit));
     }
 
     _setRunEnabled(enabled) {

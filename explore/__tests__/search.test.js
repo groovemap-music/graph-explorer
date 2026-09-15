@@ -15,6 +15,8 @@ function setupSearchDOM() {
         'searchYearMax',
         'searchGenreFilter',
         'searchMediaFilter',
+        'searchCountryFilter',
+        'searchPaneFilters',
         'searchFacets',
         'searchLoading',
         'searchPlaceholder',
@@ -29,6 +31,7 @@ function setupSearchDOM() {
         if (id === 'searchPaneInput' || id === 'searchYearMin' || id === 'searchYearMax') {
             el = document.createElement('input');
             el.type = id.includes('Year') ? 'number' : 'text';
+            if (id === 'searchPaneInput') el.placeholder = 'Search artists, labels, masters, releases...';
         } else if (id === 'searchPaneBtn') {
             el = document.createElement('button');
         } else {
@@ -37,6 +40,35 @@ function setupSearchDOM() {
         el.id = id;
         document.body.appendChild(el);
     });
+
+    // The mode toggle, spelled as index.html spells it: the pane reads the
+    // provider namespace off the button, so the ids alone would not exercise it.
+    const modeToggle = document.createElement('div');
+    modeToggle.id = 'searchModeToggle';
+    [['text', 'Text'], ['barcode', 'Barcode'], ['catalog_number', 'Catalogue number'], ['matrix', 'Matrix']]
+        .forEach(([mode, label], index) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = index === 0 ? 'search-chip search-chip-sm active' : 'search-chip search-chip-sm';
+            btn.dataset.searchMode = mode;
+            btn.setAttribute('aria-pressed', String(index === 0));
+            btn.textContent = label;
+            modeToggle.appendChild(btn);
+        });
+    document.body.appendChild(modeToggle);
+}
+
+/** Click one mode button on the toggle. */
+function selectMode(mode) {
+    document.querySelector(`[data-search-mode="${mode}"]`).click();
+}
+
+/** Type a value and submit it with Enter, then let the response settle. */
+async function submit(value) {
+    const input = document.getElementById('searchPaneInput');
+    input.value = value;
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await new Promise(r => setTimeout(r, 10));
 }
 
 describe('search pane', () => {
@@ -47,6 +79,7 @@ describe('search pane', () => {
 
         window.apiClient = {
             search: vi.fn().mockResolvedValue({ results: [], total: 0, facets: {}, pagination: {} }),
+            lookup: vi.fn().mockResolvedValue({ provider: 'barcode', value: '', normalized: '', gm_id: null, releases: [] }),
         };
 
         loadScript('media-taxonomy.js');
@@ -88,6 +121,7 @@ describe('search pane', () => {
                 null,
                 20,
                 0,
+                [],
                 []
             );
 
@@ -112,6 +146,7 @@ describe('search pane', () => {
                 null,
                 20,
                 0,
+                [],
                 []
             );
 
@@ -739,7 +774,7 @@ describe('search pane', () => {
             input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
             await new Promise(r => setTimeout(r, 10));
 
-            expect(window.apiClient.search).toHaveBeenCalledWith('herbie hancock', expect.any(Array), [], null, null, 20, 0, []);
+            expect(window.apiClient.search).toHaveBeenCalledWith('herbie hancock', expect.any(Array), [], null, null, 20, 0, [], []);
         });
 
         it('should reset selectedGenres when the query text changes via search button', async () => {
@@ -765,7 +800,7 @@ describe('search pane', () => {
             btn.click();
             await new Promise(r => setTimeout(r, 10));
 
-            expect(window.apiClient.search).toHaveBeenCalledWith('herbie hancock', expect.any(Array), [], null, null, 20, 0, []);
+            expect(window.apiClient.search).toHaveBeenCalledWith('herbie hancock', expect.any(Array), [], null, null, 20, 0, [], []);
         });
 
         it('should keep selectedGenres when re-submitting the same query', async () => {
@@ -791,7 +826,7 @@ describe('search pane', () => {
             input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
             await new Promise(r => setTimeout(r, 10));
 
-            expect(window.apiClient.search).toHaveBeenCalledWith('beatles', expect.any(Array), ['Rock'], null, null, 20, 0, []);
+            expect(window.apiClient.search).toHaveBeenCalledWith('beatles', expect.any(Array), ['Rock'], null, null, 20, 0, [], []);
         });
 
         it('should deactivate genre chip on second click', async () => {
@@ -1136,6 +1171,247 @@ describe('search pane', () => {
             expect(() => card.click()).not.toThrow();
 
             expect(window.exploreApp._loadExplore).toHaveBeenCalledWith('Radiohead', 'artist');
+        });
+    });
+    // ------------------------------------------------------------------
+    // Identifier lookup (ADR 0011)
+    // ------------------------------------------------------------------
+
+    describe('lookup mode', () => {
+        /** What the lookup route answers for the barcode on the sleeve. */
+        const RESOLVED = {
+            provider: 'barcode',
+            value: '5 012394 144777',
+            normalized: '5012394144777',
+            gm_id: 'gm:release:249504',
+            releases: [
+                { id: '249504', source: 'discogs', title: 'Never Gonna Give You Up', artist: 'Rick Astley', year: 1987, media_families: ['vinyl'] },
+                { id: 'mb-1', source: 'musicbrainz', title: 'Never Gonna Give You Up', artist: null, year: 1987, media_families: ['vinyl'] },
+            ],
+        };
+
+        it('marks the chosen mode as pressed and the others as not', () => {
+            selectMode('barcode');
+
+            expect(document.querySelector('[data-search-mode="barcode"]').getAttribute('aria-pressed')).toBe('true');
+            expect(document.querySelector('[data-search-mode="text"]').getAttribute('aria-pressed')).toBe('false');
+        });
+
+        it('hides the filter row, which the lookup route cannot honour', () => {
+            selectMode('barcode');
+            expect(document.getElementById('searchPaneFilters').hidden).toBe(true);
+
+            selectMode('text');
+            expect(document.getElementById('searchPaneFilters').hidden).toBe(false);
+        });
+
+        it('names the marking it is asking for in the input', () => {
+            selectMode('catalog_number');
+
+            const input = document.getElementById('searchPaneInput');
+            expect(input.placeholder).toContain('catalogue number');
+            expect(input.getAttribute('aria-label')).toBe('Catalogue number to look up');
+        });
+
+        it('sends the typed value to the lookup route under the chosen namespace', async () => {
+            window.apiClient.lookup.mockResolvedValue(RESOLVED);
+            selectMode('barcode');
+
+            await submit('5 012394 144777');
+
+            expect(window.apiClient.lookup).toHaveBeenCalledWith('barcode', '5 012394 144777');
+            expect(window.apiClient.search).not.toHaveBeenCalled();
+        });
+
+        it('looks up a value shorter than the search route would accept', async () => {
+            window.apiClient.lookup.mockResolvedValue(RESOLVED);
+            selectMode('catalog_number');
+
+            await submit('ST1');
+
+            expect(window.apiClient.lookup).toHaveBeenCalledWith('catalog_number', 'ST1');
+        });
+
+        it('renders every resolved release as a hit', async () => {
+            window.apiClient.lookup.mockResolvedValue(RESOLVED);
+            selectMode('barcode');
+
+            await submit('5 012394 144777');
+
+            const cards = document.querySelectorAll('.search-result-card');
+            expect(cards.length).toBe(2);
+            expect(cards[0].querySelector('.search-result-name').textContent).toBe('Never Gonna Give You Up');
+            expect(cards[0].dataset.gmId).toBe('gm:release:249504');
+        });
+
+        it('badges each hit with what resolved it instead of a relevance bar', async () => {
+            window.apiClient.lookup.mockResolvedValue(RESOLVED);
+            selectMode('barcode');
+
+            await submit('5 012394 144777');
+
+            const badge = document.querySelector('.search-resolved-by');
+            expect(badge.textContent).toBe('resolved by barcode');
+            expect(badge.dataset.resolvedBy).toBe('barcode');
+            expect(document.querySelector('.search-result-relevance')).toBeNull();
+        });
+
+        it('names the catalog each resolved row came from', async () => {
+            window.apiClient.lookup.mockResolvedValue(RESOLVED);
+            selectMode('barcode');
+
+            await submit('5 012394 144777');
+
+            const metas = Array.from(document.querySelectorAll('.search-result-meta')).map(el => el.textContent);
+            expect(metas[0]).toContain('discogs');
+            expect(metas[1]).toContain('musicbrainz');
+        });
+
+        it('reports a miss in the producer\'s own words', async () => {
+            window.apiClient.lookup.mockResolvedValue({ notFound: true, error: "No release found for barcode '0'" });
+            selectMode('barcode');
+
+            await submit('0');
+
+            expect(document.querySelector('.search-no-results').textContent).toContain("No release found for barcode '0'");
+        });
+
+        it('shows the error message when the service does not answer', async () => {
+            window.apiClient.lookup.mockResolvedValue(null);
+            selectMode('barcode');
+
+            await submit('5012394144777');
+
+            expect(document.getElementById('searchResults').textContent).toContain('An error occurred');
+        });
+
+        it('survives a network-level rejection', async () => {
+            window.apiClient.lookup.mockRejectedValue(new TypeError('Failed to fetch'));
+            selectMode('barcode');
+
+            await submit('5012394144777');
+
+            expect(document.getElementById('searchResults').textContent).toContain('An error occurred');
+            expect(document.getElementById('searchLoading').classList.contains('active')).toBe(false);
+        });
+
+        it('drops the facet chips a text search left behind', async () => {
+            window.apiClient.search.mockResolvedValue({
+                results: [{ name: 'Blue', type: 'release', relevance: 0.5, country: 'UK' }],
+                total: 1,
+                facets: { genre: { Rock: 3 } },
+                pagination: { has_more: false },
+            });
+            await submit('blue note');
+            expect(document.querySelectorAll('.search-chip-sm').length).toBeGreaterThan(0);
+
+            window.apiClient.lookup.mockResolvedValue(RESOLVED);
+            selectMode('barcode');
+            await submit('5012394144777');
+
+            expect(document.getElementById('searchGenreFilter').textContent).toBe('');
+            expect(document.getElementById('searchCountryFilter').textContent).toBe('');
+        });
+
+        it('returns to the search route when the mode goes back to text', async () => {
+            window.apiClient.lookup.mockResolvedValue(RESOLVED);
+            selectMode('barcode');
+            await submit('5012394144777');
+
+            selectMode('text');
+            await submit('never gonna');
+
+            expect(window.apiClient.search).toHaveBeenCalled();
+        });
+    });
+
+    // ------------------------------------------------------------------
+    // Country facet (ADR 0011)
+    // ------------------------------------------------------------------
+
+    describe('country facet', () => {
+        /** Hits carrying the country the producer put beside their native id. */
+        function hitsWithCountries(countries) {
+            return countries.map((country, index) => ({
+                name: `Release ${index}`,
+                type: 'release',
+                relevance: 0.5,
+                country,
+            }));
+        }
+
+        function resolveWith(results) {
+            window.apiClient.search.mockResolvedValue({
+                results,
+                total: results.length,
+                facets: {},
+                pagination: { has_more: false },
+            });
+        }
+
+        it('renders one chip per country the hits carry', async () => {
+            resolveWith(hitsWithCountries(['UK', 'Germany', 'UK']));
+
+            await submit('blue note');
+
+            const chips = Array.from(document.querySelectorAll('.search-country-chip')).map(el => el.textContent);
+            expect(chips).toEqual(['UK (2)', 'Germany (1)']);
+        });
+
+        it('renders no chips when no hit carries a country', async () => {
+            resolveWith(hitsWithCountries([null, null]));
+
+            await submit('blue note');
+
+            expect(document.getElementById('searchCountryFilter').textContent).toBe('');
+        });
+
+        it('sends the chosen country back as a filter', async () => {
+            resolveWith(hitsWithCountries(['UK', 'Germany']));
+            await submit('blue note');
+
+            document.querySelector('[data-country="UK"]').click();
+            await new Promise(r => setTimeout(r, 10));
+
+            expect(window.apiClient.search).toHaveBeenLastCalledWith(
+                'blue note', expect.any(Array), [], null, null, 20, 0, [], ['UK'],
+            );
+        });
+
+        it('keeps a chosen country on screen when the filtered page no longer offers it', async () => {
+            resolveWith(hitsWithCountries(['UK', 'Germany']));
+            await submit('blue note');
+
+            resolveWith([]);
+            document.querySelector('[data-country="UK"]').click();
+            await new Promise(r => setTimeout(r, 10));
+
+            const chip = document.querySelector('[data-country="UK"]');
+            expect(chip).not.toBeNull();
+            expect(chip.getAttribute('aria-pressed')).toBe('true');
+        });
+
+        it('clears the chosen country when the query text changes', async () => {
+            resolveWith(hitsWithCountries(['UK']));
+            await submit('blue note');
+            document.querySelector('[data-country="UK"]').click();
+            await new Promise(r => setTimeout(r, 10));
+
+            await submit('impulse');
+
+            expect(window.apiClient.search).toHaveBeenLastCalledWith(
+                'impulse', expect.any(Array), [], null, null, 20, 0, [], [],
+            );
+        });
+
+        it('drops the chips when a search fails', async () => {
+            resolveWith(hitsWithCountries(['UK']));
+            await submit('blue note');
+
+            window.apiClient.search.mockResolvedValue(null);
+            await submit('impulse');
+
+            expect(document.getElementById('searchCountryFilter').textContent).toBe('');
         });
     });
 });
