@@ -109,6 +109,55 @@ MOCK_RECOMMENDATIONS: dict[str, Any] = {
     "total": 2,
 }
 
+# One candidate release the fit picker can find, and the profile the fit route
+# answers for it. The profile is a full one — five components, every one with
+# evidence, a native id and an impression — because the browser test walks the
+# whole card and then reports an outcome against the impression it carries.
+MOCK_RELEASE_SEARCH: dict[str, Any] = {
+    "results": [
+        {
+            "id": "249504",
+            "name": "Never Gonna Give You Up",
+            "type": "release",
+            "relevance": 0.91,
+            "metadata": {"artist": "Rick Astley", "year": 1987, "media_families": ["vinyl"], "genres": ["Electronic"]},
+        },
+    ],
+    "total": 1,
+    "facets": {"type": {"release": 1}},
+    "pagination": {"limit": 20, "offset": 0},
+}
+
+MOCK_FIT_PROFILE: dict[str, Any] = {
+    "release": {
+        "id": "249504",
+        "gm_id": "gm:release:249504",
+        "title": "Never Gonna Give You Up",
+        "artist": "Rick Astley",
+        "year": 1987,
+        "media_families": ["vinyl"],
+        "rarity": {"score": 0.31, "tier": "common"},
+    },
+    "fit": 0.62,
+    "components": {
+        "affinity": {"score": 0.55, "evidence": ["shares artist Rick Astley with 2 releases you hold"]},
+        "novelty": {"score": 0.4, "evidence": ["Stock Aitken Waterman is a label your collection has never held"]},
+        "bridge": {
+            "score": 1.0,
+            "evidence": [
+                "bridges Electronic and Rock, which share no artist or label in your collection",
+                "region boundaries are the v0 genre heuristic, not a computed community",
+            ],
+        },
+        "depth": {"score": 0.4, "evidence": ["deepens artist Rick Astley (2 held)"]},
+        "redundancy": {"score": 0.0, "evidence": []},
+    },
+    "confidence": "exact",
+    "policy_id": "cratefit_v0",
+    "fit_version": "cratefit_v0",
+    "impression_id": "33333333-3333-3333-3333-333333333333",
+}
+
 MOCK_COLLECTION_STATS: dict[str, Any] = {
     "total_releases": 42,
     "unique_artists": 15,
@@ -278,6 +327,47 @@ def create_test_app() -> FastAPI:
         """Return empty ownership status (works for authenticated and anonymous users)."""
         release_ids = [rid.strip() for rid in ids.split(",") if rid.strip()]
         return JSONResponse(content={"status": {rid: {"in_collection": False, "in_wantlist": False} for rid in release_ids}})
+
+    # ------------------------------------------------------------------ #
+    # Search and the item-in-hand fit profile
+    #
+    # The fit route is authenticated the way the API authenticates it: the
+    # profile is computed against the caller's own collection, so an anonymous
+    # caller gets a 401 rather than somebody else's answer. Search is not.
+    # ------------------------------------------------------------------ #
+
+    @app.get("/api/search")
+    async def search(
+        q: str = Query(...),
+        types: str = Query(""),
+        limit: int = Query(20, ge=1, le=100),
+        offset: int = Query(0, ge=0),
+    ) -> JSONResponse:
+        """Return the one stub release, or nothing when the query does not name it."""
+        wanted = [t for t in types.split(",") if t]
+        if wanted and "release" not in wanted:
+            return JSONResponse(content={"results": [], "total": 0, "facets": {}, "pagination": {"limit": limit, "offset": offset}})
+        matches = [r for r in MOCK_RELEASE_SEARCH["results"] if q.lower() in str(r["name"]).lower()]
+        return JSONResponse(
+            content={
+                "results": matches,
+                "total": len(matches),
+                "facets": {"type": {"release": len(matches)}},
+                "pagination": {"limit": limit, "offset": offset},
+            }
+        )
+
+    @app.get("/api/fit/release/{release_id}")
+    async def release_fit(
+        release_id: str,
+        authorization: str | None = Header(default=None),
+    ) -> JSONResponse:
+        """Return the stub fit profile, or the status the API would return."""
+        if not authorization or not authorization.startswith("Bearer "):
+            return JSONResponse(content={"detail": "Not authenticated"}, status_code=401)
+        if release_id != MOCK_FIT_PROFILE["release"]["id"]:
+            return JSONResponse(content={"error": f"Release '{release_id}' not found"}, status_code=404)
+        return JSONResponse(content=MOCK_FIT_PROFILE)
 
     # ------------------------------------------------------------------ #
     # Activity events

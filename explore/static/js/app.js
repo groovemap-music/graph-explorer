@@ -479,6 +479,12 @@ class ExploreApp {
             const gapsBodyEl = document.getElementById('gapsBody');
             if (gapsBodyEl) gapsBodyEl.replaceChildren();
         }
+
+        // The fit pane stays reachable signed out — it answers with a sign-in
+        // prompt rather than vanishing — so it is not in the switch-away list
+        // above. It still has to be told, in both directions: a logout clears
+        // the profile and hides the picker, a login brings the picker back.
+        window.fitPane?.refreshSession?.();
     }
 
     // ------------------------------------------------------------------ //
@@ -948,6 +954,11 @@ class ExploreApp {
             window.creditsPanel.load();
         } else if (pane === 'settings') {
             window.settingsPane.init();
+        } else if (pane === 'fit' && window.fitPane) {
+            // Re-read the session on every visit rather than once: the pane is
+            // reachable signed out, and a login that happened while it was
+            // hidden has to replace the sign-in prompt with the picker.
+            window.fitPane.init();
         }
     }
 
