@@ -183,9 +183,10 @@ class ApiClient {
      * @param {number} limit - Results per page
      * @param {number} offset - Pagination offset
      * @param {string[]} media - Media family or medium ids (repeated `media` params)
+     * @param {string[]} countries - Release countries (ADR 0011, repeated `country` params)
      * @returns {Promise<Object|null>} Search results with facets and pagination
      */
-    async search(q, types = [], genres = [], yearMin = null, yearMax = null, limit = 20, offset = 0, media = []) {
+    async search(q, types = [], genres = [], yearMin = null, yearMax = null, limit = 20, offset = 0, media = [], countries = []) {
         const params = new URLSearchParams({ q, limit: String(limit), offset: String(offset) });
         if (types.length) params.set('types', types.join(','));
         if (genres.length) params.set('genres', genres.join(','));
@@ -194,7 +195,42 @@ class ApiClient {
         // Repeated, not comma-joined: the producer reads `media` as a multi-value
         // param so a family id and a medium id can be mixed in one filter.
         media.forEach(m => params.append('media', m));
+        // Repeated for the same reason, and sent exactly as the catalog stores the
+        // value: the producer matches a release country literally, so folding case
+        // or trimming punctuation here would ask for a country no row carries.
+        countries.forEach(c => params.append('country', c));
         const response = await this._transport.fetch(`/api/search?${params}`);
+        if (!response.ok) return null;
+        return this._transport.readJson(response);
+    }
+
+    /**
+     * Resolve one catalogue identifier to the release or releases carrying it.
+     *
+     * Public exactly as search is, and deliberately sends no token: the gesture
+     * this serves is somebody in a shop with a record in one hand, who cannot
+     * sign in to ask what they are holding.
+     *
+     * A miss is reported rather than flattened into the error case. The three
+     * answers are different things to say to a collector — "no record carries
+     * that barcode", "that is not a namespace you can look up", and "the
+     * service did not answer" — and only the first two are facts about their
+     * record. The shape mirrors `findPath`, the other route whose 404 is an
+     * answer rather than a failure.
+     *
+     * @param {string} provider - An alias namespace: barcode, catalog_number, matrix
+     * @param {string} value - The identifier as the collector typed or scanned it
+     * @returns {Promise<Object|{notFound: boolean, error: string}|null>}
+     */
+    async lookup(provider, value) {
+        if (!provider || !value) return null;
+        const response = await this._transport.fetch(
+            `/api/lookup/${encodeURIComponent(provider)}/${encodeURIComponent(value)}`,
+        );
+        if (response.status === 404 || response.status === 400) {
+            const data = await this._transport.readJson(response);
+            return { notFound: true, error: data?.error || 'No release found for that identifier' };
+        }
         if (!response.ok) return null;
         return this._transport.readJson(response);
     }

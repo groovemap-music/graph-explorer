@@ -10,7 +10,8 @@ The always-visible navigation provides these public workflows:
 - **Explore** renders the interactive relationship graph and timeline.
 - **Trends** compares time-series data for selected entities.
 - **Find Path** finds a connection between two named entities.
-- **Search** filters artists, labels, masters, and releases, including canonical media families.
+- **Search** filters artists, labels, masters, and releases, including canonical media families,
+  and resolves a barcode, catalogue number, or matrix inscription straight to the record.
 - **Insights**, **Genres**, and **Credits** show catalog summaries, taxonomy, and contributor
   provenance.
 - **Will it fit?** scores one candidate release against your own collection. It is reachable
@@ -24,12 +25,54 @@ Account Settings owns password changes, two-factor authentication, application-t
 and the **Privacy**, **Export Your Data**, and **Delete Account** cards. Authentication, OAuth,
 sync, snapshots, and catalog data are all performed by `catalog-api` through the same-origin proxy.
 
+## Looking a record up by what is printed on it
+
+The **Search** box has a **Look up by** toggle beside it. Leave it on **Text** to search titles
+and names. Choose **Barcode**, **Catalogue number**, or **Matrix** and the box stops searching and
+starts resolving: whatever you type or scan is matched against the marking itself, and the record
+that carries it comes back directly.
+
+Type the value however it is printed. A barcode is reduced to its digits, a catalogue number is
+upper-cased, and a matrix inscription keeps its case because the characters stamped into the
+run-out groove are the evidence. `5 012394 144777` and `5012394144777` are the same record.
+
+Each resolved hit carries a **resolved by** badge in place of the relevance bar, and names the
+catalog its row came from. One barcode is one pressing and both catalogs describe it, so a single
+lookup can legitimately return a Discogs row and a MusicBrainz row for the same record.
+
+The filters disappear in lookup mode. A lookup takes one identifier and nothing else, so a year
+range or a genre chip beside it would promise a narrowing that cannot happen. A value nothing
+carries is reported as exactly that, which is a different answer from a search that found nothing.
+
+### Filtering by country
+
+When a page of search results carries countries, a **Country** chip list appears with the filters.
+Choosing one narrows the release hits to that country and leaves artists and labels untouched,
+the same way the genre and media chips do. Countries are matched exactly as the catalog stores
+them: Discogs writes country names and MusicBrainz writes ISO codes, and nothing folds the two
+into an equivalence neither catalog asserts. The chips are built from the hits themselves rather
+than from a count the service publishes, so they describe the page you are looking at.
+
+### What a release view now shows
+
+Selecting a release node shows, beside its year, the **country** it was issued in, an
+**Identifiers** list of the catalogue markings printed on the object — barcodes, run-out
+inscriptions, label codes, rights societies — and a **Credits** list of the companies that made
+it, each with the role the catalog published: pressed by, lacquer cut at, distributed by. A
+release whose markings nobody published shows neither list rather than an empty one.
+
 ## Will it fit?
 
 **Will it fit?** answers the question a collector asks with a record in their hands: given
 everything you already own, is this one for you? Find the release, pick it from the results, and
 press **Will it fit?**. The profile is computed against your own collection, so the pane shows a
 sign-in prompt and no picker until you are logged in.
+
+The picker carries the same **Find by** toggle the search box does. Leave it on **Title** to
+search, or choose a marking and scan or type it: the record in your hand may have a barcode you
+can read and a label you cannot. A resolved row from a catalog whose ids the scoring cannot read
+is shown with its catalog named and cannot be selected — your record was found, which is a
+different answer from finding nothing, but the profile is computed from Discogs release ids.
 
 The answer is a decomposition, not a verdict. A single number answers none of the five questions a
 collector is actually asking at once, so the card shows all five, each with its own score bar and
@@ -72,9 +115,9 @@ would sit relative to what you already own.
 
 ### What version 0 cannot do yet
 
-- **Discogs release ids only.** You pick a candidate by searching the catalog for a release. There
-  is no barcode or catalogue-number lookup, so a record whose title you cannot read cannot be
-  scored yet.
+- **Discogs release ids only.** The scoring reads a Discogs release id. A barcode, catalogue
+  number, or matrix inscription will find the record, but only the Discogs row it resolves to can
+  be scored; a MusicBrainz row is shown and left unselectable.
 - **A release, not a master.** The picker searches releases because the underlying route takes a
   release id. Picking the wrong pressing of the right record is possible, and the identity badge is
   what tells you which one was scored.

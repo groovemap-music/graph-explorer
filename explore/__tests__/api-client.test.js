@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { loadScript, createMockFetch } from './helpers.js';
 
 describe('ApiClient', () => {
@@ -163,6 +163,29 @@ describe('ApiClient', () => {
             expect(capturedUrl).toContain('media=tape');
         });
 
+        it('should repeat the country param once per selected country', async () => {
+            let capturedUrl;
+            vi.stubGlobal('fetch', async (url) => {
+                capturedUrl = url;
+                return { ok: true, json: async () => ({ results: [], total: 0 }) };
+            });
+
+            await window.apiClient.search('test', [], [], null, null, 20, 0, [], ['UK', 'Germany']);
+            expect(capturedUrl).toContain('country=UK');
+            expect(capturedUrl).toContain('country=Germany');
+        });
+
+        it('should send a country exactly as the catalog stores it', async () => {
+            let capturedUrl;
+            vi.stubGlobal('fetch', async (url) => {
+                capturedUrl = url;
+                return { ok: true, json: async () => ({ results: [], total: 0 }) };
+            });
+
+            await window.apiClient.search('test', [], [], null, null, 20, 0, [], ['US & Canada']);
+            expect(capturedUrl).toContain('country=US+%26+Canada');
+        });
+
         it('should omit optional params when not provided', async () => {
             let capturedUrl;
             vi.stubGlobal('fetch', async (url) => {
@@ -176,6 +199,94 @@ describe('ApiClient', () => {
             expect(capturedUrl).not.toContain('year_min');
             expect(capturedUrl).not.toContain('year_max');
             expect(capturedUrl).not.toContain('media=');
+            expect(capturedUrl).not.toContain('country=');
+        });
+    });
+
+    describe('lookup', () => {
+        // The signed-in case below installs a session; every other suite in this
+        // file runs against a window with none, and `window` is `globalThis`
+        // here, so leaving one behind would change what an unrelated test sees.
+        afterEach(() => {
+            delete window.authManager;
+        });
+
+        const RESOLVED = {
+            provider: 'barcode',
+            value: '5 012394 144777',
+            normalized: '5012394144777',
+            gm_id: 'gm:release:249504',
+            releases: [{ id: '249504', source: 'discogs', title: 'Never Gonna Give You Up', artist: 'Rick Astley', year: 1987, media_families: ['vinyl'] }],
+        };
+
+        it('should address the provider and value as path segments', async () => {
+            let capturedUrl;
+            vi.stubGlobal('fetch', async (url) => {
+                capturedUrl = url;
+                return { ok: true, status: 200, json: async () => RESOLVED };
+            });
+
+            const result = await window.apiClient.lookup('barcode', '5 012394 144777');
+
+            expect(capturedUrl).toBe('/api/lookup/barcode/5%20012394%20144777');
+            expect(result).toEqual(RESOLVED);
+        });
+
+        it('should encode a slash in a matrix inscription', async () => {
+            let capturedUrl;
+            vi.stubGlobal('fetch', async (url) => {
+                capturedUrl = url;
+                return { ok: true, status: 200, json: async () => RESOLVED };
+            });
+
+            await window.apiClient.lookup('matrix', 'A/B-1');
+
+            expect(capturedUrl).toBe('/api/lookup/matrix/A%2FB-1');
+        });
+
+        it('should send no Authorization header', async () => {
+            let capturedOptions = 'untouched';
+            vi.stubGlobal('fetch', async (_url, options) => {
+                capturedOptions = options;
+                return { ok: true, status: 200, json: async () => RESOLVED };
+            });
+            window.authManager = { getToken: () => 'a-token', isLoggedIn: () => true };
+
+            await window.apiClient.lookup('barcode', '5012394144777');
+
+            expect(capturedOptions).toBeUndefined();
+        });
+
+        it('should report a miss as an answer rather than an error', async () => {
+            vi.stubGlobal('fetch', async () => ({ ok: false, status: 404, json: async () => ({ error: "No release found for barcode '0'" }) }));
+
+            const result = await window.apiClient.lookup('barcode', '0');
+
+            expect(result).toEqual({ notFound: true, error: "No release found for barcode '0'" });
+        });
+
+        it('should report a namespace that mints nothing as an answer', async () => {
+            vi.stubGlobal('fetch', async () => ({ ok: false, status: 400, json: async () => ({ error: 'Invalid provider: label_code. Valid: barcode, catalog_number, matrix' }) }));
+
+            const result = await window.apiClient.lookup('label_code', 'LC 0287');
+
+            expect(result.notFound).toBe(true);
+            expect(result.error).toContain('Invalid provider');
+        });
+
+        it('should return null when the service does not answer', async () => {
+            vi.stubGlobal('fetch', async () => ({ ok: false, status: 503, json: async () => ({ error: 'Service not ready' }) }));
+
+            expect(await window.apiClient.lookup('barcode', '5012394144777')).toBeNull();
+        });
+
+        it('should issue no request without both a provider and a value', async () => {
+            const fetchSpy = vi.fn();
+            vi.stubGlobal('fetch', fetchSpy);
+
+            expect(await window.apiClient.lookup('barcode', '')).toBeNull();
+            expect(await window.apiClient.lookup('', '5012394144777')).toBeNull();
+            expect(fetchSpy).not.toHaveBeenCalled();
         });
     });
 

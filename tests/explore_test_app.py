@@ -120,6 +120,7 @@ MOCK_RELEASE_SEARCH: dict[str, Any] = {
             "name": "Never Gonna Give You Up",
             "type": "release",
             "relevance": 0.91,
+            "country": "UK",
             "metadata": {"artist": "Rick Astley", "year": 1987, "media_families": ["vinyl"], "genres": ["Electronic"]},
         },
     ],
@@ -127,6 +128,46 @@ MOCK_RELEASE_SEARCH: dict[str, Any] = {
     "facets": {"type": {"release": 1}},
     "pagination": {"limit": 20, "offset": 0},
 }
+
+# The barcode printed on that same release, and what looking it up answers
+# (ADR 0011). The response carries a row from each catalog because one barcode is
+# one pressing and both catalogs describe it: the browser test needs the picker to
+# be shown a MusicBrainz row it cannot score beside the Discogs row it can.
+MOCK_BARCODE = "5 012394 144777"
+MOCK_NORMALIZED_BARCODE = "5012394144777"
+MOCK_CATALOG_NUMBER = "PB 41447"
+MOCK_LOOKUP_PROVIDERS: dict[str, dict[str, str]] = {
+    "barcode": {MOCK_NORMALIZED_BARCODE: "gm:release:249504"},
+    "catalog_number": {MOCK_CATALOG_NUMBER: "gm:release:249504"},
+    "matrix": {"PB 41447-A2": "gm:release:249504"},
+}
+MOCK_LOOKUP_RELEASES: list[dict[str, Any]] = [
+    {
+        "id": "249504",
+        "source": "discogs",
+        "title": "Never Gonna Give You Up",
+        "artist": "Rick Astley",
+        "year": 1987,
+        "media_families": ["vinyl"],
+    },
+    {
+        "id": "f4b7b1a0-0000-4000-8000-000000000001",
+        "source": "musicbrainz",
+        "title": "Never Gonna Give You Up",
+        "artist": None,
+        "year": 1987,
+        "media_families": ["vinyl"],
+    },
+]
+
+# The ADR 0011 markings and manufacturing credits the release detail carries.
+MOCK_RELEASE_IDENTIFIERS: list[dict[str, Any]] = [
+    {"type": "barcode", "value": MOCK_BARCODE, "description": None},
+    {"type": "matrix_runout", "value": "PB 41447-A2", "description": "A side runout"},
+]
+MOCK_RELEASE_COMPANIES: list[dict[str, Any]] = [
+    {"name": "Damont", "discogs_id": 12345, "role": "Pressed By", "role_category": "pressing", "catno": None},
+]
 
 MOCK_FIT_PROFILE: dict[str, Any] = {
     "release": {
@@ -164,6 +205,21 @@ MOCK_COLLECTION_STATS: dict[str, Any] = {
     "unique_labels": 8,
     "average_rating": 4.2,
 }
+
+
+def _normalize_identifier(provider: str, value: str) -> str:
+    """Apply the namespace's declared normalization, as ADR 0011 documents it.
+
+    Duplicated here rather than imported because the explorer is a consumer: it
+    vendors none of the producer's identifier vocabulary, and the point of the
+    stub is to answer the way the producer answers without the explorer needing
+    to know how. Kept to the three published rules and nothing else.
+    """
+    if provider == "barcode":
+        return "".join(character for character in value if character.isdigit())
+    if provider == "catalog_number":
+        return " ".join(value.split()).upper()
+    return " ".join(value.split())
 
 
 @asynccontextmanager
@@ -340,20 +396,55 @@ def create_test_app() -> FastAPI:
     async def search(
         q: str = Query(...),
         types: str = Query(""),
+        country: list[str] = Query(default=[]),
         limit: int = Query(20, ge=1, le=100),
         offset: int = Query(0, ge=0),
     ) -> JSONResponse:
-        """Return the one stub release, or nothing when the query does not name it."""
+        """Return the one stub release, or nothing when the query does not name it.
+
+        The `country` filter (ADR 0011) matches exactly as the catalog stores the
+        value, the way the producer does, so a test that asks for a country the
+        stub release was not issued in gets an empty page rather than a hit.
+        """
         wanted = [t for t in types.split(",") if t]
         if wanted and "release" not in wanted:
             return JSONResponse(content={"results": [], "total": 0, "facets": {}, "pagination": {"limit": limit, "offset": offset}})
         matches = [r for r in MOCK_RELEASE_SEARCH["results"] if q.lower() in str(r["name"]).lower()]
+        wanted_countries = [c for c in country if c]
+        if wanted_countries:
+            matches = [r for r in matches if r.get("country") in wanted_countries]
         return JSONResponse(
             content={
                 "results": matches,
                 "total": len(matches),
                 "facets": {"type": {"release": len(matches)}},
                 "pagination": {"limit": limit, "offset": offset},
+            }
+        )
+
+    @app.get("/api/lookup/{provider}/{value}")
+    async def lookup_identifier(provider: str, value: str) -> JSONResponse:
+        """Resolve one catalogue marking, normalizing it the way the producer does.
+
+        The three namespaces normalize differently on purpose — a barcode is
+        reduced to its digits, a catalogue number is upper-cased, a matrix keeps
+        its case — because a browser test that types a barcode with its grouping
+        spaces is testing that the explorer does not have to know that.
+        """
+        if provider not in MOCK_LOOKUP_PROVIDERS:
+            valid = ", ".join(sorted(MOCK_LOOKUP_PROVIDERS))
+            return JSONResponse(content={"error": f"Invalid provider: {provider}. Valid: {valid}"}, status_code=400)
+        normalized = _normalize_identifier(provider, value)
+        native_id = MOCK_LOOKUP_PROVIDERS[provider].get(normalized)
+        if native_id is None:
+            return JSONResponse(content={"error": f"No release found for {provider} '{value}'"}, status_code=404)
+        return JSONResponse(
+            content={
+                "provider": provider,
+                "value": value,
+                "normalized": normalized,
+                "gm_id": native_id,
+                "releases": MOCK_LOOKUP_RELEASES,
             }
         )
 
@@ -603,16 +694,28 @@ def create_test_app() -> FastAPI:
         node_id: str,
         type: str = Query("artist"),
     ) -> JSONResponse:
-        return JSONResponse(
-            content={
-                "id": node_id,
-                "name": "Radiohead",
-                "genres": ["Rock", "Electronic"],
-                "styles": ["Alternative Rock", "Art Rock"],
-                "release_count": 42,
-                "groups": [],
-            }
-        )
+        details: dict[str, Any] = {
+            "id": node_id,
+            "name": "Radiohead",
+            "genres": ["Rock", "Electronic"],
+            "styles": ["Alternative Rock", "Art Rock"],
+            "release_count": 42,
+            "groups": [],
+        }
+        if type == "release":
+            # ADR 0011: the three keys are additive and always present on a
+            # release, so the explorer renders "nothing recorded" rather than
+            # branching on whether the producer sent them.
+            details.update(
+                {
+                    "name": "Never Gonna Give You Up",
+                    "year": 1987,
+                    "country": "UK",
+                    "identifiers": MOCK_RELEASE_IDENTIFIERS,
+                    "companies": MOCK_RELEASE_COMPANIES,
+                }
+            )
+        return JSONResponse(content=details)
 
     @app.get("/api/trends")
     async def get_trends(
