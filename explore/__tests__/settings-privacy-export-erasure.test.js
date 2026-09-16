@@ -411,6 +411,7 @@ describe('SettingsPane — Delete account card', () => {
         expect(window.apiClient.requestErasure).toHaveBeenCalledWith('test-token', 'hunter2hunter2', null);
         expect(document.getElementById('erasureId').textContent).toBe('era-42');
         expect(deleteContainer.textContent).toContain('Your account has been deleted');
+        expect(window.settingsPane._deleteView).toBe('done');
         expect(window.authManager.clear).toHaveBeenCalledTimes(1);
         expect(window.authManager.notify).toHaveBeenCalledTimes(1);
     });
@@ -456,6 +457,10 @@ describe('SettingsPane — Delete account card', () => {
     });
 
     it('keeps the confirm panel open and shows the detail on a rejected password', async () => {
+        // requestErasure declares itself a credential re-check to ApiTransport (see
+        // api-transport.test.js / api-client.test.js for that layer); from settings.js's
+        // own perspective this is just a rejected envelope that must not touch auth state
+        // or move the card's _deleteView state off 'confirm' (gm-graph-explorer-8ww.2).
         window.apiClient.requestErasure.mockResolvedValue({
             ok: false,
             status: 401,
@@ -472,6 +477,8 @@ describe('SettingsPane — Delete account card', () => {
         expect(document.getElementById('erasureError').textContent).toBe('Incorrect password');
         expect(document.getElementById('erasurePassword')).toBeTruthy();
         expect(document.getElementById('erasureConfirmBtn').disabled).toBe(false);
+        expect(window.settingsPane._deleteView).toBe('confirm');
+        expect(window.authManager.notify).not.toHaveBeenCalled();
         expect(window.authManager.clear).not.toHaveBeenCalled();
     });
 

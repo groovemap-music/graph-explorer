@@ -718,10 +718,9 @@ class FitPane {
     /**
      * Post one outcome against the showing the profile carries, fire and forget.
      *
-     * The terms are the recommendation vocabulary because that is the surface
-     * the API records a fit impression against — a fit profile is a ranked
-     * showing of one candidate, and the policy id on the impression is what
-     * tells a fit row apart from a discover row.
+     * The terms are the fit vocabulary: `catalog-api` records a fit impression
+     * against the fit surface, not the recommendation surface, so the outcome
+     * an impression collects has to name the same surface it was shown under.
      *
      * @param {string} eventType - Outcome vocabulary term
      * @param {object} profile - The FitProfile the outcome is reported against
@@ -768,7 +767,7 @@ class FitPane {
             // The vocabulary has no un-save term, so the saved state is terminal
             // and a repeat click records nothing.
             if (save.getAttribute('aria-pressed') === 'true') return;
-            this.emitOutcome('recommendation.saved', profile);
+            this.emitOutcome('fit.saved', profile);
             save.setAttribute('aria-pressed', 'true');
             save.setAttribute('aria-label', `Saved ${label}`);
             save.title = `Saved ${label}`;
@@ -779,13 +778,13 @@ class FitPane {
 
         const dismiss = this._buildOutcomeButton('dismiss', 'close', `Dismiss ${label}`);
         dismiss.addEventListener('click', () => {
-            this.emitOutcome('recommendation.dismissed', profile);
+            this.emitOutcome('fit.dismissed', profile);
             this._collapse(card);
         });
 
         const hide = this._buildOutcomeButton('hide', 'visibility_off', `Hide ${label}`);
         hide.addEventListener('click', () => {
-            this.emitOutcome('recommendation.hidden', profile);
+            this.emitOutcome('fit.hidden', profile);
             this._collapse(card);
         });
 

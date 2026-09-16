@@ -25,22 +25,23 @@ nothing at all.
 | Discover | Dismiss | `recommendation.dismissed` |
 | Discover | Hide | `recommendation.hidden` |
 | Search | Opening a hit that carries an impression | `recommendation.opened` |
-| Will it fit? | Save | `recommendation.saved` |
-| Will it fit? | Dismiss | `recommendation.dismissed` |
-| Will it fit? | Hide | `recommendation.hidden` |
+| Will it fit? | Save | `fit.saved` |
+| Will it fit? | Dismiss | `fit.dismissed` |
+| Will it fit? | Hide | `fit.hidden` |
 
-The fit pane uses the recommendation terms rather than fit-specific ones, and that is not a
-placeholder. A fit profile *is* a ranked showing of one candidate, which is what the version 1
-vocabulary's `recommendation` surface names; `catalog-api` records the impression against that
-surface under the `cratefit_v0` policy id, and the policy id is what tells a fit row apart from a
-Discover row in the stored data. When the vocabulary gains a fit surface, the terms this pane posts
-are what change.
+The fit pane posts against the `fit` surface, not the `recommendation` one: `catalog-api`
+records a fit impression against the literal fit surface, under the `cratefit_v0` policy id,
+and an outcome has to name the same surface the impression it is attributed to was shown
+under. The two surfaces mirror each other term for term — `fit.saved`, `fit.dismissed`, and
+`fit.hidden` behave exactly as `recommendation.saved`, `recommendation.dismissed`, and
+`recommendation.hidden` do — so what tells a fit row apart from a Discover row in the stored
+data is the surface the event names, not any difference in behaviour.
 
-Reading a profile records nothing from the browser. The showing is written server side when
-`catalog-api` composes the response, exactly as a recommendation impression is, and the
-`impression_id` it returns is what the three controls attribute an outcome to. There is no fit
-equivalent of the Discover click-through: the pane is where the release is read, so there is
-nothing to open.
+Reading a profile records nothing from the browser. The showing is written server side as a
+`fit.shown` impression when `catalog-api` composes the response, exactly as a recommendation
+impression is, and the `impression_id` it returns is what the three controls attribute an
+outcome to. There is no fit equivalent of the Discover click-through: the pane is where the
+release is read, so there is nothing to open.
 
 Search records only the open. Hits are already logged server side as
 `search.result_impression` when the API returns them, and the version 1 vocabulary has no
@@ -48,8 +49,9 @@ search-specific open term, so an opened hit is attributed to the impression the 
 and nothing further is recorded from the search pane. Search hits render no Save, Dismiss,
 or Hide affordance.
 
-`recommendation.shown` is in the vocabulary but is not a browser event: the impression is
-written by `catalog-api` when it composes the response, not by the page that renders it.
+`recommendation.shown` and `fit.shown` are in the vocabulary but neither is a browser event:
+each impression is written by `catalog-api` when it composes the response, not by the page
+that renders it.
 
 ### What is never recorded
 
@@ -129,13 +131,14 @@ a receipt persisted there would outlive the session on a shared machine. The con
 that reloading the page loses the receipt. That is the intended trade for a one-time notice
 rather than a record the browser is responsible for keeping.
 
-## Known follow-on
+### A wrong erasure password keeps the session
 
-**A wrong erasure password signs the user out.** `catalog-api` answers an incorrect erasure
-password with `401`, and the shared `ApiTransport` treats any `401` on any route as an
-expired session and ends it. The confirm panel itself stays open with the detail inline and
-never clears the session of its own accord, but the pane goes behind the signed-out view
-regardless, so the correction the inline message invites is not actually reachable. The
-two-factor disable card has behaved the same way since it was written. Fixing it means
-distinguishing "this credential is wrong" from "this session is over" in the transport, which
-affects every caller and is not a change this surface should make alone.
+`catalog-api` answers an incorrect erasure password with `401`, the same status an expired or
+revoked bearer token produces. `requestErasure` declares itself a credential re-check on the
+request, and the shared `ApiTransport.checkAuthResponse` only ends the session for that kind
+of call when the response's `WWW-Authenticate` header shows the rejection is about the bearer
+token rather than the password — every token-validation failure sets it, and a route's own
+credential check does not. A wrong password therefore leaves the confirm panel open with the
+detail inline and the collector signed in; an actually expired session on the same endpoint
+still signs out. The two-factor disable card and change-password form re-authenticate the
+same way and carry the same declaration.

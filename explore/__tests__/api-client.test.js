@@ -1649,11 +1649,89 @@ describe('ApiClient', () => {
             await window.apiClient.getConsent('expired-token');
             await window.apiClient.setConsent('expired-token', 'analytics', true);
             await window.apiClient.requestExport('expired-token');
-            await window.apiClient.requestErasure('expired-token', 'password');
             await window.apiClient.getFitProfile('expired-token', '249504');
 
-            expect(window.authManager.clear).toHaveBeenCalledTimes(12);
-            expect(window.authManager.notify).toHaveBeenCalledTimes(12);
+            expect(window.authManager.clear).toHaveBeenCalledTimes(11);
+            expect(window.authManager.notify).toHaveBeenCalledTimes(11);
+        });
+    });
+
+    describe('_checkAuthResponse on credential re-check endpoints (gm-graph-explorer-8ww.2)', () => {
+        // changePassword, twoFactorDisable, and requestErasure all re-authenticate the
+        // caller with their own password (and TOTP code, where relevant), so a wrong
+        // credential answers with 401 the same as an expired session would. Unlike the
+        // plain authenticated calls above, a bare 401 here must NOT end the session; only
+        // a 401 carrying WWW-Authenticate — the API's signal that the bearer token itself
+        // failed validation — should.
+        beforeEach(() => {
+            window.authManager = {
+                isLoggedIn: vi.fn().mockReturnValue(true),
+                clear: vi.fn(),
+                notify: vi.fn(),
+            };
+        });
+
+        function fetchReturning401(wwwAuthenticate) {
+            return async () => ({
+                ok: false,
+                status: 401,
+                json: async () => ({ detail: 'Incorrect password' }),
+                headers: { get: (name) => (name === 'WWW-Authenticate' ? wwwAuthenticate ?? null : null) },
+            });
+        }
+
+        it('keeps the session on a wrong erasure password', async () => {
+            vi.stubGlobal('fetch', fetchReturning401(null));
+
+            await window.apiClient.requestErasure('token', 'wrong-password');
+
+            expect(window.authManager.clear).not.toHaveBeenCalled();
+            expect(window.authManager.notify).not.toHaveBeenCalled();
+        });
+
+        it('ends the session when the erasure 401 carries WWW-Authenticate', async () => {
+            vi.stubGlobal('fetch', fetchReturning401('Bearer'));
+
+            await window.apiClient.requestErasure('expired-token', 'whatever');
+
+            expect(window.authManager.clear).toHaveBeenCalledOnce();
+            expect(window.authManager.notify).toHaveBeenCalledOnce();
+        });
+
+        it('keeps the session on a wrong change-password credential', async () => {
+            vi.stubGlobal('fetch', fetchReturning401(null));
+
+            await window.apiClient.changePassword('token', 'wrong-current', 'new-password');
+
+            expect(window.authManager.clear).not.toHaveBeenCalled();
+            expect(window.authManager.notify).not.toHaveBeenCalled();
+        });
+
+        it('ends the session when the change-password 401 carries WWW-Authenticate', async () => {
+            vi.stubGlobal('fetch', fetchReturning401('Bearer'));
+
+            await window.apiClient.changePassword('expired-token', 'whatever', 'new-password');
+
+            expect(window.authManager.clear).toHaveBeenCalledOnce();
+            expect(window.authManager.notify).toHaveBeenCalledOnce();
+        });
+
+        it('keeps the session on a wrong 2FA-disable credential', async () => {
+            vi.stubGlobal('fetch', fetchReturning401(null));
+
+            await window.apiClient.twoFactorDisable('token', '000000', 'wrong-password');
+
+            expect(window.authManager.clear).not.toHaveBeenCalled();
+            expect(window.authManager.notify).not.toHaveBeenCalled();
+        });
+
+        it('ends the session when the 2FA-disable 401 carries WWW-Authenticate', async () => {
+            vi.stubGlobal('fetch', fetchReturning401('Bearer'));
+
+            await window.apiClient.twoFactorDisable('expired-token', '000000', 'whatever');
+
+            expect(window.authManager.clear).toHaveBeenCalledOnce();
+            expect(window.authManager.notify).toHaveBeenCalledOnce();
         });
     });
 

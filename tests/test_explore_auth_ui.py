@@ -606,14 +606,15 @@ class TestExploreSettingsPrivacyExportErasure:
         expect(page.locator("#erasureError")).to_contain_text("Password is required", timeout=5000)
         expect(page.locator("#erasurePassword")).to_be_visible()
 
-    def test_delete_account_rejects_a_wrong_password_and_keeps_the_panel(self, page: Page, test_server: str) -> None:
-        """A rejected credential reports the detail inline and leaves the panel standing.
+    def test_delete_account_rejects_a_wrong_password_and_keeps_the_session(self, page: Page, test_server: str) -> None:
+        """A rejected credential reports the detail inline and leaves the collector signed in.
 
-        The API answers a wrong erasure password with 401, which ApiTransport treats as
-        an expired session for every route alike, so the pane is hidden behind the
-        signed-out view even though the confirm panel itself is intact. The 2FA disable
-        card has answered a wrong password the same way since it was written; the
-        settings card does not clear the session itself.
+        The API answers a wrong erasure password with 401, the same status an expired
+        session produces. requestErasure declares itself a credential re-check to
+        ApiTransport, so that 401 (which carries no WWW-Authenticate header) no longer
+        signs the collector out from underneath the confirm panel the way it used to
+        (gm-graph-explorer-8ww.2) — the panel stays reachable, on-screen, for the retry
+        the inline message invites.
         """
         _open_settings(page, test_server)
 
@@ -622,9 +623,13 @@ class TestExploreSettingsPrivacyExportErasure:
         page.locator("#erasureConfirmBtn").click()
 
         expect(page.locator("#erasureError")).to_contain_text("Incorrect password", timeout=5000)
-        expect(page.locator("#erasurePassword")).to_have_count(1)
+        expect(page.locator("#erasurePassword")).to_be_visible()
         expect(page.locator("#erasureConfirmBtn")).not_to_be_disabled()
         expect(page.locator("#erasureId")).to_have_count(0)
+        expect(page.locator("#settingsPane")).to_have_class(re.compile(r"\bactive\b"))
+        expect(page.locator("#userDropdown")).not_to_have_class(re.compile(r"\bhidden\b"))
+        expect(page.locator("#navLoginBtn")).to_be_hidden()
+        assert page.evaluate("window.localStorage.getItem('auth_token')") is not None
 
     def test_delete_account_shows_the_erasure_id_and_signs_out(self, page: Page, test_server: str) -> None:
         """A successful erasure shows its id, clears the session, and signs the user out.
@@ -919,22 +924,22 @@ class TestExploreFitPane:
         expect(page.locator("#explorePane")).to_have_class(re.compile(r"\bactive\b"), timeout=5000)
 
     def test_saving_the_profile_records_the_outcome(self, page: Page, test_server: str) -> None:
-        """Save emits recommendation.saved against the profile's own impression."""
+        """Save emits fit.saved against the profile's own impression."""
         _pick_and_score(page, test_server)
 
         page.locator('[data-outcome="save"]').click()
 
-        event = _expect_recorded(page, test_server, "recommendation.saved")
+        event = _expect_recorded(page, test_server, "fit.saved")
         assert event["impression_id"] == _FIT_IMPRESSION
         assert event["item_id"] == _FIT_GM_ID
         expect(page.locator('[data-outcome="save"]')).to_have_attribute("aria-pressed", "true", timeout=5000)
 
     def test_dismissing_the_profile_records_the_outcome_and_collapses_the_card(self, page: Page, test_server: str) -> None:
-        """Dismiss emits recommendation.dismissed and takes the card away."""
+        """Dismiss emits fit.dismissed and takes the card away."""
         _pick_and_score(page, test_server)
 
         page.locator('[data-outcome="dismiss"]').click()
 
-        event = _expect_recorded(page, test_server, "recommendation.dismissed")
+        event = _expect_recorded(page, test_server, "fit.dismissed")
         assert event["impression_id"] == _FIT_IMPRESSION
         expect(page.locator(".fit-card")).to_have_count(0, timeout=5000)
