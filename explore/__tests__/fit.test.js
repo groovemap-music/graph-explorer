@@ -500,7 +500,7 @@ describe('FitPane', () => {
             document.querySelector('[data-outcome="save"]').click();
 
             expect(window.apiClient.postActivityEvent)
-                .toHaveBeenCalledWith('valid-token', 'recommendation.saved', 'imp-fit-1', 'gm:release:249504');
+                .toHaveBeenCalledWith('valid-token', 'fit.saved', 'imp-fit-1', 'gm:release:249504');
         });
 
         it('records a save once, because the vocabulary has no un-save term', () => {
@@ -517,7 +517,7 @@ describe('FitPane', () => {
             document.querySelector('[data-outcome="dismiss"]').click();
 
             expect(window.apiClient.postActivityEvent)
-                .toHaveBeenCalledWith('valid-token', 'recommendation.dismissed', 'imp-fit-1', 'gm:release:249504');
+                .toHaveBeenCalledWith('valid-token', 'fit.dismissed', 'imp-fit-1', 'gm:release:249504');
             expect(document.querySelector('.fit-card').classList.contains('rec-outcome-collapsing')).toBe(true);
             vi.advanceTimersByTime(window.FitPane.COLLAPSE_MS);
             expect(document.querySelector('.fit-card')).toBeNull();
@@ -529,7 +529,7 @@ describe('FitPane', () => {
             document.querySelector('[data-outcome="hide"]').click();
 
             expect(window.apiClient.postActivityEvent)
-                .toHaveBeenCalledWith('valid-token', 'recommendation.hidden', 'imp-fit-1', 'gm:release:249504');
+                .toHaveBeenCalledWith('valid-token', 'fit.hidden', 'imp-fit-1', 'gm:release:249504');
             vi.advanceTimersByTime(window.FitPane.COLLAPSE_MS);
             expect(document.querySelector('.fit-card')).toBeNull();
             vi.useRealTimers();
@@ -544,13 +544,13 @@ describe('FitPane', () => {
         it('records nothing for an anonymous session', () => {
             anonymous();
 
-            pane.emitOutcome('recommendation.saved', FULL_PROFILE);
+            pane.emitOutcome('fit.saved', FULL_PROFILE);
 
             expect(window.apiClient.postActivityEvent).not.toHaveBeenCalled();
         });
 
         it('records nothing for a profile the API issued no impression for', () => {
-            pane.emitOutcome('recommendation.saved', SPARSE_PROFILE);
+            pane.emitOutcome('fit.saved', SPARSE_PROFILE);
 
             expect(window.apiClient.postActivityEvent).not.toHaveBeenCalled();
         });
