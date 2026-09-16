@@ -1591,11 +1591,12 @@ class SettingsPane {
 
         if (!res || !res.ok) {
             // The panel stays in the confirm state with the detail inline so the
-            // caller can correct the credential. Note that the API answers a wrong
-            // password with 401, and ApiTransport ends the session on any 401 —
-            // the same thing the 2FA disable card has always done — so the pane
-            // itself goes behind the signed-out view. This card never clears the
-            // session on a rejection of its own accord.
+            // caller can correct the credential. The API answers a wrong password
+            // with 401, same as an expired session, but requestErasure declares
+            // itself a credential re-check to ApiTransport, which keeps the
+            // session alive for that 401 unless the response says the bearer
+            // token itself is the problem. This card never clears the session
+            // on a rejection of its own accord.
             const detail = (res && res.body && res.body.detail) ? res.body.detail : 'Could not delete your account — please try again.';
             errorEl.textContent = detail;
             if (confirmBtn) confirmBtn.disabled = false;

@@ -129,13 +129,14 @@ a receipt persisted there would outlive the session on a shared machine. The con
 that reloading the page loses the receipt. That is the intended trade for a one-time notice
 rather than a record the browser is responsible for keeping.
 
-## Known follow-on
+### A wrong erasure password keeps the session
 
-**A wrong erasure password signs the user out.** `catalog-api` answers an incorrect erasure
-password with `401`, and the shared `ApiTransport` treats any `401` on any route as an
-expired session and ends it. The confirm panel itself stays open with the detail inline and
-never clears the session of its own accord, but the pane goes behind the signed-out view
-regardless, so the correction the inline message invites is not actually reachable. The
-two-factor disable card has behaved the same way since it was written. Fixing it means
-distinguishing "this credential is wrong" from "this session is over" in the transport, which
-affects every caller and is not a change this surface should make alone.
+`catalog-api` answers an incorrect erasure password with `401`, the same status an expired or
+revoked bearer token produces. `requestErasure` declares itself a credential re-check on the
+request, and the shared `ApiTransport.checkAuthResponse` only ends the session for that kind
+of call when the response's `WWW-Authenticate` header shows the rejection is about the bearer
+token rather than the password — every token-validation failure sets it, and a route's own
+credential check does not. A wrong password therefore leaves the confirm panel open with the
+detail inline and the collector signed in; an actually expired session on the same endpoint
+still signs out. The two-factor disable card and change-password form re-authenticate the
+same way and carry the same declaration.
