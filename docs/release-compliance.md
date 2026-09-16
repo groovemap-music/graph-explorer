@@ -37,6 +37,41 @@ flowchart TD
 - `just release-dry-run` creates the wheel, source archive, checksums, notices, SBOM, and
   provenance locally. It does not commit, tag, push, publish, or create a release.
 
+## Browser-context budget
+
+The five browser projects share one pytest process each and one browser per process, and every
+E2E test is isolated by its own browser context. WebKit puts a ceiling on how many contexts one
+browser process will serve, and the ceiling is on contexts *created*, not contexts still open:
+closing a context does not give the budget back.
+
+| measurement | value |
+| --- | --- |
+| Contexts a WebKit process serves before navigation stops working | 64 |
+| Contexts this suite opens per browser process before retiring it | 32 |
+| Browser contexts allowed open at once in one session | 8 |
+| E2E tests in the matrix today | 115 |
+
+Measured against the WebKit that Playwright 1.62 bundles: the 64th context in a launch is created
+without error, but every `page.goto` from it times out while the server keeps answering `/health`
+normally. Chromium and Firefox show no comparable ceiling, so the failure only ever appeared on
+the `webkit`, `iphone`, and `ipad` projects, and it appeared at whichever test happened to be the
+64th rather than at anything to do with that test. Video recording, Playwright tracing, and the
+Istanbul coverage instrumentation are not involved; plain contexts that load a page over the
+network reproduce it exactly.
+
+`tests/conftest.py` therefore retires the browser process every 32 contexts, at half the ceiling,
+so a project can grow well past 115 tests before anything has to change. Retiring is only safe
+while nothing is open on the browser, which holds because the `page` fixture closes its context on
+every path out — a failed test, a crashed page, and a context that was never armed.
+
+The eight-context limit is the guard. One context per test means one live context inside a test and none
+between tests, so more than a handful open at once is a context that outlived its test. Opening the
+ninth fails that test immediately with the node ids of the tests whose contexts are still open, and
+session teardown closes any survivor and reports it the same way. Both fail where the leak is still
+readable instead of letting the session drift into the engine ceiling and fail somewhere unrelated.
+`tests/test_e2e_context_budget.py` covers the schedule and both guards without launching a browser,
+so `just check` keeps them honest.
+
 ## Automation
 
 The thin CI and release callers pin `groovemap-music/automation` at
