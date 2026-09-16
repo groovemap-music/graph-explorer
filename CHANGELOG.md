@@ -3,6 +3,15 @@
 All notable changes to this repository will be recorded here by Commitizen from
 Conventional Commits.
 
+## v0.2.1 (2026-09-15)
+
+### Fix
+
+- **fit**: post fit outcome events with the fit surface terms
+- **build**: use uv run python for all Justfile recipes
+- **e2e**: retire the browser before WebKit's context budget runs out
+- **auth**: keep the session on a wrong credential re-check password
+
 ## v0.2.0 (2026-09-15)
 
 ### Feat
