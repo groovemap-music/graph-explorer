@@ -924,22 +924,22 @@ class TestExploreFitPane:
         expect(page.locator("#explorePane")).to_have_class(re.compile(r"\bactive\b"), timeout=5000)
 
     def test_saving_the_profile_records_the_outcome(self, page: Page, test_server: str) -> None:
-        """Save emits recommendation.saved against the profile's own impression."""
+        """Save emits fit.saved against the profile's own impression."""
         _pick_and_score(page, test_server)
 
         page.locator('[data-outcome="save"]').click()
 
-        event = _expect_recorded(page, test_server, "recommendation.saved")
+        event = _expect_recorded(page, test_server, "fit.saved")
         assert event["impression_id"] == _FIT_IMPRESSION
         assert event["item_id"] == _FIT_GM_ID
         expect(page.locator('[data-outcome="save"]')).to_have_attribute("aria-pressed", "true", timeout=5000)
 
     def test_dismissing_the_profile_records_the_outcome_and_collapses_the_card(self, page: Page, test_server: str) -> None:
-        """Dismiss emits recommendation.dismissed and takes the card away."""
+        """Dismiss emits fit.dismissed and takes the card away."""
         _pick_and_score(page, test_server)
 
         page.locator('[data-outcome="dismiss"]').click()
 
-        event = _expect_recorded(page, test_server, "recommendation.dismissed")
+        event = _expect_recorded(page, test_server, "fit.dismissed")
         assert event["impression_id"] == _FIT_IMPRESSION
         expect(page.locator(".fit-card")).to_have_count(0, timeout=5000)
