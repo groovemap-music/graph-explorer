@@ -41,4 +41,57 @@ describe('ApiTransport', () => {
         expect(window.authManager.clear).toHaveBeenCalledOnce();
         expect(window.authManager.notify).toHaveBeenCalledOnce();
     });
+
+    describe('credential re-check requests (gm-graph-explorer-8ww.2)', () => {
+        function response401(header) {
+            return {
+                status: 401,
+                headers: { get: (name) => (name === 'WWW-Authenticate' ? header ?? null : null) },
+            };
+        }
+
+        beforeEach(() => {
+            window.authManager = {
+                isLoggedIn: vi.fn().mockReturnValue(true),
+                clear: vi.fn(),
+                notify: vi.fn(),
+            };
+        });
+
+        it('keeps the session on a credential-recheck 401 without WWW-Authenticate', () => {
+            const transport = new window.ApiTransport();
+
+            transport.checkAuthResponse(response401(null), { credentialRecheck: true });
+
+            expect(window.authManager.clear).not.toHaveBeenCalled();
+            expect(window.authManager.notify).not.toHaveBeenCalled();
+        });
+
+        it('still ends the session when a credential-recheck 401 carries WWW-Authenticate', () => {
+            const transport = new window.ApiTransport();
+
+            transport.checkAuthResponse(response401('Bearer'), { credentialRecheck: true });
+
+            expect(window.authManager.clear).toHaveBeenCalledOnce();
+            expect(window.authManager.notify).toHaveBeenCalledOnce();
+        });
+
+        it('ends the session on a plain 401 even without WWW-Authenticate when not declared a re-check', () => {
+            const transport = new window.ApiTransport();
+
+            transport.checkAuthResponse(response401(null));
+
+            expect(window.authManager.clear).toHaveBeenCalledOnce();
+            expect(window.authManager.notify).toHaveBeenCalledOnce();
+        });
+
+        it('does nothing for a credential-recheck response that is not a 401', () => {
+            const transport = new window.ApiTransport();
+
+            transport.checkAuthResponse({ status: 200, headers: { get: () => null } }, { credentialRecheck: true });
+
+            expect(window.authManager.clear).not.toHaveBeenCalled();
+            expect(window.authManager.notify).not.toHaveBeenCalled();
+        });
+    });
 });

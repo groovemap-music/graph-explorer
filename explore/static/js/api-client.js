@@ -10,10 +10,16 @@ class ApiClient {
      * collapsing it into the same "return null" path as any other error —
      * which otherwise leaves the nav showing a stale logged-in user while
      * every authenticated feature quietly goes dead (migration-regression-ponr).
+     *
+     * Pass `{ credentialRecheck: true }` for a route that re-authenticates
+     * the caller with their own password or TOTP code, so a wrong credential
+     * (also a 401) does not end the session — see
+     * `ApiTransport.checkAuthResponse`.
      * @param {Response} response
+     * @param {{credentialRecheck?: boolean}} [options]
      */
-    _checkAuthResponse(response) {
-        this._transport.checkAuthResponse(response);
+    _checkAuthResponse(response, options) {
+        this._transport.checkAuthResponse(response, options);
     }
 
     /**
@@ -318,7 +324,7 @@ class ApiClient {
             method: 'POST', headers: {'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json'},
             body: JSON.stringify({ code, password }),
         });
-        this._checkAuthResponse(response);
+        this._checkAuthResponse(response, { credentialRecheck: true });
         return response;
     }
 
@@ -328,7 +334,7 @@ class ApiClient {
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
         });
-        this._checkAuthResponse(response);
+        this._checkAuthResponse(response, { credentialRecheck: true });
         return response;
     }
 
@@ -687,7 +693,7 @@ class ApiClient {
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ password, code: totpCode }),
         });
-        this._checkAuthResponse(response);
+        this._checkAuthResponse(response, { credentialRecheck: true });
         const body = await this._transport.readJson(response).catch(() => null);
         return { ok: response.ok, status: response.status, body };
     }
