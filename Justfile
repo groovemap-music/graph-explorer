@@ -10,10 +10,10 @@ setup:
 source-check:
     uv run ruff format --check .
     uv run ruff check .
-    python scripts/check-contracts.py
-    python scripts/check-brand.py
-    python scripts/check-repository-compliance.py
-    python scripts/check-docs.py
+    uv run python scripts/check-contracts.py
+    uv run python scripts/check-brand.py
+    uv run python scripts/check-repository-compliance.py
+    uv run python scripts/check-docs.py
 
 secret-scan:
     gitleaks git --redact --no-banner
@@ -65,7 +65,7 @@ build: web-build
     uv build --out-dir dist --clear
 
 artifact-check: build
-    python scripts/check-vendor-artifacts.py dist/*.whl
+    uv run python scripts/check-vendor-artifacts.py dist/*.whl
 
 install-check: build
     bash scripts/install-check.sh
@@ -82,7 +82,7 @@ prepare-runtime-wheel:
     bash scripts/prepare-runtime-wheel.sh
 
 brand:
-    python scripts/check-brand.py
+    uv run python scripts/check-brand.py
 
 brand-promote:
     bash scripts/promote-brand.sh
