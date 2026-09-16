@@ -85,7 +85,10 @@ assert "artifact-check: build" in justfile
 assert "bash scripts/release-dry-run.sh --reuse-packages" in justfile
 assert "uv run cz bump --version-files-only" in justfile
 assert "uv run cz bump --files-only" not in justfile
-assert "python scripts/check-docs.py" in justfile
+assert "uv run python scripts/check-docs.py" in justfile
+assert not re.search(r"(?m)^[ \t]*python\b", justfile), (
+    "Justfile recipes must invoke `uv run python`, not a bare `python` that may be absent from PATH"
+)
 
 source_check = justfile.split("source-check:\n", 1)[1].split("\n\n", 1)[0]
 assert "npm " not in source_check
