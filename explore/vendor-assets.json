@@ -21,7 +21,7 @@
       "id": "plotly",
       "name": "Plotly.js",
       "package": "plotly.js-dist-min",
-      "version": "4.0.0",
+      "version": "4.1.0",
       "declared_license": "MIT",
       "selected_license": "MIT",
       "homepage": "https://plotly.com/javascript/",
@@ -30,24 +30,24 @@
         "path": "LICENSE",
         "sha256": "8c45d9eaf50c2f72dd9c7ab9ef440788ba58a3538484b5c51c1f17d5128752e7"
       },
-      "license_destination": "licenses/plotly.js-dist-min-4.0.0-MIT.txt",
+      "license_destination": "licenses/plotly.js-dist-min-4.1.0-MIT.txt",
       "outputs": ["plotly.min.js"]
     },
     {
       "id": "alpinejs",
       "name": "Alpine.js",
       "package": "alpinejs",
-      "version": "3.17.1",
+      "version": "3.17.2",
       "declared_license": "MIT",
       "selected_license": "MIT",
       "homepage": "https://alpinejs.dev",
       "license_source": {
         "scope": "repository",
-        "path": "third_party/licenses/alpinejs-3.17.1-MIT.md",
+        "path": "third_party/licenses/alpinejs-3.17.2-MIT.md",
         "sha256": "08b7502da6e7aa1d0bbdc97d220fbf669b9366c61bd0f072238283c89bc4773a",
-        "url": "https://github.com/alpinejs/alpine/blob/v3.17.1/LICENSE.md"
+        "url": "https://github.com/alpinejs/alpine/blob/v3.17.2/LICENSE.md"
       },
-      "license_destination": "licenses/alpinejs-3.17.1-MIT.md",
+      "license_destination": "licenses/alpinejs-3.17.2-MIT.md",
       "outputs": ["alpine.min.js"]
     },
     {
@@ -70,7 +70,7 @@
       "id": "dompurify",
       "name": "DOMPurify",
       "package": "dompurify",
-      "version": "3.4.14",
+      "version": "3.4.15",
       "declared_license": "(MPL-2.0 OR Apache-2.0)",
       "selected_license": "Apache-2.0",
       "homepage": "https://github.com/cure53/DOMPurify",
@@ -79,14 +79,14 @@
         "path": "LICENSE",
         "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
       },
-      "license_destination": "licenses/dompurify-3.4.14-Apache-2.0.txt",
+      "license_destination": "licenses/dompurify-3.4.15-Apache-2.0.txt",
       "outputs": ["dompurify.mjs"]
     },
     {
       "id": "marked",
       "name": "Marked",
       "package": "marked",
-      "version": "18.0.11",
+      "version": "18.0.13",
       "declared_license": "MIT",
       "selected_license": "MIT",
       "homepage": "https://marked.js.org",
@@ -95,7 +95,7 @@
         "path": "LICENSE",
         "sha256": "8e3a3f82f59a60958f56ca08f445647c32a4733dc7ca6c2c46f6eb898471ab9c"
       },
-      "license_destination": "licenses/marked-18.0.11-MIT.txt",
+      "license_destination": "licenses/marked-18.0.13-MIT.txt",
       "outputs": ["marked.mjs"]
     },
     {
@@ -183,7 +183,7 @@
       "id": "material-symbols",
       "name": "Material Symbols",
       "package": "material-symbols",
-      "version": "0.47.1",
+      "version": "0.47.2",
       "declared_license": "Apache-2.0",
       "selected_license": "Apache-2.0",
       "homepage": "https://marella.github.io/material-symbols/demo/",
@@ -192,7 +192,7 @@
         "path": "LICENSE",
         "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
       },
-      "license_destination": "licenses/material-symbols-0.47.0-Apache-2.0.txt",
+      "license_destination": "licenses/material-symbols-0.47.2-Apache-2.0.txt",
       "outputs": [
         "fonts/material-symbols/outlined.css",
         "fonts/material-symbols/material-symbols-outlined.woff2"
