@@ -85,7 +85,7 @@ class CreditsPanel {
             const data = await resp.json();
             this._showDropdown(data.results || []);
         } catch {
-            // Silently fail
+            // Autocomplete is optional; leave the current dropdown unchanged if the request fails.
         }
     }
 
