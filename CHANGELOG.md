@@ -3,6 +3,13 @@
 All notable changes to this repository will be recorded here by Commitizen from
 Conventional Commits.
 
+## v0.2.2 (2026-10-03)
+
+### Fix
+
+- **logging**: pin thread-safe runtime
+- **licenses**: sync vendor asset manifest with the bumped javascript group
+
 ## v0.2.1 (2026-09-15)
 
 ### Fix
