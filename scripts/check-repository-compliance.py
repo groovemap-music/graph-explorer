@@ -9,7 +9,7 @@ from repository_source import RepositorySourceError, tracked_tree_text
 
 ROOT = Path(__file__).resolve().parents[1]
 AUTOMATION_REVISION = "833cb464507678c38ab78bd4718ce697399463e9"
-PYTHON_LIBRARIES_REVISION = "9bac0220df80fdb550fde78d4db8228ca4273625"
+PYTHON_LIBRARIES_REVISION = "21855671580a446074bb9527b4d3355fee0bfde9"
 DESIGN_REVISION = "59c9fd3c8bbdfa676e0b7bb3d463fc766c1f3c0d"
 E2E_PROJECTS = {"chromium", "firefox", "webkit", "iphone", "ipad"}
 EXPECTED_BROWSER_COVERAGE = [

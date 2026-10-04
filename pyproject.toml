@@ -67,7 +67,7 @@ artifacts = ["explore/static/tailwind.css", "explore/static/vendor"]
 exclude-newer = "2 days"
 
 [tool.uv.sources]
-groovemap-runtime = { git = "https://github.com/groovemap-music/python-libraries.git", rev = "9bac0220df80fdb550fde78d4db8228ca4273625" }
+groovemap-runtime = { git = "https://github.com/groovemap-music/python-libraries.git", rev = "21855671580a446074bb9527b4d3355fee0bfde9" }
 
 [tool.ruff]
 extend-exclude = ["docs/superpowers"]
