@@ -9,6 +9,7 @@ from repository_source import RepositorySourceError, tracked_tree_text
 
 ROOT = Path(__file__).resolve().parents[1]
 AUTOMATION_REVISION = "833cb464507678c38ab78bd4718ce697399463e9"
+CI_AUTOMATION_REVISION = "2f890111657d9f3e6f55d8bd5a5e7b8f9ca97b26"
 PYTHON_LIBRARIES_REVISION = "21855671580a446074bb9527b4d3355fee0bfde9"
 DESIGN_REVISION = "59c9fd3c8bbdfa676e0b7bb3d463fc766c1f3c0d"
 E2E_PROJECTS = {"chromium", "firefox", "webkit", "iphone", "ipad"}
@@ -37,7 +38,7 @@ assert "dependabot" not in ci.casefold()
 assert "fallback-command" not in ci
 assert workflow_jobs(ci) == {"required"}
 ci_target = re.search(r"groovemap-music/automation/\.github/workflows/reusable-ci\.yml@([^\s]+)", ci)
-assert ci_target is not None and ci_target.group(1) == AUTOMATION_REVISION
+assert ci_target is not None and ci_target.group(1) == CI_AUTOMATION_REVISION
 for required_input in (
     "language: mixed",
     "coverage-command: just coverage",

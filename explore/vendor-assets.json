@@ -70,7 +70,7 @@
       "id": "dompurify",
       "name": "DOMPurify",
       "package": "dompurify",
-      "version": "3.4.15",
+      "version": "3.4.16",
       "declared_license": "(MPL-2.0 OR Apache-2.0)",
       "selected_license": "Apache-2.0",
       "homepage": "https://github.com/cure53/DOMPurify",
@@ -79,7 +79,7 @@
         "path": "LICENSE",
         "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
       },
-      "license_destination": "licenses/dompurify-3.4.15-Apache-2.0.txt",
+      "license_destination": "licenses/dompurify-3.4.16-Apache-2.0.txt",
       "outputs": ["dompurify.mjs"]
     },
     {
