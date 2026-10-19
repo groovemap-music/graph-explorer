@@ -545,7 +545,7 @@ describe('SettingsPane — Delete account card', () => {
                 erasure_id: 'era-44',
                 events_deleted: 1,
                 impressions_deleted: 0,
-                incomplete: ['Redis deletion failed: ConnectionError'],
+                incomplete: ['Valkey deletion failed: ConnectionError'],
             },
         });
         await erase();
@@ -553,7 +553,7 @@ describe('SettingsPane — Delete account card', () => {
         expect(receiptBanner.querySelector('#erasureId').textContent).toBe('era-44');
         const notice = receiptBanner.querySelector('#erasureIncomplete');
         expect(notice).toBeTruthy();
-        expect(notice.textContent).toContain('Redis deletion failed: ConnectionError');
+        expect(notice.textContent).toContain('Valkey deletion failed: ConnectionError');
     });
 
     it('keeps the receipt out of localStorage', async () => {
