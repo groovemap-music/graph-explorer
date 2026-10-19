@@ -528,11 +528,11 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "fastapi", specifier = ">=0.141.1" },
+    { name = "fastapi", specifier = ">=0.143.3" },
     { name = "groovemap-runtime", extras = ["otel", "otel-http"], git = "https://github.com/groovemap-music/python-libraries.git?rev=21855671580a446074bb9527b4d3355fee0bfde9" },
     { name = "httpx", specifier = ">=0.28.1" },
-    { name = "orjson", specifier = ">=3.12.0" },
-    { name = "pydantic", specifier = ">=2.13.5" },
+    { name = "orjson", specifier = ">=3.13.0" },
+    { name = "pydantic", specifier = ">=2.14.1" },
     { name = "python-multipart", specifier = ">=0.0.32" },
     { name = "structlog", specifier = ">=26.1.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.52.4" },
@@ -540,21 +540,21 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "build", specifier = ">=1.6.0" },
-    { name = "commitizen", specifier = ">=4.18.0" },
-    { name = "cyclonedx-bom", specifier = ">=7.3.1" },
-    { name = "mypy", specifier = ">=2.3.1" },
+    { name = "build", specifier = ">=1.6.1" },
+    { name = "commitizen", specifier = ">=4.19.2" },
+    { name = "cyclonedx-bom", specifier = ">=7.5.0" },
+    { name = "mypy", specifier = ">=2.4.0" },
     { name = "pip-audit", specifier = ">=2.10.1" },
     { name = "pip-licenses", specifier = ">=5.5.5" },
-    { name = "playwright", specifier = ">=1.62.0" },
+    { name = "playwright", specifier = ">=1.64.0" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-asyncio", specifier = ">=1.4.0" },
     { name = "pytest-base-url", specifier = ">=2.1.0" },
     { name = "pytest-cov", specifier = ">=7.1.0" },
-    { name = "pytest-playwright", specifier = ">=0.9.0" },
+    { name = "pytest-playwright", specifier = ">=0.10.0" },
     { name = "pytest-timeout", specifier = ">=2.4.0" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
-    { name = "ruff", specifier = ">=0.16.6" },
+    { name = "ruff", specifier = ">=0.17.1" },
 ]
 
 [[package]]
