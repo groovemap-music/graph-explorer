@@ -20,11 +20,11 @@ classifiers = [
 license = "AGPL-3.0-only"
 license-files = ["LICENSE", "NOTICE", "COMMERCIAL-LICENSING.md", "BRAND-NOTICE.md"]
 dependencies = [
-    "fastapi>=0.141.1",
+    "fastapi>=0.143.3",
     "groovemap-runtime[otel,otel-http]==0.1.0",
     "httpx>=0.28.1",
-    "orjson>=3.12.0",
-    "pydantic>=2.13.5",
+    "orjson>=3.13.0",
+    "pydantic>=2.14.1",
     "python-multipart>=0.0.32",
     "structlog>=26.1.0",
     "uvicorn[standard]>=0.52.4",
@@ -40,21 +40,21 @@ Issues = "https://github.com/groovemap-music/graph-explorer/issues"
 
 [dependency-groups]
 dev = [
-    "build>=1.6.0",
-    "commitizen>=4.18.0",
-    "cyclonedx-bom>=7.3.1",
-    "mypy>=2.3.1",
+    "build>=1.6.1",
+    "commitizen>=4.19.2",
+    "cyclonedx-bom>=7.5.0",
+    "mypy>=2.4.0",
     "pip-audit>=2.10.1",
     "pip-licenses>=5.5.5",
-    "playwright>=1.62.0",
+    "playwright>=1.64.0",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "pytest-base-url>=2.1.0",
     "pytest-cov>=7.1.0",
-    "pytest-playwright>=0.9.0",
+    "pytest-playwright>=0.10.0",
     "pytest-timeout>=2.4.0",
     "pytest-xdist>=3.8.0",
-    "ruff>=0.16.6",
+    "ruff>=0.17.1",
 ]
 
 [tool.hatch.build.targets.wheel]
