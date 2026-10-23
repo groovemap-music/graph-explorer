@@ -1,0 +1,166 @@
+# Strata renderer
+
+`explore/static/js/strata-renderer.js` is Discography Strata's 3D renderer: the `webgl-inst` engine
+that [ADR 0016](https://github.com/groovemap-music/design/blob/main/docs/adr/0016-strata-graph-view.md)
+section 1 chose, on three.js 0.186.1. It draws a `layoutStrata()` result
+(`explore/static/js/strata-layout.js`) on three stacked planes and handles picking. It does not
+fetch, lay out, or decide what a click opens. The Explore integration does that: it builds the
+layout, calls `setLayout`, and listens for `hover`, `select`, and `solo`.
+
+The design comes from the design spike `gm-design-on0x` (Recommendations 1, 3, and 4). Its
+harness's `webgl-inst` mode is the source of the port.
+
+| File | Role |
+| --- | --- |
+| `explore/static/js/strata-renderer.js` | `StrataRenderer`: the three.js scene, pointer input, and DOM labels |
+| `explore/static/js/strata-scene.js` | The decisions that need no GPU: resolve picking, label candidates and placement, level of detail, camera tweens and reduced motion, vertical links |
+| `explore/static/css/strata.css` | The `--strata-*` color properties and the label classes. The page that mounts the renderer must link it |
+
+## API
+
+```js
+import { StrataRenderer } from './strata-renderer.js';
+
+const renderer = new StrataRenderer(stageElement);
+renderer.setLayout(layoutStrata(graph, { focus, selected, edges }));
+renderer.start();
+renderer.addEventListener('select', (event) => openPanel(event.detail.node));
+```
+
+| Member | What it does |
+| --- | --- |
+| `new StrataRenderer(stage, options)` | Adds a canvas and a label layer to `stage`. Every option is a seam for tests: `createRenderer(canvas)` (the WebGL context), `readToken`, `theme`, `matchMedia`, `requestFrame`/`cancelFrame`, `now`, `measure` (the stage rectangle), `labelOf(node)` (label text), and `pixelRatio` |
+| `setLayout(layout)` | Draws a layout. The selection survives if its node is still drawn |
+| `pick(clientX, clientY)` | The node a pointer means, by resolve picking, or `null` |
+| `hitsAt(clientX, clientY)` | `{ node, candidates }`: every node under the pointer, best first |
+| `hover(id)` / `select(id)` / `solo(level)` | Set the hover, the selection, or the soloed plane (0 credits, 1 masters, 2 releases). `null` clears. Each dispatches a `hover`, `select`, or `solo` event once per change. `detail` is `{ id, node }`, or `{ level }` for `solo` |
+| `orbit(radians)`, `tilt(radians)`, `zoom('in' \| 'out' \| 'reset')`, `resetCamera()` | Camera moves for keyboard bindings. Zoom and reset are tweened unless reduced motion is on |
+| `refreshColors()` | Re-reads the tokens after a theme change |
+| `start()` / `stop()` / `tick(t)` / `render()` | The animation loop. A frame renders only when something changed |
+| `screenPosition(node)`, `drawCounts()`, `stats` | Readouts for tests and the performance smoke test |
+| `dispose()` | Releases the GPU objects, listeners, and DOM |
+
+Pointer input is built in. A drag orbits and tilts. A click selects through `pick`. A pointer move
+hovers, picked at most once a frame. The wheel zooms.
+
+## Scene
+
+- **One `InstancedMesh` per plane and render kind.** An entity, a count node, and a no-master lane
+  are separate kinds: an icosahedron, sphere, or disc for entities (credit, master, release), an
+  octahedron or a stack of discs for count nodes, and a box for the lane. Each plane adds one
+  instanced halo. A 20,000-node layout is 6 instanced meshes.
+- **Merged edge ribbons.** Lateral edges become one mesh per plane, edge kind, and dimming. Rules
+  that pick which edges to draw stay in the layout's planar edge rule.
+- **Credit hulls** are merged per plane, color, and dimming. They are rebuilt for a new layout or
+  selection, not for camera moves.
+- **Vertical links** run from each node to its parent on the plane above. They are rebuilt only
+  when the layout, the soloed plane, or the selection changes (`verticalLinksKey`), never on a
+  camera move.
+- **Colors** are the promoted collector-state tokens (`stateColor` in `strata-collector.js`) for
+  the active theme. A count node takes the roll-up of the states it holds. A node with no state
+  uses `--strata-node-stateless`. Outside the selection's lineage, nodes dim toward the canvas.
+
+## Resolve picking
+
+Nearest-hit picking lets a node nearer the camera win even when the pointer is on the centre of
+the node behind it. In `gm-design-on0x`, 3 of 153 drill-down targets could not be clicked that
+way. `resolvePick` collects every hit along the ray (three.js raycasting against the instanced
+meshes of visible planes), then:
+
+1. projects each hit node's centre to the screen, and the nearest centre to the pointer wins;
+2. if several centres are within `TIE_TOLERANCE_PX` (2 CSS px) of the nearest, they are tied, and
+   a node on the soloed plane wins, then a node on the selected node's plane;
+3. a remaining tie goes to the nearer centre, then to the hit nearer the camera.
+
+Soloing a plane hides the others, so they are not hit at all. The solo rule still applies to the
+pure function, for a caller that dims other planes instead of hiding them.
+
+## Labels and level of detail
+
+Only label candidates get a label element, and only a candidate that projects on screen. The
+hovered and selected nodes always show. With a selection, only its lineage is labelled. Otherwise
+nodes on planes down to the level of detail's `labelDepth` are candidates, credits first. Placement
+is the mockup's greedy rule (priority order, skip overlaps) over a uniform grid. At most
+`MAX_NODE_LABELS` (400) node labels are placed in a frame. Labels are positioned through CSSOM
+transforms and hidden with the `hidden` attribute.
+
+`levelOfDetail` takes the camera distance and the drawn node count:
+
+| Camera distance (home is 210) | `labelDepth` |
+| --- | --- |
+| over 1.25 × home | 0: credits |
+| home | 1: credits and masters (the mockup's default) |
+| under 0.85 × home | 2: every plane |
+| under 0.62 × home, or a soloed plane | every plane |
+
+Above `LOD_NODE_LIMIT` (1,500) drawn nodes, the shapes switch to low-detail geometry (fewer
+segments per sphere and disc) and the halos are hidden, unless the camera is within 0.62 × home.
+The default 3, 12, 16 view never reaches that limit.
+
+## Reduced motion and CSP
+
+Every camera tween goes through `animateTo`. When `prefers-reduced-motion: reduce` matches, the
+move is a jump with no tween frames. That covers zoom, reset, solo, and leaving solo. A tween already
+running when the preference turns on lands at once.
+
+The renderer has no `eval`, no `new Function`, no string timers, no HTML parsing, and no style
+attribute written as markup or through `setAttribute`. Neither do the three.js files the importmap
+loads. A future `style-src 'self'` policy without `'unsafe-inline'` holds.
+
+## Tests
+
+- `explore/__tests__/strata-scene.test.js` covers the GPU-free logic: resolve picking on stacked
+  nodes and the plane tie-break, label candidates and placement, level of detail, and reduced
+  motion.
+- `explore/__tests__/strata-renderer.test.js` builds the real three.js scene in jsdom with a stub
+  for the WebGL context. It covers instancing, edge merging, colors, picking through the scene
+  (occlusion and an exact tie), events, labels, reduced motion for every camera move, vertical link
+  rebuilds, and level of detail.
+- `explore/__tests__/strata-csp.test.js` scans the strata modules and the vendored three.js for
+  the forbidden constructs, and checks at run time that the renderer never writes a style
+  attribute or sets `innerHTML`.
+- `tests/perf/test_strata_renderer_perf.py` is the performance smoke test below. `just test` and the
+  E2E matrix skip it (marker `benchmark`).
+
+## Performance smoke test
+
+`just strata-perf` builds the web assets, serves the app, and drives the renderer in Chromium on a
+20,000-node synthetic layout (`explore/__tests__/strata-synthetic.js`). The layout has the shape of
+`gm-design-on0x`'s 20,000-node Discogs band: 71 credits, 1,480 master-plane nodes, and 18,449
+pressings, unaggregated. The page is served under the spike's strict policy
+(`script-src 'self'` plus the importmap hash, `style-src 'self'`). The test fails on any
+`securitypolicyviolation`, page error, or missing node. The figures are written to
+`test-results/strata-renderer-perf.json`.
+
+The method follows the spike. Time to first frame runs from the layout in memory to the second
+animation frame after the first render, which includes creating the WebGL context. Frame time is
+taken while orbiting at one turn per 8 s for 4 s, on a 1440 × 900 viewport at device pixel ratio 2.
+"Renderer work" is the renderer's own JavaScript per frame: level of detail, links, the draw
+submission, and labels.
+
+Headless Chromium paces animation frames by its own throttles. A 50-node scene ran at 15 to 60 fps
+headless on the measuring machine, so headless frame rate is not a measure of the renderer. A
+headless run (the default) therefore lifts the vsync cap, and its frame interval is what a frame
+costs. `STRATA_PERF_HEADED=1` runs headed against the display's cap, as the spike did. On macOS the
+test uses ANGLE's Metal backend so the GPU renders, not SwiftShader.
+
+### Measured result
+
+Measured on 2026-10-23 on an Apple M1 Pro (10 cores, 32 GiB) with Playwright's Chromium (build
+1248) on ANGLE Metal. Other work was running: the 1-minute load average was 3.7 to 6.4.
+
+| Run | Time to first frame | Frame time, median / p95 | fps, median / 5th percentile | Renderer work per frame, median / p95 | Resolve pick, median / p95 | Draw calls |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 20,000 nodes, headed (120 Hz cap) | 296 ms | 8.3 / 8.9 ms | 120 / 112 | 1.0 / 1.2 ms | 1.6 / 2.6 ms | 62 |
+| 50 nodes, headed (control) | 133 ms | 8.3 / 9.7 ms | 120 / 103 | 0.7 / 2.1 ms | 0.0 / 0.2 ms | 58 |
+| 20,000 nodes, headless, uncapped | 282 ms | 1.7 / 9.2 ms | 588 / 109 | 0.8 / 8.0 ms | 1.6 / 2.7 ms | 62 |
+
+- At 20,000 unaggregated nodes the renderer holds the 120 Hz display cap, with a 5th percentile
+  of 112 fps. The spike measured `webgl-inst` at 120 / 104 fps and 403 ms to first frame there, in
+  Chromium on the same machine.
+- A frame costs about 1 ms of JavaScript. Uncapped, a whole frame takes a median of 1.7 ms. The
+  headless run had one 841 ms stall, so its p95 and the worst frame are less reliable than its
+  median.
+- The level of detail was `low` at the home view, as designed. 91 to 93 labels were placed from
+  1,551 node candidates and the hull tags.
+- These are one machine's figures. No mid-range laptop or phone was measured.
