@@ -18,7 +18,7 @@ test "$(DOCKER_HOST="${docker_host}" docker --config "${docker_config}" image in
 test "$(DOCKER_HOST="${docker_host}" docker --config "${docker_config}" image inspect graph-explorer:local --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "${vcs_ref}"
 DOCKER_HOST="${docker_host}" docker --config "${docker_config}" run --rm \
   --entrypoint /app/.venv/bin/python graph-explorer:local \
-  -c 'from importlib.resources import files; root = files("explore").joinpath("static"); vendor = root.joinpath("vendor"); assert vendor.joinpath("THIRD_PARTY_NOTICES.md").is_file(); assert vendor.joinpath("ASSET_LICENSES.json").is_file(); assert len(tuple(vendor.joinpath("licenses").iterdir())) == 10; assert root.joinpath("brand/source.json").is_file()'
+  -c 'from importlib.resources import files; root = files("explore").joinpath("static"); vendor = root.joinpath("vendor"); assert vendor.joinpath("THIRD_PARTY_NOTICES.md").is_file(); assert vendor.joinpath("ASSET_LICENSES.json").is_file(); assert len(tuple(vendor.joinpath("licenses").iterdir())) == 11; assert root.joinpath("brand/source.json").is_file()'
 DOCKER_HOST="${docker_host}" docker --config "${docker_config}" run --rm \
   --entrypoint /bin/sh graph-explorer:local \
   -c 'test -s /usr/share/doc/graph-explorer/LICENSE && test -s /usr/share/doc/graph-explorer/NOTICE && test -s /usr/share/doc/graph-explorer/COMMERCIAL-LICENSING.md && test -s /usr/share/doc/graph-explorer/BRAND-NOTICE.md'

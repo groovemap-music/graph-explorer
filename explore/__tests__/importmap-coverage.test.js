@@ -71,4 +71,9 @@ describe('importmap covers all bare module specifiers in static/js', () => {
         expect(firstModuleIdx, 'no module script found').toBeGreaterThanOrEqual(0);
         expect(importMapIdx).toBeLessThan(firstModuleIdx);
     });
+
+    it('maps three to the vendored module, which reaches three.core.js by a relative import', () => {
+        const imports = extractImportMap(indexHtml);
+        expect(imports.three).toBe('/vendor/three.module.js');
+    });
 });

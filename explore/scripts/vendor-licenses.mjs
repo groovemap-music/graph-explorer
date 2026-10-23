@@ -17,6 +17,7 @@ const exploreDir = resolve(dirname(modulePath), '..');
 const repoRoot = resolve(exploreDir, '..');
 const defaultManifestPath = join(exploreDir, 'vendor-assets.json');
 const defaultVendorDir = join(exploreDir, 'static', 'vendor');
+const defaultSourcePaths = [join(repoRoot, 'third_party', 'three', 'source.json')];
 
 const REQUIRED_PACKAGES = new Set([
     '@fontsource/inter',
@@ -29,6 +30,7 @@ const REQUIRED_PACKAGES = new Set([
     'material-symbols',
     'plotly.js-dist-min',
     'qrcodejs',
+    'three',
 ]);
 
 const GENERATED_FILES = new Set(['ASSET_LICENSES.json', 'THIRD_PARTY_NOTICES.md']);
@@ -122,6 +124,38 @@ export function assertAssetInventory(expectedFiles, actualFiles) {
     invariant(unclassified.length === 0, `unclassified runtime assets: ${unclassified.join(', ')}`);
 }
 
+export function assertSourceDigests(source, files, label) {
+    const expected = Object.keys(source.files ?? {});
+    invariant(expected.length > 0, `${source.package} source.json records no file digests`);
+    for (const name of sorted(expected)) {
+        invariant(name in files, `${label} is missing ${name}`);
+        invariant(
+            files[name] === source.files[name],
+            `${label} ${name} drifted from ${source.package}@${source.version} source.json: expected ${source.files[name]}, got ${files[name]}`,
+        );
+    }
+}
+
+function digestsIn(directory, names) {
+    return Object.fromEntries(names.filter((name) => existsSync(join(directory, name))).map((name) => [name, sha256(readFileSync(join(directory, name)))]));
+}
+
+function validateSources({ root, vendorDir, manifest, sourcePaths }) {
+    for (const sourcePath of sourcePaths) {
+        const source = readJson(sourcePath);
+        const asset = manifest.assets.find((candidate) => candidate.package === source.package);
+        invariant(asset !== undefined, `source.json package ${source.package} is not classified in the vendor asset manifest`);
+        invariant(asset.version === source.version, `source.json version for ${source.package} differs from the vendor asset manifest`);
+        invariant(
+            JSON.stringify(sorted(Object.keys(source.files))) === JSON.stringify(sorted(asset.outputs)),
+            `source.json files for ${source.package} differ from its classified outputs`,
+        );
+        const names = Object.keys(source.files);
+        assertSourceDigests(source, digestsIn(join(root, 'explore', 'node_modules', source.package, source.package_path), names), `installed ${source.package} package`);
+        assertSourceDigests(source, digestsIn(vendorDir, names), 'vendored copy of');
+    }
+}
+
 function renderedManifest(manifest) {
     return `${JSON.stringify(manifest, null, 2)}\n`;
 }
@@ -144,7 +178,7 @@ function renderedNotices(manifest) {
     ].join('\n');
 }
 
-export function validateVendorAssets({ root = repoRoot, vendorDir = defaultVendorDir, manifestPath = defaultManifestPath } = {}) {
+export function validateVendorAssets({ root = repoRoot, vendorDir = defaultVendorDir, manifestPath = defaultManifestPath, sourcePaths = defaultSourcePaths } = {}) {
     const manifest = loadAndValidateManifest(manifestPath, root);
     const licenseDestinations = new Set(manifest.assets.map((asset) => asset.license_destination));
     const runtimeFiles = walkFiles(vendorDir).filter((path) => !GENERATED_FILES.has(path) && !licenseDestinations.has(path));
@@ -156,12 +190,14 @@ export function validateVendorAssets({ root = repoRoot, vendorDir = defaultVendo
         invariant(sha256(readFileSync(destination)) === asset.license_source.sha256, `vendored license text changed for ${asset.package}`);
     }
 
+    validateSources({ root, vendorDir, manifest, sourcePaths });
+
     invariant(readFileSync(join(vendorDir, 'ASSET_LICENSES.json'), 'utf8') === renderedManifest(manifest), 'generated asset license map is stale');
     invariant(readFileSync(join(vendorDir, 'THIRD_PARTY_NOTICES.md'), 'utf8') === renderedNotices(manifest), 'generated third-party notices are stale');
     return manifest;
 }
 
-export function buildVendorNotices({ root = repoRoot, vendorDir = defaultVendorDir, manifestPath = defaultManifestPath } = {}) {
+export function buildVendorNotices({ root = repoRoot, vendorDir = defaultVendorDir, manifestPath = defaultManifestPath, sourcePaths = defaultSourcePaths } = {}) {
     const manifest = loadAndValidateManifest(manifestPath, root);
     mkdirSync(join(vendorDir, 'licenses'), { recursive: true });
     for (const asset of manifest.assets) {
@@ -169,7 +205,7 @@ export function buildVendorNotices({ root = repoRoot, vendorDir = defaultVendorD
     }
     writeFileSync(join(vendorDir, 'ASSET_LICENSES.json'), renderedManifest(manifest));
     writeFileSync(join(vendorDir, 'THIRD_PARTY_NOTICES.md'), renderedNotices(manifest));
-    validateVendorAssets({ root, vendorDir, manifestPath });
+    validateVendorAssets({ root, vendorDir, manifestPath, sourcePaths });
 }
 
 if (resolve(process.argv[1] ?? '') === resolve(modulePath)) {
