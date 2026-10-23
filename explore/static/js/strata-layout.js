@@ -12,9 +12,13 @@
  *
  * Ported from the design spike gm-design-on0x (docs/spikes/gm-design-on0x/lib/layout.mjs and
  * view.mjs): the spaced time icicle, hull, roundedHull, inPoly, segmentsCross, the planar edge
- * rule, paged drill-down, and fitView's footprint check. The input is gm-design-1h2l's draft
- * strata payload (section 6 of docs/spikes/gm-design-1h2l-strata-ladder.md), and
- * adaptStrataPayload is the one place that reads it.
+ * rule, and fitView's footprint check. The input is catalog-api's `GET /api/explore/strata` body
+ * (contracts/catalog-api/graph-explorer/v1), and adaptStrataPayload is the one place that reads it.
+ *
+ * Paging is the route's, not the layout's. An aggregate carries counts, spans, and states but no
+ * member list, so drilling in is a new request (`focus=<cursor>&page=<n>`) that returns a full view
+ * with that page's members drawn as ordinary nodes. The layout reads the page from the payload's
+ * `focus`, pins its members, and never folds them unless the plane cannot hold them otherwise.
  */
 
 export const WORLD_WIDTH = 120;
@@ -36,17 +40,22 @@ const AXIS_TO_X = WORLD_WIDTH / 2 - 6;
 // its hull reaches size + HULL_PAD past it, so the hull stays out of the next band while the gutter
 // exceeds HULL_PAD - FOOTPRINT_GAP - size on every plane: 0.25 on the release plane.
 export const GROUP_GUTTER = 0.5;
-// Drill-down pages (gm-design-on0x Recommendation 2): 8 pressings, at most 12, or 8 masters, at
-// most 8. Larger pages break the footprint guarantee.
-export const PAGE_SIZE = 8;
-export const MAX_PRESSINGS_PAGE = 12;
-export const MAX_MASTERS_PAGE = 8;
 const AXIS_FROM_YEAR = 1953;
 const AXIS_TO_YEAR = 2027;
 const EPSILON = 1e-9;
-const MASTER_AGGREGATES = new Set(['no_master', 'masters', 'band']);
+const MASTER_AGGREGATES = new Set(['no_master', 'masters']);
 // Ids the layout mints for its own count nodes.
-const RESERVED_ID = /^(fold|page):/;
+const RESERVED_ID = /^fold:/;
+// The route spells the combined state with an underscore; strata-collector.js with a hyphen.
+const WIRE_STATES = Object.freeze({ none: 'none', wanted: 'wanted', owned: 'owned', wanted_owned: 'wanted-owned' });
+const PROVIDERS = new Set(['discogs', 'musicbrainz']);
+const UNDATED_DECADE = 'undated';
+const ALL_DECADES = 'all';
+
+/** The route's decade bucket for a year: '1990s', or 'undated'. */
+export function decadeOf(year) {
+    return year === null ? UNDATED_DECADE : `${Math.floor(year / 10) * 10}s`;
+}
 
 const footprint = (level) => 2 * PLANE_SIZES[level] + FOOTPRINT_GAP;
 const compareIds = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
@@ -67,11 +76,38 @@ function readCount(value, id, field) {
     return value;
 }
 
-function readStates(value) {
+function readState(value, id) {
+    if (value === undefined || value === null) return null;
+    if (!Object.hasOwn(WIRE_STATES, value)) throw invalid(`${id} has an unknown collector state ${value}`);
+    return WIRE_STATES[value];
+}
+
+function readStates(value, id) {
     if (!value || typeof value !== 'object') return null;
     const states = {};
-    for (const [state, count] of Object.entries(value)) if (Number.isFinite(count)) states[state] = count;
+    for (const [state, count] of Object.entries(value)) if (Number.isFinite(count)) states[readState(state, id)] = count;
     return states;
+}
+
+function readText(value) {
+    return typeof value === 'string' || typeof value === 'number' ? String(value) : null;
+}
+
+// The collector's own recorded `date_added` for each side of the state, as ISO strings or null.
+function readRecordedAt(value, id) {
+    if (value === undefined || value === null) return null;
+    if (typeof value !== 'object') throw invalid(`${id} has a recorded_at that is not an object`);
+    const at = (side) => (typeof value[side] === 'string' ? value[side] : null);
+    return Object.freeze({ owned: at('owned'), wanted: at('wanted') });
+}
+
+// A release's provider: the route's field, or its id's prefix (r: is Discogs, mb: MusicBrainz).
+function readProvider(raw, id) {
+    const fromId = id.startsWith('mb:') ? 'musicbrainz' : id.startsWith('r:') ? 'discogs' : null;
+    const provider = raw.provider ?? fromId;
+    if (provider !== null && !PROVIDERS.has(provider)) throw invalid(`${id} has an unknown provider ${provider}`);
+    if (fromId !== null && provider !== fromId) throw invalid(`${id} is a ${fromId} id with provider ${provider}`);
+    return provider;
 }
 
 function readEntry(raw, level, isAggregate) {
@@ -88,16 +124,26 @@ function readEntry(raw, level, isAggregate) {
     }
     const lane = aggKind === 'no_master' ? 'nomaster' : null;
     const year = isAggregate || level === 0 ? null : readYear(raw.year, id, 'year');
+    if (typeof raw.undated === 'boolean' && !isAggregate && level > 0 && raw.undated !== (year === null)) {
+        throw invalid(`${id} says undated is ${raw.undated} with year ${year}`);
+    }
     let y0 = readYear(raw.y0, id, 'y0');
     let y1 = readYear(raw.y1, id, 'y1');
     if (level === 2 && !isAggregate) [y0, y1] = [year, year];
     if (y0 !== null && y1 === null) y1 = y0;
     let label = null;
+    let artists = null;
     if (level === 0 && Array.isArray(raw.artists)) {
-        label = raw.artists.map((artist) => artist && artist.name).filter((name) => typeof name === 'string').join(', ');
+        artists = Object.freeze(raw.artists.filter((artist) => artist && readText(artist.id) !== null).map((artist) => Object.freeze({ id: readText(artist.id), name: typeof artist.name === 'string' ? artist.name : null })));
+        label = artists.map((artist) => artist.name).filter((name) => name !== null).join(', ');
     } else if (!isAggregate && typeof raw.title === 'string') {
         label = raw.title;
     }
+    const release = level === 2 && !isAggregate;
+    const provider = release ? readProvider(raw, id) : null;
+    const state = readState(raw.state, id);
+    // A MusicBrainz-only release has no Discogs wantlist or collection, so it never has a state.
+    if (provider === 'musicbrainz' && state !== null) throw invalid(`${id} is MusicBrainz-only and carries state ${raw.state}`);
     return Object.freeze({
         id,
         level,
@@ -109,59 +155,132 @@ function readEntry(raw, level, isAggregate) {
         // Undated by its own data. A lane is placed by its pressings, never by a year of its own.
         undated: level > 0 && !lane && (isAggregate ? y0 === null : year === null),
         year,
+        yearSource: !isAggregate && typeof raw.year_source === 'string' ? raw.year_source : null,
+        decade: isAggregate && typeof raw.decade === 'string' ? raw.decade : null,
         y0,
         y1,
-        releases: level === 2 && !isAggregate ? 1 : readCount(raw.releases, id, 'releases'),
-        masters: level === 1 ? (isAggregate ? readCount(raw.masters, id, 'masters') : 1) : 0,
+        releases: release ? 1 : readCount(raw.releases, id, 'releases'),
+        undatedReleases: release ? Number(year === null) : readCount(raw.undated_releases, id, 'undated_releases'),
+        musicbrainzReleases: release ? Number(provider === 'musicbrainz') : readCount(raw.musicbrainz_releases, id, 'musicbrainz_releases'),
+        // A master node is one master; an aggregate, or a credit, counts the masters it holds.
+        masters: level === 1 && !isAggregate ? 1 : level === 2 ? 0 : readCount(raw.masters, id, 'masters'),
         credits: level === 0 ? (isAggregate ? readCount(raw.credits, id, 'credits') : 1) : 0,
-        state: typeof raw.state === 'string' ? raw.state : null,
-        states: readStates(raw.states),
-        recordedAt: typeof raw.recorded_at === 'string' ? raw.recorded_at : null,
+        provider,
+        releaseId: release ? readText(raw.release_id) : null,
+        masterId: level === 1 && !isAggregate ? readText(raw.master_id) : null,
+        artists,
+        state,
+        states: readStates(raw.states, id),
+        recordedAt: readRecordedAt(raw.recorded_at, id),
         label,
     });
 }
 
+function readFocus(raw) {
+    if (raw === undefined || raw === null) return null;
+    if (typeof raw !== 'object' || typeof raw.id !== 'string' || !raw.id) throw invalid('focus has no cursor id');
+    const level = PLANE_KINDS.indexOf(raw.plane);
+    if (level < 0) throw invalid(`focus ${raw.id} is on an unknown plane ${raw.plane}`);
+    const count = (field, least) => {
+        const value = raw[field];
+        if (!Number.isInteger(value) || value < least) throw invalid(`focus ${raw.id} has an invalid ${field}`);
+        return value;
+    };
+    const focus = { id: raw.id, level, page: count('page', 0), pages: count('pages', 1), pageSize: count('page_size', 1), members: count('members', 1) };
+    if (focus.page >= focus.pages) throw invalid(`focus ${raw.id} is on page ${focus.page} of ${focus.pages}`);
+    return Object.freeze(focus);
+}
+
+function readTotals(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const count = (field) => readCount(raw[field], 'totals', field);
+    return Object.freeze({
+        credits: count('credits'),
+        masters: count('masters'),
+        releases: count('releases'),
+        masterlessReleases: count('masterless_releases'),
+        undatedReleases: count('undated_releases'),
+        musicbrainzReleases: count('musicbrainz_releases'),
+    });
+}
+
+// Shared-personnel edges between drawn masters become the layout's 'personnel' edges. The planar
+// rule decides which to draw; the rest stay in the panel. Unknown kinds are not drawable.
+function readEdges(plane) {
+    if (!Array.isArray(plane.edges)) return [];
+    const edges = [];
+    for (const raw of plane.edges) {
+        if (!raw || raw.kind !== 'shared_personnel' || typeof raw.source !== 'string' || typeof raw.target !== 'string') continue;
+        edges.push(Object.freeze({
+            a: raw.source,
+            b: raw.target,
+            kind: 'personnel',
+            categories: Object.freeze(Array.isArray(raw.categories) ? raw.categories.filter((category) => typeof category === 'string') : []),
+            people: Number.isInteger(raw.people) ? raw.people : null,
+        }));
+    }
+    return edges;
+}
+
 /**
  * The one adapter from the strata route payload to the layout's input. Everything that knows the
- * route's field names is here, so promoting the catalog-api contract (gm-catalog-api-absv) means
- * reconciling this function and its tests, not the layout.
+ * route's field names is here, so a change to catalog-api's contract
+ * (contracts/catalog-api/graph-explorer/v1, `explore_strata`) means reconciling this function and
+ * its tests, not the layout.
  *
- * The payload is gm-design-1h2l's draft, GET /api/strata/artist/{artist_id}:
+ * The payload is catalog-api's `GET /api/explore/strata?artist_id=&budget=&focus=&page=`:
  *
  *   {
- *     root:   { type: 'artist', id, name },
- *     budget: { credits, masters, releases } | null,
- *     totals: { credits, masters, releases, masterless_releases, releases_only_in_master_aggregates },
+ *     root:      { type: 'artist', id, name },
+ *     budget:    { credits, masters, releases },
+ *     focus:     null | { id, plane: 'credit' | 'master' | 'release', page, pages, page_size, members },
+ *     signed_in: boolean,
+ *     totals:    { credits, masters, releases, masterless_releases, undated_releases,
+ *                  musicbrainz_releases },
  *     planes: [
  *       { level: 0, kind: 'credit',
- *         nodes:      [{ id: 'c:1', artists: [{ id, name }], releases }],
- *         aggregates: [{ id: 'c:other', credits, releases }] },
+ *         nodes:      [{ id: 'c:1+2', artists: [{ id, name }], masters, masterless, releases, ...counts,
+ *                        state? }],
+ *         aggregates: [{ id: 'c:other', credits, masters, ...counts }] },
  *       { level: 1, kind: 'master',
- *         nodes:      [{ id: 'm:501', parent, title, year, releases, y0, y1, state? }],
- *         aggregates: [{ id, parent, kind: 'no_master' | 'masters' | 'band', masters, releases,
- *                        y0, y1, decade?, states? }] },
+ *         nodes:      [{ id: 'm:501', parent, master_id, title, year, year_source, undated, ...counts,
+ *                        state? }],
+ *         aggregates: [{ id: 'nm:c:1' | 'ma:c:1:1990s' | 'ma:c:1:all', parent,
+ *                        kind: 'no_master' | 'masters', decade, masters, ...counts }],
+ *         edges:      [{ source: 'm:501', target: 'm:502', kind: 'shared_personnel', categories, people }] },
  *       { level: 2, kind: 'release',
- *         nodes:      [{ id: 'r:9', parent, title, year, state?, recorded_at? }],
- *         aggregates: [{ id, parent, releases, y0, y1, states? }] },
+ *         nodes:      [{ id: 'r:9' | 'mb:<mbid>', parent, provider, release_id, title, year, year_source,
+ *                        undated, state?, recorded_at? }],
+ *         aggregates: [{ id: 'ra:m:501' | 'ra:nm:c:1' | 'ra:nm:c:1:1990s', parent, decade?, ...counts }] },
  *     ],
  *   }
+ *
+ * where counts are `releases, undated_releases, musicbrainz_releases, y0, y1, states?`.
  *
  * What the layout relies on:
  * - ids are unique strings, and every entry below the credit plane names a parent on the plane
  *   directly above;
  * - the root's own credit is the first credit node;
- * - a `no_master` aggregate is the credit's no-master lane: the parent of its masterless releases;
+ * - a `no_master` aggregate (`nm:<credit>`) is a drawn credit's no-master lane: the parent of its
+ *   masterless releases. It exists only for drawn credits; a folded credit keeps its lane inside
+ *   `c:other`;
  * - a release-plane entry's `releases` is 1 for a node and the count it holds for an aggregate, and
  *   a master-plane entry's `releases` counts every release under it, drawn or not;
- * - a year is a number or null. Null means undated, and an aggregate with a null `y0` holds only
- *   undated entries;
- * - aggregate ids are the route's `focus` cursors, kept as `cursor` on the drawn count node.
+ * - a year is a number or null. A node is undated when its year is null (its `undated` flag says
+ *   the same, and a release's `year_source` is 'master' when the year is its master's). An
+ *   aggregate has null `y0` and `y1` only when every entry in it is undated; a mixed one counts its
+ *   `undated_releases`;
+ * - aggregate ids, and master node ids, are the route's `focus` cursors, kept as `cursor` on the
+ *   drawn node. `focus` names the page this response draws.
  *
- * `state`, `states`, and `recorded_at` appear only for a signed-in caller and are passed through.
- * A malformed payload throws a TypeError naming the entry.
+ * `state`, `states`, and `recorded_at` appear only for a signed-in caller. The wire's
+ * `wanted_owned` becomes strata-collector.js's `wanted-owned`. A MusicBrainz-only release
+ * (`mb:<mbid>`, `provider: 'musicbrainz'`) has `state: null`: it is drawn state-less and offers no
+ * collector action. A malformed payload throws a TypeError naming the entry.
  *
  * @param {object} payload - the strata route response body
- * @returns {{root: object|null, budget: object|null, totals: object|null, rootCredit: string|null,
+ * @returns {{root: object|null, budget: object|null, focus: object|null, signedIn: boolean,
+ *            totals: object|null, rootCredit: string|null, edges: ReadonlyArray<object>,
  *            entries: ReadonlyArray<object>}} a frozen graph for layoutStrata
  */
 export function adaptStrataPayload(payload) {
@@ -170,6 +289,7 @@ export function adaptStrataPayload(payload) {
     }
     const entries = [];
     const byId = new Map();
+    let edges = [];
     for (let level = 0; level < 3; level++) {
         const plane = payload.planes.find((candidate) => candidate && candidate.level === level);
         if (!plane) throw invalid(`plane ${level} is missing`);
@@ -184,6 +304,7 @@ export function adaptStrataPayload(payload) {
                 entries.push(entry);
             }
         }
+        if (level === 1) edges = readEdges(plane);
     }
     for (const entry of entries) {
         if (entry.level === 0) continue;
@@ -194,8 +315,11 @@ export function adaptStrataPayload(payload) {
     return Object.freeze({
         root: payload.root ?? null,
         budget: payload.budget ?? null,
-        totals: payload.totals ?? null,
+        focus: readFocus(payload.focus),
+        signedIn: payload.signed_in === true,
+        totals: readTotals(payload.totals),
         rootCredit: firstCredit ? firstCredit.id : null,
+        edges: Object.freeze(edges),
         entries: Object.freeze(entries),
     });
 }
@@ -215,17 +339,26 @@ function fromEntry(entry) {
         lane: entry.lane,
         undated: entry.undated,
         year: entry.year,
+        yearSource: entry.yearSource ?? null,
+        decade: entry.decade ?? null,
         y0: entry.y0,
         y1: entry.y1,
         releases: entry.releases,
+        undatedReleases: entry.undatedReleases ?? 0,
+        musicbrainzReleases: entry.musicbrainzReleases ?? 0,
         masters: entry.masters,
         credits: entry.credits,
+        provider: entry.provider ?? null,
+        releaseId: entry.releaseId ?? null,
+        masterId: entry.masterId ?? null,
+        artists: entry.artists ?? null,
         state: entry.state,
         states: entry.states,
         recordedAt: entry.recordedAt,
         label: entry.label,
         members: [entry.id],
-        cursor: entry.agg ? entry.id : null,
+        // Aggregates and master nodes are the route's focus cursors: opening one is a new request.
+        cursor: entry.agg || (entry.level === 1 && !entry.lane) ? entry.id : null,
         pageOf: null,
         origin: 'payload',
         pinned: false,
@@ -251,7 +384,7 @@ function buildTree(graph) {
     }
     const root = roots.find((node) => node.id === graph.rootCredit);
     if (root) roots.unshift(...roots.splice(roots.indexOf(root), 1));
-    return { roots, byId, pageTarget: null };
+    return { roots, byId };
 }
 
 function hasState(node) {
@@ -324,6 +457,8 @@ function countNode(parent, items, id, origin) {
             y0,
             y1,
             releases: items.reduce((sum, item) => sum + item.releases, 0),
+            undatedReleases: items.reduce((sum, item) => sum + item.undatedReleases, 0),
+            musicbrainzReleases: items.reduce((sum, item) => sum + item.musicbrainzReleases, 0),
             masters: items.reduce((sum, item) => sum + item.masters, 0),
             credits: 0,
             state: null,
@@ -377,35 +512,39 @@ function pin(node) {
     for (let at = node; at; at = at.parent) at.pinned = true;
 }
 
-// Drill-down: show one page of a credit's masters or a master's pressings, and fold the rest into
-// one "more" node per column. Pages wrap, and the more node holds every entry not on the page,
-// earlier pages included, so nothing leaves the view while paging.
-function applyPage(tree, focus) {
-    const target = tree.byId.get(focus.id);
-    if (!target || target.level === 2) return null;
-    const ofMasters = target.level === 0;
-    const candidates = target.children.filter((child) => !(ofMasters && child.lane)).sort(byAxis);
-    if (!candidates.length) return null;
-    const max = ofMasters ? MAX_MASTERS_PAGE : MAX_PRESSINGS_PAGE;
-    const requested = Number.isFinite(focus.per) ? Math.floor(focus.per) : PAGE_SIZE;
-    const per = Math.min(max, Math.max(1, requested));
-    const pages = Math.ceil(candidates.length / per);
-    const asked = Number.isFinite(focus.page) ? Math.floor(focus.page) : 0;
-    const index = ((asked % pages) + pages) % pages;
-    const shown = candidates.slice(index * per, index * per + per);
-    const onPage = new Set(shown);
-    const rest = candidates.filter((child) => !onPage.has(child));
-    const folded = new Set(rest);
-    pin(target);
-    shown.forEach(pin);
-    target.children = target.children.filter((child) => !folded.has(child));
-    for (const [key, group] of byColumn(rest)) {
-        const more = countNode(target, group, `page:${target.id}:${key}`, 'page');
-        more.pinned = true;
-        target.children.push(more);
+// The route's page. A focused response draws one page of the cursor's members as ordinary nodes and
+// keeps the rest in one aggregate under the cursor's own id. The layout finds the page's members
+// from the cursor (ma:<credit>:<decade|all> pages masters; ra:m:<master>, ra:nm:<credit>[:<decade>]
+// page releases; c:other pages credits) and pins them, with the remainder, so the footprint check
+// folds them only when nothing else is left to fold.
+const PAGE_CURSORS = Object.freeze([
+    [/^ma:(c:[^:]+):([^:]+)$/, 1, (match) => ({ parent: match[1], decade: match[2] === ALL_DECADES ? null : match[2] })],
+    [/^ra:m:(.+)$/, 2, (match) => ({ parent: `m:${match[1]}`, decade: null })],
+    [/^ra:nm:(c:[^:]+)(?::([^:]+))?$/, 2, (match) => ({ parent: `nm:${match[1]}`, decade: match[2] ?? null })],
+]);
+
+function pageMembers(tree, graph, focus) {
+    if (focus.level === 0) return tree.roots.filter((credit) => !credit.agg && credit.id !== graph.rootCredit);
+    for (const [pattern, level, read] of PAGE_CURSORS) {
+        const match = level === focus.level ? pattern.exec(focus.id) : null;
+        if (!match) continue;
+        const { parent, decade } = read(match);
+        const holder = tree.byId.get(parent);
+        if (!holder) return [];
+        return holder.children.filter((child) => !child.agg && (decade === null || decadeOf(child.year) === decade));
     }
-    tree.pageTarget = target;
-    return { parent: target.id, index, pages, per, size: candidates.length, shown: shown.map((child) => child.id) };
+    return [];
+}
+
+function applyPage(tree, graph) {
+    const { focus } = graph;
+    if (!focus) return null;
+    const members = pageMembers(tree, graph, focus);
+    members.forEach(pin);
+    const remainder = tree.byId.get(focus.id);
+    if (remainder) pin(remainder);
+    const parents = new Set(members.map((node) => (node.parent ? node.parent.id : null)));
+    return { focus, members, parent: parents.size === 1 ? [...parents][0] : null };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -465,7 +604,9 @@ function foldCredits(tree) {
             y0: null,
             y1: null,
             releases: items.reduce((sum, item) => sum + item.releases, 0),
-            masters: 0,
+            undatedReleases: items.reduce((sum, item) => sum + item.undatedReleases, 0),
+            musicbrainzReleases: items.reduce((sum, item) => sum + item.musicbrainzReleases, 0),
+            masters: items.reduce((sum, item) => sum + item.masters, 0),
             credits: items.reduce((sum, item) => sum + item.credits, 0),
             state: null,
             states: null,
@@ -482,7 +623,18 @@ function foldCredits(tree) {
     if (lanes.length > 1) {
         const [y0, y1] = yearSpan(lanes);
         lane = {
-            ...fromEntry({ ...lanes[0], id: 'fold:credits:nm', y0, y1, releases: lanes.reduce((sum, item) => sum + item.releases, 0), states: mergeStates(lanes.map((item) => item.states)), recordedAt: null, label: null }),
+            ...fromEntry({
+                ...lanes[0],
+                id: 'fold:credits:nm',
+                y0,
+                y1,
+                releases: lanes.reduce((sum, item) => sum + item.releases, 0),
+                undatedReleases: lanes.reduce((sum, item) => sum + item.undatedReleases, 0),
+                musicbrainzReleases: lanes.reduce((sum, item) => sum + item.musicbrainzReleases, 0),
+                states: mergeStates(lanes.map((item) => item.states)),
+                recordedAt: null,
+                label: null,
+            }),
             members: lanes.flatMap((item) => item.members),
             children: lanes.flatMap((item) => item.children),
             cursor: null,
@@ -501,35 +653,47 @@ function foldCredits(tree) {
 
 // The counts in the payload are the request; this is the guarantee. Fold, least valued first,
 // until the credit bands fit: pressings without collector state, masters without collector state,
-// every other pressing, every other master, and last the credits other than the root's.
+// every other pressing, every other master, and last the credits other than the root's. The page
+// the route drew is pinned and folds only if the plane cannot hold it even then.
 function fitDepth(tree) {
     tree.roots.forEach(measureTree);
     const fits = () => requiredDepth(tree.roots) <= usableDepth(tree.roots) + EPSILON;
-    if (fits()) return;
-    const masters = tree.roots
-        .flatMap((credit) => credit.children)
-        .filter((master) => master !== tree.pageTarget && master.children.length > 1)
-        .sort((a, b) => b.w - a.w || compareIds(a.id, b.id));
-    const credits = tree.roots.slice().sort((a, b) => b.w - a.w || compareIds(a.id, b.id));
-    const foldPressings = (eligible) => {
-        for (const master of masters) {
-            if (foldChildren(master, eligible)) remeasureUp(master);
-            if (fits()) return true;
-        }
-        return false;
+    for (const keepPage of [true, false]) {
+        if (fits()) return;
+        if (!keepPage) unpin(tree);
+        const masters = tree.roots
+            .flatMap((credit) => credit.children)
+            .filter((master) => master.children.length > 1)
+            .sort((a, b) => b.w - a.w || compareIds(a.id, b.id));
+        const credits = tree.roots.slice().sort((a, b) => b.w - a.w || compareIds(a.id, b.id));
+        const foldPressings = (eligible) => {
+            for (const master of masters) {
+                if (foldChildren(master, (child) => !child.pinned && eligible(child))) remeasureUp(master);
+                if (fits()) return true;
+            }
+            return false;
+        };
+        const foldMasters = (eligible) => {
+            for (const credit of credits) {
+                if (foldChildren(credit, (child) => !child.lane && !child.pinned && eligible(child))) remeasureUp(credit);
+                if (fits()) return true;
+            }
+            return false;
+        };
+        if (foldPressings((child) => !hasState(child))) return;
+        if (foldMasters((child) => !hasState(child))) return;
+        if (foldPressings(() => true)) return;
+        if (foldMasters(() => true)) return;
+        foldCredits(tree);
+    }
+}
+
+function unpin(tree) {
+    const visit = (node) => {
+        node.pinned = false;
+        node.children.forEach(visit);
     };
-    const foldMasters = (eligible) => {
-        for (const credit of credits) {
-            if (foldChildren(credit, (child) => !child.lane && !child.pinned && eligible(child))) remeasureUp(credit);
-            if (fits()) return true;
-        }
-        return false;
-    };
-    if (foldPressings((child) => !hasState(child))) return;
-    if (foldMasters((child) => !hasState(child))) return;
-    if (foldPressings(() => true)) return;
-    if (foldMasters(() => true)) return;
-    foldCredits(tree);
+    tree.roots.forEach(visit);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -644,11 +808,19 @@ function output(node, group) {
         lane: node.lane,
         undated: node.level > 0 && node.x === UNDATED_X,
         year: node.year,
+        yearSource: node.yearSource,
+        decade: node.decade,
         y0: node.y0,
         y1: node.y1,
         releases: node.releases,
+        undatedReleases: node.undatedReleases,
+        musicbrainzReleases: node.musicbrainzReleases,
         masters: node.masters,
         credits: node.credits,
+        provider: node.provider,
+        releaseId: node.releaseId,
+        masterId: node.masterId,
+        artists: node.artists,
         state: node.state,
         states: node.states ? { ...node.states } : null,
         recordedAt: node.recordedAt,
@@ -666,25 +838,26 @@ function output(node, group) {
 /**
  * Lay out a strata graph from adaptStrataPayload.
  *
+ * Drill-down is the route's: a focused payload (`graph.focus`) draws one page of the cursor's
+ * members, and the layout pins that page. The layout never pages a payload on its own.
+ *
  * @param {object} graph - the adapted payload
  * @param {object} [options]
- * @param {{id: string, page?: number, per?: number}} [options.focus] - drill-down: page the
- *   masters of a credit (8 per page, at most 8) or the pressings of a master-plane entry (8 per
- *   page, at most 12). Pages wrap.
  * @param {string} [options.selected] - the selected release-plane entry, whose company edges draw
  * @param {Array<{a: string, b: string, kind: string}>} [options.edges] - lateral edges between
  *   entry ids: 'member' and 'collab' on the credit plane, 'personnel' on the master plane, and
- *   'company' on the release plane. The draft payload carries none; the planar rule picks which
- *   to draw.
+ *   'company' on the release plane. Defaults to the payload's shared-personnel edges
+ *   (`graph.edges`); the planar rule picks which to draw.
  * @param {{y0: number, y1: number}} [options.axis] - a year range to keep steady across clocks. It
  *   widens to hold every year in the view.
  * @returns {object} nodes by plane with x, z, and size; drawn edges; the axis; the depth check;
- *   and the page shown
+ *   and the page shown: `{cursor, level, index, pages, per, size, parent, shown}`, where `shown`
+ *   lists the page's members drawn as their own nodes
  */
 export function layoutStrata(graph, options = {}) {
-    const { focus = null, selected = null, edges = [], axis: axisHint = null } = options;
+    const { selected = null, edges = graph.edges ?? [], axis: axisHint = null } = options;
     const tree = buildTree(graph);
-    const page = focus ? applyPage(tree, focus) : null;
+    const page = applyPage(tree, graph);
     fitDepth(tree);
     const axis = makeAxis(tree.roots, axisHint);
     tree.roots.forEach((root) => placeX(root, axis));
@@ -698,8 +871,10 @@ export function layoutStrata(graph, options = {}) {
     }
     const nodes = [];
     const byEntry = new Map();
+    const drawn = new Set();
     const visit = (node, group) => {
         nodes.push(output(node, group));
+        drawn.add(node);
         if (node.origin === 'payload' && !node.agg) byEntry.set(node.id, node);
         node.children.forEach((child) => visit(child, group));
     };
@@ -710,7 +885,16 @@ export function layoutStrata(graph, options = {}) {
         edges: drawEdges(tree.roots, byEntry, edges, graph.rootCredit, selected),
         axis,
         depth: { usable, required, fit: scale },
-        page,
+        page: page && {
+            cursor: page.focus.id,
+            level: page.focus.level,
+            index: page.focus.page,
+            pages: page.focus.pages,
+            per: page.focus.pageSize,
+            size: page.focus.members,
+            parent: page.parent,
+            shown: page.members.filter((node) => drawn.has(node)).map((node) => node.id),
+        },
         rootCredit: graph.rootCredit,
     };
 }
