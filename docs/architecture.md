@@ -89,7 +89,7 @@ Outcome posts are fire-and-forget and never gate an interaction — see
 
 | Authority | Revision | Local evidence |
 | --- | --- | --- |
-| `catalog-api` graph-explorer route contract | `ec2db559e2a457dcac2acaa845adee62d4bfa5a2` | [`contracts/catalog-api/graph-explorer/v1/source.json`](../contracts/catalog-api/graph-explorer/v1/source.json) and [`routes.json`](../contracts/catalog-api/graph-explorer/v1/routes.json) |
+| `catalog-api` graph-explorer route contract | `0cb5570b5da57135c52218a0eabcae7c7941fc36` | [`contracts/catalog-api/graph-explorer/v1/source.json`](../contracts/catalog-api/graph-explorer/v1/source.json) and [`routes.json`](../contracts/catalog-api/graph-explorer/v1/routes.json) |
 | `python-libraries` runtime package | `21855671580a446074bb9527b4d3355fee0bfde9` | [`pyproject.toml`](../pyproject.toml) and `uv.lock` |
 | `design` generated brand assets | `109cbd5bddcc699426e2406c8de486e012a30f5a` | [`explore/static/brand/source.json`](../explore/static/brand/source.json) |
 
