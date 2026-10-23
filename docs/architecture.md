@@ -61,6 +61,17 @@ endpoint and each release's `media` block report — the family label map in
 `explore/static/js/media-taxonomy.js` is presentation only, and an unrecognized id falls back to
 a humanized form rather than being dropped.
 
+Discography Strata's placement lives in `explore/static/js/strata-layout.js`, a pure module with
+no DOM and no three.js, so the renderer only draws what it returns. It reads the strata route
+payload through one function, `adaptStrataPayload`, whose comment records the input shape: the
+draft from the design spike `gm-design-1h2l`, because the `catalog-api` route is not yet a promoted
+contract. When the contract is promoted, the adapter and its tests are what to reconcile.
+`layoutStrata` places credit, master, and release planes on a year axis with an undated strip
+and a no-master lane per credit. Its footprint check, not the payload's budget, guarantees that
+the view is legible: no hull intrusions, overlaps, or same-plane edge crossings, and every entry
+held exactly once on every drill-down page. `explore/__tests__/strata-layout.test.js` checks
+these as properties over generated discographies.
+
 Authentication and catalog authorization remain `catalog-api` responsibilities. The browser
 stores the issued token and sends it through the proxy, but `graph-explorer` does not mint or
 interpret that token.
