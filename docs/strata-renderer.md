@@ -14,7 +14,8 @@ harness's `webgl-inst` mode is the source of the port.
 | --- | --- |
 | `explore/static/js/strata-renderer.js` | `StrataRenderer`: the three.js scene, pointer input, and DOM labels |
 | `explore/static/js/strata-scene.js` | The decisions that need no GPU: resolve picking, label candidates and placement, level of detail, camera tweens and reduced motion, vertical links |
-| `explore/static/css/strata.css` | The `--strata-*` color properties and the label classes. The page that mounts the renderer must link it |
+| `explore/static/css/strata.css` | The `--strata-*` color properties, the label classes, and the Explore view's chrome. `index.html` links it |
+| `explore/static/js/strata-explore.js` | The Explore integration: fetching, drill-down, both clocks, the filter, search-to-focus, keyboard, and the panel (below) |
 
 ## API
 
@@ -59,6 +60,10 @@ hovers, picked at most once a frame. The wheel zooms.
 - **Colors** are the promoted collector-state tokens (`stateColor` in `strata-collector.js`) for
   the active theme. A count node takes the roll-up of the states it holds. A node with no state
   uses `--strata-node-stateless`. Outside the selection's lineage, nodes dim toward the canvas.
+- **Blocked pressings.** A MusicBrainz-only release (`provider: 'musicbrainz'`, `isBlocked` in
+  `strata-scene.js`) is drawn state-less inside the spike's ring, one instanced ring mesh per plane
+  in `--strata-blocked`. No wantlist or collection edge can carry a change to it (ADR 0009). The
+  ring is not pickable.
 
 ## Resolve picking
 
@@ -107,6 +112,41 @@ The renderer has no `eval`, no `new Function`, no string timers, no HTML parsing
 attribute written as markup or through `setAttribute`. Neither do the three.js files the importmap
 loads. A future `style-src 'self'` policy without `'unsafe-inline'` holds.
 
+## Explore integration
+
+`strata-explore.js` opens the view from the Explore pane's toggle (graph, strata, and a disabled
+table entry for the next release) on the artist Explore centers. It reads `GET
+/api/explore/strata` (promoted in `contracts/catalog-api/graph-explorer/v1`) at the default 3, 12,
+16 budget, with the caller's token when signed in.
+
+- **Drill-down is the route's.** An aggregate carries counts, not members, so opening one (or a
+  master, whose cursor pages its pressings) is a new request, `focus=<cursor>&page=<n>`. The layout
+  reads the page from the payload's `focus` and pins its members. The panel shows the trail, the
+  page, and Previous and Next. Pages wrap.
+- **Valid time** is the Explore pane's year scrubber (`before_year`): entries released after the
+  year are hidden with everything under them. **Transaction time** ("Recorded as of") replays the
+  collector's own Discogs `date_added`. The view is laid out with today's states and repainted, so
+  scrubbing it moves no node. Aggregate counts are today's, so in the past an aggregate is drawn
+  without a state.
+- **"Only what I collect"** keeps entries holding a wanted or owned release, with their ancestors.
+- **Search-to-focus** selects a drawn match, or opens the view on a named master through the
+  route's `m:<id>` cursor, using `/api/search` to find the master's id. A pressing that is not
+  drawn is reached through its master: the route has no cursor for one pressing.
+- **Keyboard** (on the focused stage): arrows orbit and tilt, `+` and `-` zoom, `0` resets, `1` to
+  `3` solo a plane, PageUp and PageDown move to the parent or first child, `[` and `]` move along a
+  plane, Enter opens a count node, and Escape clears the selection. Each binds to the renderer's
+  `orbit`, `tilt`, `zoom`, `resetCamera`, `solo`, and `select`.
+- **Actions** follow `strata-collector.js`: "Open on Discogs", and for a signed-in collector on a
+  Discogs release "Sync now" and, on an owned copy only, "Record an observation" (which finds the
+  copy's `owned_copy_id` in the collection and posts to `/api/user/copies/{copy_id}/observations`).
+  Nothing writes a wantlist or a collection.
+- **Errors**: a 422 (a root above 134,051 releases) and a 504 (a read past its bound) get their own
+  words. A theme change calls `refreshColors()`.
+
+`tests/explore_test_app.py` serves `/api/explore/strata` from `tests/fixtures/strata-route.json`,
+bodies recorded from catalog-api's fold over an invented catalog, so the view runs locally without
+a database. Artist ids `too-large` and `timeout` answer with the 422 and 504.
+
 ## Tests
 
 - `explore/__tests__/strata-scene.test.js` covers the GPU-free logic: resolve picking on stacked
@@ -116,6 +156,12 @@ loads. A future `style-src 'self'` policy without `'unsafe-inline'` holds.
   for the WebGL context. It covers instancing, edge merging, colors, picking through the scene
   (occlusion and an exact tie), events, labels, reduced motion for every camera move, vertical link
   rebuilds, and level of detail.
+- `explore/__tests__/strata-explore.test.js` covers the integration: both clocks, the filter,
+  actions against the collector machine, keyboard commands, search-to-focus, errors, and the view
+  over recorded route bodies with a stand-in renderer and the real `index.html` markup.
+- `explore/__tests__/strata-layout.test.js` holds the layout's properties over payloads from the
+  route's fold, ported in `strata-fixtures.js`; `strata-route-recorded.test.js` checks the port
+  against bodies the Python wrote.
 - `explore/__tests__/strata-csp.test.js` scans the strata modules and the vendored three.js for
   the forbidden constructs, and checks at run time that the renderer never writes a style
   attribute or sets `innerHTML`.

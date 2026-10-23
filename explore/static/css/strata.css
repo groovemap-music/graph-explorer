@@ -93,3 +93,305 @@
     color: var(--text-high);
     margin-right: 6px;
 }
+
+/* ---------------------------------------------------------------------------------------------
+   Explore integration (static/js/strata-explore.js): the view toggle, the strata view's toolbar,
+   stage, and panel. Built from classes only; the script writes no style attribute.
+   --------------------------------------------------------------------------------------------- */
+
+.explore-view-toggle {
+    display: flex;
+    gap: 4px;
+    padding: 6px 16px;
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+.explore-view-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--inner-bg);
+    color: var(--text-mid);
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.explore-view-btn .material-symbols-outlined {
+    font-size: 18px;
+}
+
+.explore-view-btn.active {
+    background: var(--strata-accent);
+    border-color: var(--strata-accent);
+    color: var(--bg-deep);
+}
+
+.explore-view-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.strata-view {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.strata-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 14px;
+    padding: 8px 16px;
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.85rem;
+    color: var(--text-mid);
+}
+
+.strata-search {
+    display: flex;
+    gap: 6px;
+}
+
+.strata-search input {
+    width: 16rem;
+}
+
+.strata-check,
+.strata-recorded {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.strata-recorded output {
+    min-width: 6.5rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-high);
+}
+
+.strata-recorded input[type="range"] {
+    accent-color: var(--purple-accent);
+}
+
+.strata-planes {
+    display: inline-flex;
+    gap: 4px;
+}
+
+.strata-tool-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 9px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--inner-bg);
+    color: var(--text-high);
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.strata-tool-btn .material-symbols-outlined {
+    font-size: 16px;
+}
+
+.strata-tool-btn[aria-pressed="true"] {
+    border-color: var(--strata-accent);
+    color: var(--strata-accent);
+}
+
+.strata-body {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+}
+
+.strata-stage-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+}
+
+.strata-stage-wrap .strata-stage {
+    position: absolute;
+    inset: 0;
+}
+
+.strata-stage:focus-visible {
+    outline: 2px solid var(--strata-accent);
+    outline-offset: -2px;
+}
+
+.strata-message {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 36rem;
+    margin: 0;
+    padding: 10px 14px;
+    border: 1px solid var(--strata-blocked);
+    border-radius: 6px;
+    background: var(--card-bg);
+    color: var(--text-high);
+    font-size: 0.9rem;
+    z-index: 12;
+}
+
+.strata-message[hidden],
+.strata-trail[hidden] {
+    display: none;
+}
+
+.strata-panel {
+    width: 320px;
+    flex-shrink: 0;
+    overflow-y: auto;
+    padding: 14px 16px;
+    background: var(--card-bg);
+    border-left: 1px solid var(--border-color);
+    font-size: 0.85rem;
+    color: var(--text-mid);
+}
+
+.strata-summary-title,
+.strata-selection-title {
+    margin: 0 0 6px;
+    color: var(--text-high);
+    font-weight: 600;
+}
+
+.strata-summary-title {
+    font-size: 1.05rem;
+}
+
+.strata-summary-line,
+.strata-selection-plane,
+.strata-selection-facts,
+.strata-hint {
+    margin: 0 0 6px;
+}
+
+.strata-trail {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: 10px 0;
+    padding: 8px 0;
+    border-top: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.strata-trail-label {
+    flex-basis: 100%;
+    color: var(--text-high);
+}
+
+.strata-trail-btn,
+.strata-action {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--inner-bg);
+    color: var(--text-high);
+    font-size: 0.8rem;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.strata-action:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+#strataSelection {
+    margin-top: 12px;
+}
+
+.strata-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 10px 0 6px;
+}
+
+.strata-blocked {
+    margin: 6px 0;
+    color: var(--strata-blocked);
+}
+
+.strata-observation {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 8px 0;
+}
+
+.strata-field {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.strata-state,
+.strata-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.strata-state::before,
+.strata-chip::before {
+    content: "";
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--strata-chip, var(--strata-node-stateless));
+}
+
+.strata-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    margin: 10px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.strata-chip--blocked::before {
+    background: transparent;
+    border: 2px solid var(--strata-blocked);
+}
+
+/* State swatches follow the theme the renderer reads (strata-collector.js activeTheme). */
+.strata-state--none, .strata-chip--none { --strata-chip: var(--groovemap-state-collector-none-light); }
+.strata-state--wanted, .strata-chip--wanted { --strata-chip: var(--groovemap-state-collector-wanted-light); }
+.strata-state--owned, .strata-chip--owned { --strata-chip: var(--groovemap-state-collector-owned-light); }
+.strata-state--wanted-owned, .strata-chip--wanted-owned { --strata-chip: var(--groovemap-state-collector-wanted-owned-light); }
+.dark .strata-state--none, .dark .strata-chip--none { --strata-chip: var(--groovemap-state-collector-none-dark); }
+.dark .strata-state--wanted, .dark .strata-chip--wanted { --strata-chip: var(--groovemap-state-collector-wanted-dark); }
+.dark .strata-state--owned, .dark .strata-chip--owned { --strata-chip: var(--groovemap-state-collector-owned-dark); }
+.dark .strata-state--wanted-owned, .dark .strata-chip--wanted-owned { --strata-chip: var(--groovemap-state-collector-wanted-owned-dark); }
+
+.strata-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}

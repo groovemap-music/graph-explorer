@@ -35,6 +35,9 @@ const recorded = (focus, page = 0, signedIn = true) =>
 const BUDGETS = [[3, 12, 16], [3, 12, 16], [3, 12, 16], [6, 12, 16], [6, 12, 25], [12, 24, 32], [4, 8, 12], [3, 6, 4], [12, 500, 500]];
 // Discography sizes in releases, log-uniform from 1 to the cap.
 const SIZES = [20, 200, 2000];
+// The properties fold and lay out thousands of route payloads; alone they take a few seconds, and
+// beside the rest of the suite they need more than Vitest's default 5.
+const PROPERTY_TIMEOUT_MS = 60_000;
 
 /** Run `property` over `runs` seeds; a failure names its seed so it can be replayed. */
 function forAll(runs, firstSeed, property) {
@@ -220,7 +223,7 @@ describe('strata layout properties over route-shaped payloads', () => {
         });
         // The properties are not vacuous: the generator reaches every shape they speak about.
         for (const [shape, count] of Object.entries(seen)) expect(count, shape).toBeGreaterThan(0);
-    });
+    }, PROPERTY_TIMEOUT_MS);
 
     it("conserves every entry across every server page of a cursor, and the pages partition its members (300 discographies)", () => {
         let paged = 0;
@@ -259,7 +262,7 @@ describe('strata layout properties over route-shaped payloads', () => {
         });
         expect(paged).toBeGreaterThan(1000);
         expect([...levels].sort()).toEqual([0, 1, 2]);
-    });
+    }, PROPERTY_TIMEOUT_MS);
 
     it('is deterministic and never writes to its input (100 discographies)', () => {
         forAll(100, 20_001, (r) => {

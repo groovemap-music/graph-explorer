@@ -51,6 +51,34 @@ class ApiClient {
     }
 
     /**
+     * Discography Strata: one artist's credit, master, and release planes inside a node budget.
+     *
+     * The route pages server-side: an aggregate's id is a `focus` cursor, and drilling in is
+     * another request for that cursor and a `page`. A signed-in caller's token adds their
+     * collector state; without one the body carries none. Errors are answers the view words for
+     * itself (a 422 for a root above the release ceiling, a 504 for a read past its bound), so the
+     * status and body come back rather than a bare null.
+     *
+     * @param {string} artistId - The root artist's id
+     * @param {{focus?: string|null, page?: number, budget?: string}} [options]
+     * @param {string|null} [token] - JWT, for the caller's collector state
+     * @returns {Promise<{ok: boolean, status: number, body: Object|null}>}
+     */
+    async getStrata(artistId, { focus = null, page = 0, budget = null } = {}, token = null) {
+        const params = new URLSearchParams({ artist_id: String(artistId) });
+        if (budget) params.set('budget', budget);
+        if (focus) {
+            params.set('focus', focus);
+            params.set('page', String(page));
+        }
+        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+        const response = await this._transport.fetch(`/api/explore/strata?${params}`, { headers });
+        if (token) this._checkAuthResponse(response);
+        const body = await this._transport.readJson(response).catch(() => null);
+        return { ok: response.ok, status: response.status, body };
+    }
+
+    /**
      * Expand a category to get child nodes (paginated).
      * @param {string} nodeId - Parent entity name
      * @param {string} type - Parent entity type
@@ -451,6 +479,50 @@ class ApiClient {
         this._checkAuthResponse(response);
         if (!response.ok) return null;
         return this._transport.readJson(response);
+    }
+
+    /**
+     * The native id of the caller's own copy of a release (`owned_copy_id`), read from their
+     * collection, or null when the collection does not hold it or the sync has not minted an id.
+     * The collection is the only route that names a copy, so this pages through it, up to
+     * `maxPages` pages of `pageSize`.
+     *
+     * @param {string} token - JWT auth token
+     * @param {string} releaseId - The Discogs release id
+     * @returns {Promise<string|null>}
+     */
+    async findOwnedCopy(token, releaseId, { pageSize = 200, maxPages = 10 } = {}) {
+        if (!token || !releaseId) return null;
+        for (let page = 0; page < maxPages; page++) {
+            const data = await this.getUserCollection(token, pageSize, page * pageSize);
+            const items = data?.releases || [];
+            const item = items.find((entry) => String(entry.id) === String(releaseId));
+            if (item) return item.owned_copy_id || null;
+            const total = Number.isFinite(data?.total) ? data.total : null;
+            if (!items.length || (total !== null && (page + 1) * pageSize >= total)) return null;
+        }
+        return null;
+    }
+
+    /**
+     * Record one observation about a copy the caller holds (ADR 0009): a matrix inscription, a
+     * grading, a purchase price. It never changes a want or an own.
+     *
+     * @param {string} token - JWT auth token
+     * @param {string} copyId - The owned copy's native id
+     * @param {{kind: string, value: string, source: string}} observation
+     * @returns {Promise<{ok: boolean, status: number, body: Object|null}>}
+     */
+    async createObservation(token, copyId, observation) {
+        if (!token || !copyId) return { ok: false, status: 0, body: null };
+        const response = await this._transport.fetch(`/api/user/copies/${encodeURIComponent(copyId)}/observations`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify(observation),
+        });
+        this._checkAuthResponse(response);
+        const body = await this._transport.readJson(response).catch(() => null);
+        return { ok: response.ok, status: response.status, body };
     }
 
     async getUserWantlist(token, limit = 50, offset = 0) {
