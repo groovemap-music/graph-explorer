@@ -11,6 +11,7 @@
     --strata-accent: var(--cyan-500);
     --strata-hover: var(--cyan-glow);
     --strata-node-stateless: var(--text-dim);
+    --strata-blocked: var(--accent-red);
     --strata-hull-1: var(--cyan-500);
     --strata-hull-2: var(--purple-300);
     --strata-hull-3: var(--node-release);

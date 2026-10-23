@@ -76,7 +76,7 @@ describe('CSP: the renderer at run time', () => {
         const setAttribute = vi.spyOn(Element.prototype, 'setAttribute');
         const innerHTML = vi.spyOn(Element.prototype, 'innerHTML', 'set');
         const tokens = new Map([
-            ...[STRATA_TOKENS.canvas, STRATA_TOKENS.planeFill, STRATA_TOKENS.planeLine, STRATA_TOKENS.link, STRATA_TOKENS.accent, STRATA_TOKENS.hover, STRATA_TOKENS.stateless, ...STRATA_TOKENS.hull, ...Object.values(STRATA_TOKENS.edge)].map((name) => [name, '#336699']),
+            ...[STRATA_TOKENS.canvas, STRATA_TOKENS.planeFill, STRATA_TOKENS.planeLine, STRATA_TOKENS.link, STRATA_TOKENS.accent, STRATA_TOKENS.hover, STRATA_TOKENS.stateless, STRATA_TOKENS.blocked, ...STRATA_TOKENS.hull, ...Object.values(STRATA_TOKENS.edge)].map((name) => [name, '#336699']),
             ...COLLECTOR_STATES.map((state) => [stateTokenName(state, 'dark'), '#996633']),
         ]);
         const stage = document.createElement('div');

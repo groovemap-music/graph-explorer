@@ -102,6 +102,14 @@ export function nodeStateKey(node) {
     return rollUp(held);
 }
 
+/**
+ * Whether a node is a blocked pressing: a MusicBrainz-only release, which has no Discogs alias and
+ * so no wantlist or collection state, drawn state-less inside the spike's ring.
+ */
+export function isBlocked(node) {
+    return node.provider === 'musicbrainz' && !node.agg;
+}
+
 /** Index a layout's nodes by id. */
 export function indexNodes(layout) {
     return new Map(layout.nodes.map((node) => [node.id, node]));
