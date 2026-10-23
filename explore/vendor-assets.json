@@ -99,6 +99,22 @@
       "outputs": ["marked.mjs"]
     },
     {
+      "id": "three",
+      "name": "three.js",
+      "package": "three",
+      "version": "0.186.1",
+      "declared_license": "MIT",
+      "selected_license": "MIT",
+      "homepage": "https://threejs.org",
+      "license_source": {
+        "scope": "package",
+        "path": "LICENSE",
+        "sha256": "8b378ebe60e2fe500158cb0ac71cb5e8b7d92953c2abcc63a0eb90499653b5bc"
+      },
+      "license_destination": "licenses/three-0.186.1-MIT.txt",
+      "outputs": ["three.module.js", "three.core.js"]
+    },
+    {
       "id": "inter",
       "name": "Inter",
       "package": "@fontsource/inter",

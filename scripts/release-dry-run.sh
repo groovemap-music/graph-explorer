@@ -29,7 +29,7 @@ test -s dist/sbom.json
 test -s dist/THIRD_PARTY_NOTICES.json
 test -s dist/WEB_THIRD_PARTY_NOTICES/THIRD_PARTY_NOTICES.md
 test -s dist/WEB_THIRD_PARTY_NOTICES/ASSET_LICENSES.json
-test "$(find dist/WEB_THIRD_PARTY_NOTICES/licenses -type f | wc -l | tr -d ' ')" = "10"
+test "$(find dist/WEB_THIRD_PARTY_NOTICES/licenses -type f | wc -l | tr -d ' ')" = "11"
 test "$(find dist/LEGAL -type f | wc -l | tr -d ' ')" = "4"
 test -s dist/LEGAL/LICENSE
 test -s dist/LEGAL/NOTICE
