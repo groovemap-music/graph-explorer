@@ -70,7 +70,8 @@ contract. When the contract is promoted, the adapter and its tests are what to r
 and a no-master lane per credit. Its footprint check, not the payload's budget, guarantees that
 the view is legible: no hull intrusions, overlaps, or same-plane edge crossings, and every entry
 held exactly once on every drill-down page. `explore/__tests__/strata-layout.test.js` checks
-these as properties over generated discographies.
+these as properties over generated discographies. `explore/static/js/strata-renderer.js` draws
+that layout in 3D with three.js and resolves picking; see [Strata renderer](strata-renderer.md).
 
 Authentication and catalog authorization remain `catalog-api` responsibilities. The browser
 stores the issued token and sends it through the proxy, but `graph-explorer` does not mint or

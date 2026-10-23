@@ -1,0 +1,94 @@
+/* Discography Strata renderer (static/js/strata-renderer.js).
+   The renderer reads the --strata-* properties through getComputedStyle and re-reads them on
+   refreshColors(), so they follow the theme palette in styles.css. Node colors are the promoted
+   collector state tokens (brand/tokens.css). Labels are positioned through CSSOM transforms and
+   shown with the hidden attribute; nothing here depends on a style attribute. */
+:root {
+    --strata-canvas: var(--bg-deep);
+    --strata-plane-fill: var(--inner-bg);
+    --strata-plane-line: var(--border-color);
+    --strata-link: var(--text-dim);
+    --strata-accent: var(--cyan-500);
+    --strata-hover: var(--cyan-glow);
+    --strata-node-stateless: var(--text-dim);
+    --strata-hull-1: var(--cyan-500);
+    --strata-hull-2: var(--purple-300);
+    --strata-hull-3: var(--node-release);
+    --strata-hull-4: var(--accent-yellow);
+    --strata-edge-member: var(--purple-300);
+    --strata-edge-collab: var(--node-release);
+    --strata-edge-personnel: var(--cyan-500);
+    --strata-edge-company: var(--node-category);
+}
+
+.strata-stage {
+    position: relative;
+    overflow: hidden;
+    background: var(--strata-canvas);
+}
+
+.strata-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+}
+
+.strata-labels {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.strata-label,
+.strata-tag,
+.strata-plane-label {
+    position: absolute;
+    left: 0;
+    top: 0;
+    white-space: nowrap;
+    will-change: transform;
+}
+
+.strata-label[hidden],
+.strata-tag[hidden],
+.strata-plane-label[hidden] {
+    display: none;
+}
+
+.strata-label {
+    font: 500 10.5px/1.25 var(--font-mono, ui-monospace, monospace);
+    color: var(--text-high);
+    background: var(--label-bg);
+    padding: 1px 5px;
+    border-radius: 3px;
+}
+
+.strata-label--credit {
+    font: 700 12.5px/1.2 var(--font-body, system-ui, sans-serif);
+    padding: 2px 6px;
+}
+
+.strata-tag {
+    font: 500 10px/1 var(--font-mono, ui-monospace, monospace);
+    padding: 3px 7px;
+    border-radius: 999px;
+    border: 1px solid currentColor;
+    background: var(--label-bg);
+}
+
+.strata-tag--hull-1 { color: var(--strata-hull-1); }
+.strata-tag--hull-2 { color: var(--strata-hull-2); }
+.strata-tag--hull-3 { color: var(--strata-hull-3); }
+.strata-tag--hull-4 { color: var(--strata-hull-4); }
+
+.strata-plane-label {
+    font: 400 11px/1 var(--font-mono, ui-monospace, monospace);
+    color: var(--text-dim);
+}
+
+.strata-plane-label b {
+    font: 700 14px/1 var(--font-body, system-ui, sans-serif);
+    color: var(--text-high);
+    margin-right: 6px;
+}

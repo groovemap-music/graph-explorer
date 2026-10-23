@@ -29,7 +29,7 @@ typecheck:
     uv run mypy
 
 test:
-    uv run pytest -m 'not e2e' --cov=explore --cov-report=term-missing --cov-report=xml
+    uv run pytest -m 'not e2e and not benchmark' --cov=explore --cov-report=term-missing --cov-report=xml
 
 js-test: web-dependencies
     npm --prefix explore test
@@ -51,6 +51,11 @@ e2e-post:
 
 e2e: web-build
     bash scripts/e2e-with-coverage.sh
+
+# Strata renderer frame time on a 20,000-node synthetic layout (docs/strata-renderer.md).
+# Set STRATA_PERF_HEADED=1 to measure on the real GPU in a headed browser.
+strata-perf: web-build
+    uv run pytest -m benchmark -s tests/perf
 
 web-build: web-dependencies
     npm --prefix explore run build:web
