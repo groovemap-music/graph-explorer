@@ -52,7 +52,8 @@ The 3D view has a keyboard path for everything the pointer does. Focus the view,
 ### The table
 
 The table is a view of its own, not a fallback: it needs no 3D graphics, so it opens where WebGL does
-not. It lists **every** credit, group, master, and pressing the request returned, including those the
+not. Where your browser cannot start WebGL, the **Strata** view still loads the artist's summary and
+says that it cannot draw the planes, and the **Table** shows the same discography. It lists **every** credit, group, master, and pressing the request returned, including those the
 3D view folded into a count node. The "In the 3D view" column says which. The columns are the kind, the
 name, what it sits under, its year, its collector state, why it cannot change state, how many releases it
 holds, where the 3D view drew it, and a button to open it.

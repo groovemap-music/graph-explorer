@@ -13,7 +13,10 @@
  *   - keyboard navigation of planes and nodes, bound to the renderer's camera, select, and solo
  *     (ADR 0016 section 1, gm-design-on0x section "Accessibility");
  *   - the table view, the same planes, lanes, aggregates, and server page as rows (strata-table.js),
- *     which needs no WebGL: the renderer is built only when the 3D view is first shown;
+ *     which needs no WebGL: the renderer is built only when the 3D view is first shown, and where
+ *     the browser cannot give it a WebGL context the 3D view says so and still loads the data;
+ *   - `aria-busy` on the view while a strata request is in flight, which with the renderer's
+ *     `data-strata-frame` is what anything reading the view waits on;
  *   - the panel, whose actions are only "Open on Discogs", "Sync now", and "Record an observation"
  *     on an owned copy. GrooveMap never writes a wantlist or a collection; every state change is
  *     observed at Discogs sync (strata-collector.js).
@@ -49,6 +52,8 @@ const DISCOGS = 'https://www.discogs.com';
 const DAY_MS = 86_400_000;
 
 export const PAST_REASON = 'History is read-only. Move "Recorded as of" to now to record an observation.';
+/** What the 3D view says where the browser gives it no WebGL context. */
+export const NO_WEBGL_MESSAGE = 'This browser could not start WebGL, so the 3D strata cannot be drawn here. The table shows the same discography and needs no WebGL.';
 /** Why "Record an observation" is off when the route sent no copy ids at all (a degraded read). */
 export const COPY_UNREAD_REASON = 'GrooveMap could not read the id of your copy just now. Reload the view to try again.';
 /** Why it is off when the route sent an empty list: the sync has not minted a copy id yet. */
@@ -477,6 +482,8 @@ export class StrataExplore {
         this.onlyCollected = false;
         this.axisHint = null;
         this.renderer = null;
+        this.rendererError = null;
+        this.message = null;
         this.active = false;
         this.requestId = 0;
         this.bind();
@@ -538,8 +545,16 @@ export class StrataExplore {
     }
 
     startRenderer() {
-        if (!this.renderer && this.ui.stage) {
-            this.renderer = this.createRenderer(this.ui.stage);
+        if (!this.renderer && !this.rendererError && this.ui.stage) {
+            try {
+                this.renderer = this.createRenderer(this.ui.stage);
+            } catch (error) {
+                // No WebGL context. The view still loads, so the summary, the panel, and the
+                // route's own answers (a 422, a 504) are shown, and the message points to the table.
+                this.rendererError = error;
+                this.paintMessage();
+                return;
+            }
             this.renderer.addEventListener('select', (event) => this.onSelect(event.detail.id));
             this.renderer.addEventListener('solo', (event) => this.onSolo(event.detail.level));
             // A view loaded in the table before the 3D view was first shown.
@@ -562,6 +577,7 @@ export class StrataExplore {
         for (const item of ui.stageOnly) item.hidden = table;
         if (table) this.renderer?.stop();
         else if (this.selected && !this.byId?.has(this.selected)) this.selected = null;
+        this.paintMessage();
         if (this.graph) {
             this.renderTable();
             this.renderSelection();
@@ -863,11 +879,20 @@ export class StrataExplore {
 
     setLoading(on) {
         this.ui.loading?.classList.toggle('active', on);
+        this.ui.view?.setAttribute('aria-busy', String(on));
     }
 
+    /** Say what the last load or search found, or clear it with null. */
     showMessage(text) {
+        this.message = text || null;
+        this.paintMessage();
+    }
+
+    // The route's answer comes first. Without one, the 3D view says why it draws nothing.
+    paintMessage() {
         const box = this.ui.message;
         if (!box) return;
+        const text = this.message || (this.mode === 'strata' && this.rendererError ? NO_WEBGL_MESSAGE : null);
         box.textContent = text || '';
         box.hidden = !text;
     }

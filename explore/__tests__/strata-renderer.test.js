@@ -42,7 +42,7 @@ function fakeMedia(reduce) {
 
 let mounted = [];
 
-function mount({ reduce = false, layout = null } = {}) {
+function mount({ reduce = false, layout = null, rect = RECT } = {}) {
     const stage = document.createElement('div');
     document.body.append(stage);
     const media = fakeMedia(reduce);
@@ -53,7 +53,7 @@ function mount({ reduce = false, layout = null } = {}) {
         readToken: (name) => TOKENS.get(name) || '',
         theme: () => 'dark',
         matchMedia: media.matchMedia,
-        measure: () => RECT,
+        measure: () => rect,
         now: () => clock,
         requestFrame: () => 1,
         cancelFrame: () => {},
@@ -357,6 +357,24 @@ describe('labels', () => {
         expect(new Set(texts).size).toBe(texts.length);
     });
 
+    it('shows exactly what each frame placed, with no chip left over from an earlier page', () => {
+        const visible = (stage) => [...stage.querySelectorAll('.strata-label, .strata-tag')].filter((el) => !el.hidden);
+        // The overview and a master opened on its pressings place different chips from one pool.
+        const catalog = generateDiscography(rng(3), { maxReleases: 600 });
+        const master = catalog.releases.find((release) => release.masterId !== null).masterId;
+        const pages = [
+            layoutStrata(adaptStrataPayload(buildPayload(catalog, [3, 12, 16], { signedIn: true }))),
+            layoutStrata(adaptStrataPayload(buildPayload(catalog, [3, 12, 16], { focus: `m:${master}`, signedIn: true }))),
+        ];
+        const { renderer, stage } = mount({ layout: pages[0], reduce: true });
+        renderer.render();
+        for (const layout of [pages[1], pages[0], pages[1]]) {
+            renderer.setLayout(layout);
+            renderer.render();
+            expect(visible(stage)).toHaveLength(renderer.stats.labelsShown);
+        }
+    });
+
     it('labels pressings once the camera is close, and the selection’s lineage only', () => {
         const layout = realLayout();
         const { renderer, stage } = mount({ layout, reduce: true });
@@ -373,6 +391,92 @@ describe('labels', () => {
         renderer.render();
         expect(renderer.stats.labelCandidates).toBe(renderer.selection.size);
         expect(labels(stage).filter((el) => !el.hidden).every((el) => renderer.selection.has(el.dataset.node))).toBe(true);
+    });
+});
+
+describe('readiness signal', () => {
+    const frame = (stage) => stage.dataset.strataFrame;
+    const shownLabels = (stage) => [...stage.querySelectorAll('.strata-label, .strata-tag')].filter((el) => !el.hidden);
+
+    it('settles after the first frame that places the layout\'s labels, and says how many', () => {
+        const { renderer, stage } = mount();
+        const settles = [];
+        renderer.addEventListener('settled', (event) => settles.push(event.detail));
+        expect(frame(stage)).toBe('pending');
+        renderer.tick();
+        // Nothing to draw yet is not a settled frame.
+        expect(frame(stage)).toBe('pending');
+        renderer.setLayout(realLayout());
+        expect(frame(stage)).toBe('pending');
+        expect(shownLabels(stage)).toHaveLength(0);
+        renderer.tick();
+        expect(frame(stage)).toBe('settled');
+        expect(settles).toHaveLength(1);
+        expect(settles[0].labels).toBeGreaterThan(0);
+        expect(shownLabels(stage)).toHaveLength(settles[0].labels);
+        // A frame that changes nothing does not settle again.
+        renderer.tick();
+        expect(settles).toHaveLength(1);
+    });
+
+    it('goes pending the moment a layout, selection, solo, or camera move changes the frame', () => {
+        const { renderer, stage } = mount({ layout: realLayout(), reduce: true });
+        const changes = {
+            layout: () => renderer.setLayout(realLayout(4)),
+            select: () => renderer.select(renderer.layout.nodes.find((n) => n.level === 2 && n.parent).id),
+            solo: () => renderer.solo(2),
+            zoom: () => renderer.zoom('in'),
+            orbit: () => renderer.orbit(0.3),
+            resize: () => renderer.resize(),
+        };
+        for (const [name, change] of Object.entries(changes)) {
+            renderer.tick();
+            expect(frame(stage), name).toBe('settled');
+            change();
+            expect(frame(stage), name).toBe('pending');
+            renderer.tick();
+            expect(frame(stage), name).toBe('settled');
+        }
+    });
+
+    it('stays pending while the camera tweens, and settles where it lands', () => {
+        const { renderer, stage, advance } = mount({ layout: realLayout() });
+        renderer.tick(advance(16));
+        expect(frame(stage)).toBe('settled');
+        renderer.zoom('in');
+        renderer.tick(advance(16));
+        expect(renderer.tween).not.toBeNull();
+        expect(frame(stage)).toBe('pending');
+        for (let i = 0; i < 60 && renderer.tween; i++) renderer.tick(advance(16));
+        expect(renderer.tween).toBeNull();
+        expect(frame(stage)).toBe('settled');
+    });
+
+    it('never settles on a stage with no size, where no label can be placed', () => {
+        const { renderer, stage } = mount({ layout: realLayout(), rect: { left: 0, top: 0, width: 0, height: 0 } });
+        renderer.tick();
+        expect(frame(stage)).toBe('pending');
+        expect(renderer.stats.frames).toBe(1);
+    });
+
+    it('leaves no signal behind when disposed, and no canvas when WebGL is refused', () => {
+        const { renderer, stage } = mount({ layout: realLayout() });
+        renderer.tick();
+        renderer.dispose();
+        expect(frame(stage)).toBeUndefined();
+        const bare = document.createElement('div');
+        document.body.append(bare);
+        expect(
+            () =>
+                new StrataRenderer(bare, {
+                    createRenderer: () => {
+                        throw new Error('Error creating WebGL context.');
+                    },
+                    readToken: (name) => TOKENS.get(name) || '',
+                }),
+        ).toThrow(/WebGL/);
+        expect(bare.children).toHaveLength(0);
+        expect(bare.classList.contains('strata-stage')).toBe(false);
     });
 });
 
