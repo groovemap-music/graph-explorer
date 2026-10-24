@@ -9,7 +9,7 @@
  * are the part a person reads.
  *
  * Depends on: window.apiClient (api-client.js), window.authManager (auth.js),
- * and window.exploreApp.graph (graph.js) for the landing point.
+ * and window.genreAtlas (strata-atlas.js) for the landing point.
  */
 class FitPane {
     /**
@@ -182,6 +182,7 @@ class FitPane {
             this._setCandidates([]);
             const body = document.getElementById('fitBody');
             if (body) body.replaceChildren();
+            this.clearLandingPoint();
             const input = document.getElementById('fitSearchInput');
             if (input) input.value = '';
             this.setMode(FitPane.TEXT_MODE);
@@ -437,6 +438,7 @@ class FitPane {
         this._profile = profile;
         if (!profile) {
             body.replaceChildren();
+            this.clearLandingPoint();
             const errored = document.createElement('div');
             errored.className = 'user-pane-empty';
             const icon = document.createElement('span');
@@ -482,8 +484,8 @@ class FitPane {
         const footer = document.createElement('div');
         footer.className = 'fit-card-footer';
 
-        // The landing point is drawn as soon as the profile renders; this is the
-        // way to it, because the one graph canvas lives in the explore pane.
+        // The landing point is drawn as soon as the profile renders, on the
+        // Genre Atlas under the card; this is the way to it on a short screen.
         const landing = document.createElement('button');
         landing.type = 'button';
         landing.className = 'btn-outline-secondary btn-sm fit-landing-btn';
@@ -491,7 +493,7 @@ class FitPane {
         landing.textContent = 'See the landing point';
         landing.addEventListener('click', () => {
             this.drawLandingPoint(profile);
-            window.exploreApp?._switchPane?.('explore');
+            document.getElementById('fitAtlasMount')?.scrollIntoView?.({ block: 'start' });
         });
 
         const version = document.createElement('p');
@@ -638,77 +640,31 @@ class FitPane {
     // ------------------------------------------------------------------ //
 
     /**
-     * Draw the candidate among the entities its evidence named.
+     * Draw the candidate's landing point on the Genre Atlas under the card.
      *
-     * `restoreSnapshot` rather than `setExploreData`: the explore route centres
-     * on an artist, label, genre or style and cannot centre on a release, and
-     * the whole point of a landing point is that the release is in the middle.
-     *
-     * The single graph canvas lives in the explore pane, so the snapshot is
-     * drawn there and the card carries a control that switches to it — there is
-     * one GraphVisualization bound to one `#graphSvg`, and a second canvas would
-     * be a new primitive rather than a reuse of the existing one.
+     * The atlas reads the profile itself (strata-fit.js): the components it can
+     * place are drawn on the genre, style and master nodes it already draws,
+     * and the rest — Depth, artists and labels, and every line of a profile
+     * that carries no `evidence_entries` — are listed beside it. Nothing is
+     * given a position the atlas does not already have. There is one atlas
+     * view, so it is moved here rather than built again, and its collector
+     * layer comes with it.
      *
      * @param {object} profile - The FitProfile as the API returned it
      */
     drawLandingPoint(profile) {
-        const graph = window.exploreApp?.graph;
-        if (!graph || typeof graph.restoreSnapshot !== 'function') return;
-        const release = profile?.release || {};
-        const centre = { id: release.title || String(release.id || ''), type: 'release' };
-        if (!centre.id) return;
-        graph.restoreSnapshot(FitPane.evidenceEntities(profile), centre);
+        const atlas = window.genreAtlas;
+        const mount = document.getElementById('fitAtlasMount');
+        if (!mount || typeof atlas?.setLanding !== 'function') return;
+        atlas.setLanding(profile);
+        mount.hidden = false;
     }
 
-    /**
-     * The entities the evidence names, as snapshot nodes.
-     *
-     * The evidence is prose written for a person, and these are the sentence
-     * shapes `api.fit` builds it from. Reading the entities back out of the
-     * prose is deliberate: the API states its facts once, in the form a
-     * collector reads, and a parallel machine-readable copy would be a second
-     * thing to keep in step. A sentence that does not match any shape simply
-     * contributes no node — the card still shows the line, the graph just has
-     * one fewer satellite.
-     *
-     * @param {object} profile - The FitProfile as the API returned it
-     * @returns {Array<{id: string, type: string}>} Deduplicated snapshot nodes
-     */
-    static evidenceEntities(profile) {
-        const nodes = [];
-        const seen = new Set();
-        const add = (name, type) => {
-            const id = (name || '').trim();
-            if (!id) return;
-            const key = `${type}:${id}`;
-            if (seen.has(key)) return;
-            seen.add(key);
-            nodes.push({ id, type });
-        };
-
-        const components = profile?.components || {};
-        for (const [key] of FitPane.COMPONENTS) {
-            for (const line of components[key]?.evidence || []) {
-                if (typeof line !== 'string') continue;
-                let m;
-                if ((m = /^shares (artist|label|genre|style) (.+) with \d+ release/.exec(line))) {
-                    add(m[2], m[1]);
-                } else if ((m = /^(.+) is an? (artist|label|genre|style) your collection has never held$/.exec(line))) {
-                    add(m[1], m[2]);
-                } else if ((m = /^deepens (artist|label|genre|style) (.+) \(\d+ held\)$/.exec(line))) {
-                    add(m[2], m[1]);
-                } else if ((m = /^bridges (.+), which share no artist or label in your collection$/.exec(line))) {
-                    // "Rock, Jazz and Soul" — the regions the candidate joins.
-                    m[1].split(/,\s*|\s+and\s+/).forEach(region => add(region, 'genre'));
-                } else if ((m = /^you hold (.+?) by (.+), which no master links to this pressing$/.exec(line))) {
-                    add(m[1], 'release');
-                    add(m[2], 'artist');
-                } else if ((m = /^you hold (.+?), the same record on /.exec(line))) {
-                    add(m[1], 'release');
-                }
-            }
-        }
-        return nodes;
+    /** Take the landing point off the atlas and the atlas out of the pane. */
+    clearLandingPoint() {
+        window.genreAtlas?.setLanding?.(null);
+        const mount = document.getElementById('fitAtlasMount');
+        if (mount) mount.hidden = true;
     }
 
     // ------------------------------------------------------------------ //
@@ -826,6 +782,7 @@ class FitPane {
         this._selected = null;
         this._profile = null;
         this._setRunEnabled(false);
+        this.clearLandingPoint();
         setTimeout(() => card.remove(), FitPane.COLLAPSE_MS);
     }
 }

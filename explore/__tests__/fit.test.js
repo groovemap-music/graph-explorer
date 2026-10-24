@@ -80,6 +80,7 @@ function setupFitDOM() {
             </div>
             <div class="loading-overlay" id="fitLoading"></div>
             <div class="fit-profile" id="fitBody"></div>
+            <div class="fit-atlas" id="fitAtlasMount" hidden></div>
         </div>`;
 }
 
@@ -104,7 +105,7 @@ describe('FitPane', () => {
             postActivityEvent: vi.fn().mockResolvedValue({ ok: true, status: 202, body: null }),
         };
         signedIn();
-        delete window.exploreApp;
+        delete window.genreAtlas;
         loadScript('fit.js');
         pane = window.fitPane;
     });
@@ -374,36 +375,19 @@ describe('FitPane', () => {
     // ------------------------------------------------------------------ //
 
     describe('landing point', () => {
-        let restoreSnapshot;
+        let setLanding;
+        const mount = () => document.getElementById('fitAtlasMount');
 
         beforeEach(() => {
-            restoreSnapshot = vi.fn();
-            window.exploreApp = { graph: { restoreSnapshot }, _switchPane: vi.fn() };
+            setLanding = vi.fn();
+            window.genreAtlas = { setLanding };
         });
 
-        it('centres the snapshot on the candidate release', () => {
+        it('hands the profile to the Genre Atlas and shows it under the card', () => {
             pane.drawLandingPoint(FULL_PROFILE);
 
-            expect(restoreSnapshot).toHaveBeenCalledTimes(1);
-            expect(restoreSnapshot.mock.calls[0][1]).toEqual({ id: 'Never Gonna Give You Up', type: 'release' });
-        });
-
-        it('draws the entities the evidence names as satellites', () => {
-            pane.drawLandingPoint(FULL_PROFILE);
-
-            expect(restoreSnapshot.mock.calls[0][0]).toEqual([
-                { id: 'Rick Astley', type: 'artist' },
-                { id: 'Stock Aitken Waterman', type: 'label' },
-                { id: 'Electronic', type: 'genre' },
-                { id: 'Rock', type: 'genre' },
-            ]);
-        });
-
-        it('falls back to the release id as the centre when there is no title', () => {
-            pane.drawLandingPoint(SPARSE_PROFILE);
-
-            expect(restoreSnapshot.mock.calls[0][1]).toEqual({ id: '999', type: 'release' });
-            expect(restoreSnapshot.mock.calls[0][0]).toEqual([]);
+            expect(setLanding).toHaveBeenCalledWith(FULL_PROFILE);
+            expect(mount().hidden).toBe(false);
         });
 
         it('is drawn as soon as the profile loads', async () => {
@@ -415,70 +399,66 @@ describe('FitPane', () => {
 
             await pane.loadProfile();
 
-            expect(restoreSnapshot).toHaveBeenCalledTimes(1);
+            expect(setLanding).toHaveBeenCalledTimes(1);
+            expect(mount().hidden).toBe(false);
         });
 
-        it('switches to the graph view from the card control', () => {
+        it('brings the atlas into view from the card control, without leaving the pane', () => {
+            window.exploreApp = { _switchPane: vi.fn() };
             pane.renderProfile(document.getElementById('fitBody'), FULL_PROFILE);
+            const scrollIntoView = vi.fn();
+            mount().scrollIntoView = scrollIntoView;
 
             document.getElementById('fitLandingBtn').click();
 
-            expect(restoreSnapshot).toHaveBeenCalled();
-            expect(window.exploreApp._switchPane).toHaveBeenCalledWith('explore');
+            expect(setLanding).toHaveBeenCalledWith(FULL_PROFILE);
+            expect(scrollIntoView).toHaveBeenCalled();
+            expect(window.exploreApp._switchPane).not.toHaveBeenCalled();
+            delete window.exploreApp;
         });
 
-        it('does nothing when there is no graph to draw into', () => {
-            delete window.exploreApp;
+        it('takes the landing point away when a profile fails to load', async () => {
+            pane.drawLandingPoint(FULL_PROFILE);
+            window.apiClient.search.mockResolvedValue({ results: [RELEASE_HIT], total: 1 });
+            window.apiClient.getFitProfile.mockResolvedValue(null);
+            pane.init();
+            await pane.findCandidates('never gonna');
+            document.querySelector('.fit-candidate').click();
+
+            await pane.loadProfile();
+
+            expect(setLanding).toHaveBeenLastCalledWith(null);
+            expect(mount().hidden).toBe(true);
+        });
+
+        it('takes the landing point away with the session', () => {
+            pane.init();
+            pane.drawLandingPoint(FULL_PROFILE);
+
+            anonymous();
+            pane.refreshSession();
+
+            expect(setLanding).toHaveBeenLastCalledWith(null);
+            expect(mount().hidden).toBe(true);
+        });
+
+        it('takes the landing point away with a dismissed or hidden card, and still records the outcome', () => {
+            for (const outcome of ['dismiss', 'hide']) {
+                pane.renderProfile(document.getElementById('fitBody'), FULL_PROFILE);
+                pane.drawLandingPoint(FULL_PROFILE);
+                document.querySelector(`[data-outcome="${outcome}"]`).click();
+                expect(setLanding).toHaveBeenLastCalledWith(null);
+                expect(mount().hidden).toBe(true);
+            }
+            expect(window.apiClient.postActivityEvent.mock.calls.map((call) => call[1])).toEqual(['fit.dismissed', 'fit.hidden']);
+        });
+
+        it('does nothing when there is no atlas to draw into', () => {
+            delete window.genreAtlas;
 
             expect(() => pane.drawLandingPoint(FULL_PROFILE)).not.toThrow();
-        });
-
-        describe('evidenceEntities', () => {
-            const entities = (component, evidence) => window.FitPane.evidenceEntities({ components: { [component]: { evidence } } });
-
-            it('reads the shared facet out of an affinity line', () => {
-                expect(entities('affinity', ['shares label Warp Records with 4 releases you hold']))
-                    .toEqual([{ id: 'Warp Records', type: 'label' }]);
-            });
-
-            it('reads the new facet out of a novelty line', () => {
-                expect(entities('novelty', ['Autechre is an artist your collection has never held']))
-                    .toEqual([{ id: 'Autechre', type: 'artist' }]);
-            });
-
-            it('reads the deepened facet out of a depth line', () => {
-                expect(entities('depth', ['deepens style Ambient (3 held)']))
-                    .toEqual([{ id: 'Ambient', type: 'style' }]);
-            });
-
-            it('reads every region out of a bridge line', () => {
-                expect(entities('bridge', ['bridges Jazz, Rock and Soul, which share no artist or label in your collection']))
-                    .toEqual([{ id: 'Jazz', type: 'genre' }, { id: 'Rock', type: 'genre' }, { id: 'Soul', type: 'genre' }]);
-            });
-
-            it('reads the held release out of a same-master redundancy line', () => {
-                expect(entities('redundancy', ['you hold Kid A, the same record on optical']))
-                    .toEqual([{ id: 'Kid A', type: 'release' }]);
-            });
-
-            it('reads the held release and its artist out of a same-title redundancy line', () => {
-                expect(entities('redundancy', ['you hold Kid A by Radiohead, which no master links to this pressing']))
-                    .toEqual([{ id: 'Kid A', type: 'release' }, { id: 'Radiohead', type: 'artist' }]);
-            });
-
-            it('contributes nothing for a line it does not recognise', () => {
-                expect(entities('bridge', ['region boundaries are the v0 genre heuristic, not a computed community']))
-                    .toEqual([]);
-            });
-
-            it('names an entity once however many components cite it', () => {
-                expect(window.FitPane.evidenceEntities({
-                    components: {
-                        affinity: { evidence: ['shares artist Radiohead with 2 releases you hold'] },
-                        depth: { evidence: ['deepens artist Radiohead (2 held)'] },
-                    },
-                })).toEqual([{ id: 'Radiohead', type: 'artist' }]);
-            });
+            expect(() => pane.clearLandingPoint()).not.toThrow();
+            expect(mount().hidden).toBe(true);
         });
     });
 

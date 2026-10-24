@@ -112,10 +112,12 @@ one with no overlap with the candidate, legitimately leaves components silent.
 
 ### The landing point
 
-Scoring a release also draws its **landing point** — the candidate at the centre of the graph with
-the artists, labels, genres, and styles its evidence named arranged around it. **See the landing
-point** on the card takes you to the graph view with it drawn. It is a picture of where the record
-would sit relative to what you already own.
+Scoring a release also draws its **landing point** on the Genre Atlas under the card, over your
+own collection's layer. The genres and styles you share with it and the styles new to you are
+marked on their nodes, a bridge is drawn between the genres it joins, and a held copy of the same
+record is marked on its master. Depth and the artists and labels behind the other scores have no
+place on the atlas, so they are listed beside it. **See the landing point** on the card scrolls to
+it.
 
 ### What version 0 cannot do yet
 

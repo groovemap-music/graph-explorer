@@ -11,12 +11,13 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as THREE from 'three';
 import { STRATA_TOKENS } from '../static/js/strata-renderer.js';
-import { AtlasRenderer, LIFECYCLE_STAGES, atlasLabel, lifecycleTokenName } from '../static/js/strata-atlas-renderer.js';
+import { AtlasRenderer, FIT_DRAWN, LIFECYCLE_STAGES, atlasLabel, fitTokenName, lifecycleTokenName } from '../static/js/strata-atlas-renderer.js';
 import { adaptAtlasPayload, layoutAtlas } from '../static/js/strata-atlas-layout.js';
 import { resolvePick } from '../static/js/strata-scene.js';
 import { atlasMasterSlot } from '../static/js/strata-master-slots.js';
 import { stateTokenName } from '../static/js/strata-collector.js';
 import { adaptTasteProjection, paintTaste, withCollectorMasters } from '../static/js/strata-taste.js';
+import { paintLanding, placeLanding, planLanding } from '../static/js/strata-fit.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BODY = JSON.parse(readFileSync(resolve(HERE, '..', '..', 'tests', 'fixtures', 'style-atlas.json'), 'utf8')).body;
@@ -27,6 +28,7 @@ const TOKENS = new Map([
     ...STRATA_TOKENS.hull.map((name, i) => [name, `#4040${i}0`]),
     ...Object.values(STRATA_TOKENS.edge).map((name, i) => [name, `#5050${i}0`]),
     ...[...LIFECYCLE_STAGES, 'provisional'].flatMap((stage, i) => ['light', 'dark'].map((theme) => [lifecycleTokenName(stage, theme), `#c0${i}0${theme === 'dark' ? 'f' : '0'}0`])),
+    ...FIT_DRAWN.flatMap((component, i) => ['light', 'dark'].map((theme) => [fitTokenName(component, theme), `#a${i}a0${theme === 'dark' ? 'f' : '0'}0`])),
 ]);
 TOKENS.set(STRATA_TOKENS.canvas, '#000000');
 const COLLECTOR_TOKENS = new Map(['none', 'wanted', 'owned', 'wanted-owned'].map((state, i) => [stateTokenName(state, 'dark'), `#e0${i}0e0`]));
@@ -339,5 +341,81 @@ describe('the Taste Strata layer', () => {
         renderer.refreshTaste();
         expect(ringColor(renderer, 's:Amber Bop')).toBe(collectorToken('wanted-owned'));
         expect(renderer.layoutObjects.filter((object) => object.userData?.held)).toHaveLength(renderer.heldRings.length);
+    });
+});
+
+describe('the Fit landing point', () => {
+    const fixture = (name) => JSON.parse(readFileSync(resolve(HERE, '..', '..', 'tests', 'fixtures', name), 'utf8'));
+    const ATLAS = { ...BODY, masters: fixture('style-atlas-masters.json').masters };
+    const PROFILE = fixture('fit-profile.json').body;
+    const fitToken = (component) => TOKENS.get(fitTokenName(component, 'dark'));
+
+    function landingMount(profile = PROFILE) {
+        const layout = layoutAtlas(adaptAtlasPayload(ATLAS), { masterSlot: atlasMasterSlot });
+        paintLanding(layout, placeLanding(layout, planLanding(profile)));
+        return mount({ layout });
+    }
+
+    function diamondColor(renderer, id) {
+        const ring = renderer.landingRings.find((r) => r.userData.nodes.some((n) => n.id === id));
+        if (!ring) return null;
+        const color = new THREE.Color();
+        ring.getColorAt(ring.userData.nodes.findIndex((n) => n.id === id), color);
+        return `#${color.getHexString()}`;
+    }
+
+    it('draws a diamond in the component token around every node the landing marks, and nothing else', () => {
+        const { renderer, layout } = landingMount();
+        const ringed = renderer.landingRings.flatMap((ring) => ring.userData.nodes.map((n) => n.id)).sort();
+        expect(ringed).toEqual(layout.nodes.filter((n) => n.landing).map((n) => n.id).sort());
+        expect(diamondColor(renderer, 'g:Electronic')).toBe(fitToken('affinity'));
+        expect(diamondColor(renderer, 's:Amber Bop')).toBe(fitToken('affinity'));
+        expect(diamondColor(renderer, 's:Glass Drift')).toBe(fitToken('novelty'));
+        expect(diamondColor(renderer, 'h:Glass Drift@Jazz')).toBe(fitToken('novelty'));
+        expect(diamondColor(renderer, 'm:910001@Amber Bop')).toBe(fitToken('redundancy'));
+        expect(diamondColor(renderer, 's:Copper Drift')).toBeNull();
+        expect(renderer.instanced.some((entry) => renderer.landingRings.includes(entry.mesh))).toBe(false);
+    });
+
+    it('draws the Bridge as one ribbon on the style plane, in the bridge token', () => {
+        const { renderer } = landingMount();
+        expect(renderer.landingObjects).toHaveLength(1);
+        const [bridge] = renderer.landingObjects;
+        expect(bridge.userData).toEqual({ kind: 'bridge', edges: 1 });
+        expect(bridge.parent).toBe(renderer.planes[1].group);
+        expect(`#${bridge.material.color.getHexString()}`).toBe(fitToken('bridge'));
+    });
+
+    it('says in each marked node\'s label what the mark means, so the cue is never color alone', () => {
+        const { renderer } = landingMount();
+        expect(atlasLabel(renderer.byId.get('s:Glass Drift'))).toBe('Glass Drift · new to you');
+        expect(atlasLabel(renderer.byId.get('h:Glass Drift@Jazz'))).toBe('Glass Drift ↗ · new to you');
+        expect(atlasLabel(renderer.byId.get('g:Electronic'))).toBe('Electronic · shared');
+        expect(atlasLabel(renderer.byId.get('m:910001@Amber Bop'))).toBe('Amber Bop Landmark 1 · you hold this record');
+    });
+
+    it('draws nothing for a body without evidence_entries', () => {
+        const capped = structuredClone(PROFILE);
+        for (const component of Object.values(capped.components)) delete component.evidence_entries;
+        const { renderer } = landingMount(capped);
+        expect(renderer.landingRings).toEqual([]);
+        expect(renderer.landingObjects).toEqual([]);
+    });
+
+    it('redraws a cleared landing without moving a node, and releases what it drew', () => {
+        const { renderer, layout } = landingMount();
+        const at = layout.nodes.map((n) => [n.id, n.x, n.z]);
+        paintLanding(layout, null);
+        renderer.refreshLanding();
+        expect(renderer.landingRings).toEqual([]);
+        expect(renderer.landingObjects).toEqual([]);
+        expect(renderer.layoutObjects.filter((object) => object.userData?.landing)).toEqual([]);
+        expect(layout.nodes.map((n) => [n.id, n.x, n.z])).toEqual(at);
+    });
+
+    it('throws when a Fit token is missing rather than inventing a color', () => {
+        const tokens = new Map(TOKENS);
+        tokens.delete(fitTokenName('bridge', 'dark'));
+        expect(() => mount({ tokens })).toThrow(/--groovemap-state-fit-bridge-dark/);
     });
 });
