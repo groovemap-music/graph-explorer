@@ -49,7 +49,7 @@ closing a context does not give the budget back.
 | Contexts a WebKit process serves before navigation stops working | 64 |
 | Contexts this suite opens per browser process before retiring it | 32 |
 | Browser contexts allowed open at once in one session | 8 |
-| E2E tests in the matrix today | 115 |
+| E2E tests in the matrix today | 121 |
 
 Measured against the WebKit that Playwright 1.62 bundles: the 64th context in a launch is created
 without error, but every `page.goto` from it times out while the server keeps answering `/health`
@@ -60,7 +60,7 @@ Istanbul coverage instrumentation are not involved; plain contexts that load a p
 network reproduce it exactly.
 
 `tests/conftest.py` therefore retires the browser process every 32 contexts, at half the ceiling,
-so a project can grow well past 115 tests before anything has to change. Retiring is only safe
+so a project can grow well past 121 tests before anything has to change. Retiring is only safe
 while nothing is open on the browser, which holds because the `page` fixture closes its context on
 every path out — a failed test, a crashed page, and a context that was never armed.
 

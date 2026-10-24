@@ -26,7 +26,8 @@
     "marked": "18.1.1",
     "material-symbols": "0.48.0",
     "plotly.js-dist-min": "4.1.2",
-    "qrcodejs": "1.0.0"
+    "qrcodejs": "1.0.0",
+    "three": "0.186.1"
   },
   "devDependencies": {
     "@tailwindcss/cli": "4.3.3",

@@ -1672,6 +1672,199 @@ describe('ExploreApp helper methods', () => {
         });
     });
 
+    describe('ExploreApp explore views', () => {
+        beforeEach(() => {
+            localStorage.clear();
+        });
+
+        function viewButtons() {
+            const buttons = {};
+            for (const view of ['graph', 'strata', 'table']) {
+                const button = document.createElement('button');
+                button.dataset.exploreView = view;
+                button.disabled = view !== 'graph';
+                document.body.appendChild(button);
+                buttons[view] = button;
+            }
+            return buttons;
+        }
+
+        function fakeStrata() {
+            return { setArtist: vi.fn(), setBeforeYear: vi.fn(), show: vi.fn(), hide: vi.fn(), pause: vi.fn(), resume: vi.fn() };
+        }
+
+        it('enables strata for a centered artist and hands it the artist', () => {
+            const buttons = viewButtons();
+            const app = new ExploreApp();
+            app.strata = fakeStrata();
+
+            app._setExploreArtist({ id: 42, name: 'Radiohead', type: 'artist' });
+
+            expect(app.currentArtist).toEqual({ id: '42', name: 'Radiohead' });
+            expect(buttons.strata.disabled).toBe(false);
+            expect(buttons.strata.title).toBe('Discography Strata for Radiohead');
+            expect(app.strata.setArtist).toHaveBeenCalledWith({ id: '42', name: 'Radiohead' });
+            expect(buttons.table.disabled).toBe(false);
+            expect(buttons.table.title).toBe('Table of every credit, master, and pressing for Radiohead');
+            app._setExploreArtist(null);
+            expect(buttons.strata.disabled).toBe(true);
+            expect(buttons.table.disabled).toBe(true);
+            expect(buttons.table.title).toBe('Search for an artist to open the strata table');
+        });
+
+        it('switches between the graph, strata, and the table', () => {
+            const buttons = viewButtons();
+            const app = new ExploreApp();
+            app._bindEvents();
+            app.strata = fakeStrata();
+            app.graph.setBeforeYear = vi.fn();
+            app.timeline.currentYear = 1999;
+            app._setExploreArtist({ id: '42', name: 'Radiohead' });
+            document.getElementById('infoPanel').classList.add('open');
+
+            buttons.strata.click();
+            expect(app.exploreView).toBe('strata');
+            expect(buttons.strata.getAttribute('aria-pressed')).toBe('true');
+            expect(buttons.graph.getAttribute('aria-pressed')).toBe('false');
+            expect(document.getElementById('graphContainer').classList.contains('hidden')).toBe(true);
+            expect(document.getElementById('infoPanel').classList.contains('open')).toBe(false);
+            expect(document.getElementById('infoPanel').classList.contains('hidden')).toBe(true);
+            expect(app.strata.setBeforeYear).toHaveBeenCalledWith(1999);
+            expect(app.strata.show).toHaveBeenCalled();
+
+            expect(app.strata.show).toHaveBeenLastCalledWith({ mode: 'strata' });
+
+            buttons.table.click();
+            expect(app.exploreView).toBe('table');
+            expect(buttons.table.getAttribute('aria-pressed')).toBe('true');
+            expect(buttons.strata.getAttribute('aria-pressed')).toBe('false');
+            expect(document.getElementById('graphContainer').classList.contains('hidden')).toBe(true);
+            expect(document.getElementById('infoPanel').classList.contains('hidden')).toBe(true);
+            expect(app.strata.show).toHaveBeenLastCalledWith({ mode: 'table' });
+
+            // The scrubber is valid time in the table too, and the hidden graph is left alone.
+            app.graph.setBeforeYear.mockClear();
+            app._onTimelineYearChange(1990);
+            expect(app.strata.setBeforeYear).toHaveBeenLastCalledWith(1990);
+            expect(app.graph.setBeforeYear).not.toHaveBeenCalled();
+
+            app._setExploreView('nonsense');
+            expect(app.exploreView).toBe('table');
+
+            app.graph.beforeYear = null;
+            buttons.graph.click();
+            expect(app.exploreView).toBe('graph');
+            expect(app.strata.hide).toHaveBeenCalled();
+            expect(document.getElementById('graphContainer').classList.contains('hidden')).toBe(false);
+            expect(document.getElementById('infoPanel').classList.contains('hidden')).toBe(false);
+            // The graph catches up with a year scrubbed while strata had the pane.
+            expect(app.graph.setBeforeYear).toHaveBeenCalledWith(1999);
+        });
+
+        it('remembers the chosen view across a reload, and opens it once an artist is centered', () => {
+            const buttons = viewButtons();
+            const app = new ExploreApp();
+            app._bindEvents();
+            app.strata = fakeStrata();
+            app._setExploreArtist({ id: '42', name: 'Radiohead' });
+            buttons.table.click();
+            expect(localStorage.getItem('explore.view')).toBe('table');
+
+            // A reload: a new app, no artist yet, so it stays on the graph.
+            const reloaded = new ExploreApp();
+            reloaded.strata = fakeStrata();
+            expect(reloaded.preferredExploreView).toBe('table');
+            expect(reloaded.exploreView).toBe('graph');
+            reloaded._setExploreArtist({ id: '42', name: 'Radiohead' });
+            expect(reloaded.exploreView).toBe('table');
+            expect(reloaded.strata.show).toHaveBeenCalledWith({ mode: 'table' });
+            expect(buttons.table.getAttribute('aria-pressed')).toBe('true');
+
+            // Choosing the graph is remembered too, so the next artist does not switch away.
+            reloaded._setExploreView('graph');
+            expect(localStorage.getItem('explore.view')).toBe('graph');
+            reloaded._setExploreArtist({ id: '43', name: 'Portishead' });
+            expect(reloaded.exploreView).toBe('graph');
+        });
+
+        it('keeps the remembered view when the app falls back to the graph for a genre', () => {
+            viewButtons();
+            const app = new ExploreApp();
+            app.strata = fakeStrata();
+            app._setExploreArtist({ id: '42', name: 'Radiohead' });
+            app._setExploreView('strata');
+            app._setExploreArtist(null);
+            expect(app.exploreView).toBe('graph');
+            expect(localStorage.getItem('explore.view')).toBe('strata');
+            app._setExploreArtist({ id: '43', name: 'Portishead' });
+            expect(app.exploreView).toBe('strata');
+        });
+
+        it('ignores a stored view it does not know, and survives storage that throws', () => {
+            viewButtons();
+            localStorage.setItem('explore.view', 'carousel');
+            expect(new ExploreApp().preferredExploreView).toBe('graph');
+
+            const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new DOMException('denied', 'SecurityError'); });
+            const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('full', 'QuotaExceededError'); });
+            const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+            try {
+                const app = new ExploreApp();
+                expect(app.preferredExploreView).toBe('graph');
+                app.strata = fakeStrata();
+                app._setExploreArtist({ id: '42', name: 'Radiohead' });
+                app._setExploreView('table');
+                expect(app.exploreView).toBe('table');
+                expect(warn).toHaveBeenCalled();
+            } finally {
+                get.mockRestore();
+                set.mockRestore();
+                warn.mockRestore();
+            }
+        });
+
+        it('stays on the graph without an artist, and falls back to it when the center is not one', () => {
+            viewButtons();
+            const app = new ExploreApp();
+            app.strata = fakeStrata();
+            app._setExploreView('strata');
+            expect(app.exploreView).toBe('graph');
+
+            app._setExploreArtist({ id: '42', name: 'Radiohead' });
+            app._setExploreView('strata');
+            app._setExploreArtist(null);
+            expect(app.exploreView).toBe('graph');
+            expect(app.strata.setArtist).toHaveBeenLastCalledWith(null);
+            expect(document.querySelector('[data-explore-view="strata"]').disabled).toBe(true);
+        });
+
+        it('sends the scrubbed year to strata, and to the graph only while it is shown', () => {
+            viewButtons();
+            const app = new ExploreApp();
+            app.strata = fakeStrata();
+            app.graph.setBeforeYear = vi.fn();
+            app._onTimelineYearChange(1980);
+            expect(app.strata.setBeforeYear).toHaveBeenCalledWith(1980);
+            expect(app.graph.setBeforeYear).toHaveBeenCalledWith(1980);
+
+            app._setExploreArtist({ id: '42', name: 'Radiohead' });
+            app._setExploreView('strata');
+            app.graph.setBeforeYear.mockClear();
+            app._onTimelineYearChange(1990);
+            expect(app.strata.setBeforeYear).toHaveBeenLastCalledWith(1990);
+            expect(app.graph.setBeforeYear).not.toHaveBeenCalled();
+        });
+
+        it('pauses the strata frame loop off the Explore pane', () => {
+            const app = new ExploreApp();
+            app.strata = fakeStrata();
+            app._switchPane('trends');
+            expect(app.strata.pause).toHaveBeenCalled();
+            app._switchPane('explore');
+            expect(app.strata.resume).toHaveBeenCalled();
+        });
+    });
+
     describe('ExploreApp._onCompareChange', () => {
         it('should clear comparison when years are equal', () => {
             const app = new ExploreApp();
@@ -2074,6 +2267,26 @@ describe('ExploreApp helper methods', () => {
 
             expect(window.apiClient.explore).toHaveBeenCalledWith('Radiohead', 'artist');
             expect(app.graph.setExploreData).toHaveBeenCalledWith(exploreData);
+        });
+
+        it('hands the centered artist to strata, and clears it for a genre', async () => {
+            window.authManager.isLoggedIn.mockReturnValue(false);
+            window.apiClient.getYearRange.mockResolvedValue({ min_year: null, max_year: null });
+            localStorage.clear();
+            const app = new ExploreApp();
+            app.strata = { setArtist: vi.fn() };
+            app.graph.setExploreData = vi.fn();
+            app.graph._pendingExpands = 0;
+            app.graph.nodes = [];
+
+            window.apiClient.explore.mockResolvedValue({ center: { id: '42', name: 'Radiohead', type: 'artist' }, categories: [] });
+            await app._loadExplore('Radiohead', 'artist');
+            expect(app.strata.setArtist).toHaveBeenLastCalledWith({ id: '42', name: 'Radiohead' });
+
+            window.apiClient.explore.mockResolvedValue({ center: { id: 'Rock', name: 'Rock', type: 'genre' }, categories: [] });
+            await app._loadExplore('Rock', 'genre');
+            expect(app.strata.setArtist).toHaveBeenLastCalledWith(null);
+            expect(app.currentArtist).toBeNull();
         });
 
         it('should not call graph.setExploreData when API returns null', async () => {

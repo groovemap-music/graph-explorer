@@ -17,6 +17,10 @@ MOCK_AUTOCOMPLETE_RESULTS: dict[str, list[dict[str, Any]]] = {
     "artist": [
         {"id": "1", "name": "Radiohead", "score": 9.5},
         {"id": "2", "name": "Radio Dept.", "score": 7.2},
+        # Artists whose strata the mock route answers (STRATA_* below).
+        {"id": "9001", "name": "The Placeholder Band", "score": 6.0},
+        {"id": "too-large", "name": "Overlong Catalog", "score": 5.0},
+        {"id": "timeout", "name": "Slow Reader", "score": 4.0},
     ],
     "genre": [
         {"id": "Rock", "name": "Rock", "score": 1.0},
@@ -50,6 +54,16 @@ MOCK_EXPLORE_RESULTS: dict[str, dict[str, Any]] = {
         "artist_count": 120,
     },
 }
+
+# The artists Explore can center whose Discography Strata the mock route answers: the one the
+# recorded fixture describes, and the two that make the route fail the way it does at scale.
+MOCK_STRATA_ARTISTS: dict[str, dict[str, Any]] = {
+    "the placeholder band": {"id": "9001", "name": "The Placeholder Band", "release_count": 169, "label_count": 4, "alias_count": 2},
+    "overlong catalog": {"id": "too-large", "name": "Overlong Catalog", "release_count": 1356055, "label_count": 900, "alias_count": 0},
+    "slow reader": {"id": "timeout", "name": "Slow Reader", "release_count": 80000, "label_count": 40, "alias_count": 0},
+}
+# The release years the timeline scrubber spans.
+MOCK_YEAR_RANGE: dict[str, int] = {"min_year": 1985, "max_year": 2026}
 
 # Mock auth data
 MOCK_USER: dict[str, Any] = {
@@ -226,6 +240,51 @@ def _normalize_identifier(provider: str, value: str) -> str:
 async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
     """Manage test app lifecycle."""
     yield
+
+
+# Recorded GET /api/explore/strata bodies (tests/fixtures/strata-route.json): catalog-api's fold
+# over an invented catalog at the promoted producer commit. No live database is read.
+STRATA_FIXTURE = Path(__file__).parent / "fixtures" / "strata-route.json"
+# Artist ids the strata mock answers with the route's errors.
+STRATA_TOO_LARGE = "too-large"
+STRATA_TIMEOUT = "timeout"
+_COLLECTOR_FIELDS = ("state", "states", "recorded_at")
+
+
+def _strata_cursor(focus: str) -> str:
+    """The cursor the route answers under: a master or lane opens its release aggregate."""
+    if focus.startswith("m:"):
+        return "ra:" + focus
+    if focus.startswith("nm:"):
+        return "ra:" + focus
+    return focus
+
+
+def _anonymous(body: dict[str, Any]) -> dict[str, Any]:
+    """A signed-in body as an anonymous caller sees it: no collector field anywhere."""
+    body = json.loads(json.dumps(body))
+    body["signed_in"] = False
+    for plane in body["planes"]:
+        for entry in [*plane["nodes"], *plane["aggregates"]]:
+            for field in _COLLECTOR_FIELDS:
+                entry.pop(field, None)
+    return body
+
+
+def strata_response(artist_id: str, focus: str | None, page: int, signed_in: bool) -> tuple[int, dict[str, Any]]:
+    """The recorded strata body for a cursor and page, or the route's error for it."""
+    if artist_id == STRATA_TOO_LARGE:
+        return 422, {"error": f"Artist '{artist_id}' has 1356055 releases; strata draws at most 134051", "releases": 1356055, "max_releases": 134051}
+    if artist_id == STRATA_TIMEOUT:
+        return 504, {"error": "Strata query timed out — try again later"}
+    recorded = json.loads(STRATA_FIXTURE.read_text())["responses"]
+    cursor = _strata_cursor(focus) if focus else None
+    pages = [entry for entry in recorded if entry["query"]["focus"] == cursor and entry["query"]["signed_in"] is True]
+    if not pages:
+        return 404, {"error": f"focus '{focus}' names nothing under this artist"}
+    count = pages[0]["body"]["focus"]["pages"] if cursor else 1
+    body = next(entry["body"] for entry in pages if entry["query"]["page"] == page % count)
+    return 200, body if signed_in else _anonymous(body)
 
 
 def create_test_app() -> FastAPI:
@@ -645,6 +704,8 @@ def create_test_app() -> FastAPI:
     ) -> JSONResponse:
         entity_type = type.lower()
         result = MOCK_EXPLORE_RESULTS.get(entity_type)
+        if entity_type == "artist":
+            result = MOCK_STRATA_ARTISTS.get(name.lower(), result)
         if not result:
             return JSONResponse(content={"error": "Not found"}, status_code=404)
 
@@ -672,6 +733,21 @@ def create_test_app() -> FastAPI:
                 "categories": categories,
             }
         )
+
+    @app.get("/api/explore/year-range")
+    async def explore_year_range() -> JSONResponse:
+        return JSONResponse(content=MOCK_YEAR_RANGE)
+
+    @app.get("/api/explore/strata")
+    async def explore_strata(
+        artist_id: str = Query(..., min_length=1),
+        focus: str | None = Query(None),
+        page: int = Query(0, ge=0),
+        authorization: str | None = Header(default=None),
+    ) -> JSONResponse:
+        signed_in = bool(authorization and authorization.startswith("Bearer "))
+        status, body = strata_response(artist_id, focus, page, signed_in)
+        return JSONResponse(content=body, status_code=status)
 
     @app.get("/api/expand")
     async def expand(

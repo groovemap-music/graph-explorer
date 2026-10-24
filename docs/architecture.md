@@ -61,6 +61,18 @@ endpoint and each release's `media` block report — the family label map in
 `explore/static/js/media-taxonomy.js` is presentation only, and an unrecognized id falls back to
 a humanized form rather than being dropped.
 
+Discography Strata's placement lives in `explore/static/js/strata-layout.js`, a pure module with
+no DOM and no three.js, so the renderer only draws what it returns. It reads the strata route
+payload through one function, `adaptStrataPayload`, whose comment records the input shape: the
+draft from the design spike `gm-design-1h2l`, because the `catalog-api` route is not yet a promoted
+contract. When the contract is promoted, the adapter and its tests are what to reconcile.
+`layoutStrata` places credit, master, and release planes on a year axis with an undated strip
+and a no-master lane per credit. Its footprint check, not the payload's budget, guarantees that
+the view is legible: no hull intrusions, overlaps, or same-plane edge crossings, and every entry
+held exactly once on every drill-down page. `explore/__tests__/strata-layout.test.js` checks
+these as properties over generated discographies. `explore/static/js/strata-renderer.js` draws
+that layout in 3D with three.js and resolves picking; see [Strata renderer](strata-renderer.md).
+
 Authentication and catalog authorization remain `catalog-api` responsibilities. The browser
 stores the issued token and sends it through the proxy, but `graph-explorer` does not mint or
 interpret that token.
@@ -77,9 +89,9 @@ Outcome posts are fire-and-forget and never gate an interaction — see
 
 | Authority | Revision | Local evidence |
 | --- | --- | --- |
-| `catalog-api` graph-explorer route contract | `ec2db559e2a457dcac2acaa845adee62d4bfa5a2` | [`contracts/catalog-api/graph-explorer/v1/source.json`](../contracts/catalog-api/graph-explorer/v1/source.json) and [`routes.json`](../contracts/catalog-api/graph-explorer/v1/routes.json) |
+| `catalog-api` graph-explorer route contract | `0cb5570b5da57135c52218a0eabcae7c7941fc36` | [`contracts/catalog-api/graph-explorer/v1/source.json`](../contracts/catalog-api/graph-explorer/v1/source.json) and [`routes.json`](../contracts/catalog-api/graph-explorer/v1/routes.json) |
 | `python-libraries` runtime package | `21855671580a446074bb9527b4d3355fee0bfde9` | [`pyproject.toml`](../pyproject.toml) and `uv.lock` |
-| `design` generated brand assets | `59c9fd3c8bbdfa676e0b7bb3d463fc766c1f3c0d` | [`explore/static/brand/source.json`](../explore/static/brand/source.json) |
+| `design` generated brand assets | `109cbd5bddcc699426e2406c8de486e012a30f5a` | [`explore/static/brand/source.json`](../explore/static/brand/source.json) |
 
 `scripts/check-contracts.py` verifies the producer digest and checks every literal browser API
 route against the promoted route set. A registry entry may carry a `parameters` list beside its

@@ -10,6 +10,7 @@ RUN npm --prefix explore ci --ignore-scripts
 COPY explore/vendor-assets.json ./explore/vendor-assets.json
 COPY explore/scripts/vendor-licenses.mjs ./explore/scripts/vendor-licenses.mjs
 COPY third_party/licenses/ ./third_party/licenses/
+COPY third_party/three/source.json ./third_party/three/source.json
 COPY explore/tailwind.input.css ./explore/tailwind.input.css
 COPY explore/static/ ./explore/static/
 COPY scripts/build-web-assets.sh ./scripts/build-web-assets.sh

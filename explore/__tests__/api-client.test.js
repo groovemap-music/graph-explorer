@@ -44,6 +44,73 @@ describe('ApiClient', () => {
         });
     });
 
+    describe('getStrata', () => {
+        it('asks for the overview with the budget, and sends the token for collector state', async () => {
+            const calls = [];
+            vi.stubGlobal('fetch', async (url, options) => {
+                calls.push({ url, options });
+                return { ok: true, status: 200, json: async () => ({ planes: [] }) };
+            });
+
+            const result = await window.apiClient.getStrata('9001', { budget: '3/12/16' }, 'jwt');
+            expect(calls[0].url).toBe('/api/explore/strata?artist_id=9001&budget=3%2F12%2F16');
+            expect(calls[0].options.headers.Authorization).toBe('Bearer jwt');
+            expect(result).toEqual({ ok: true, status: 200, body: { planes: [] } });
+
+            await window.apiClient.getStrata('9001', { focus: 'ra:m:5', page: 2 });
+            expect(calls[1].url).toBe('/api/explore/strata?artist_id=9001&focus=ra%3Am%3A5&page=2');
+            expect(calls[1].options.headers).toEqual({});
+        });
+
+        it('returns the 422 and 504 bodies so the view can say why', async () => {
+            const body = { error: 'too large', releases: 1356055, max_releases: 134051 };
+            vi.stubGlobal('fetch', async () => ({ ok: false, status: 422, json: async () => body }));
+            expect(await window.apiClient.getStrata('1')).toEqual({ ok: false, status: 422, body });
+            vi.stubGlobal('fetch', async () => ({ ok: false, status: 504, json: async () => { throw new Error('not json'); } }));
+            expect(await window.apiClient.getStrata('1')).toEqual({ ok: false, status: 504, body: null });
+        });
+    });
+
+    describe('findOwnedCopy and createObservation', () => {
+        it('pages the collection until it finds the release, and returns its copy id', async () => {
+            const urls = [];
+            vi.stubGlobal('fetch', async (url) => {
+                urls.push(url);
+                const offset = Number(new URL(url, 'http://x').searchParams.get('offset'));
+                const releases = offset === 0 ? [{ id: '1', owned_copy_id: 'a' }, { id: '2', owned_copy_id: null }] : [{ id: '3', owned_copy_id: 'c' }];
+                return { ok: true, status: 200, json: async () => ({ releases, total: 3 }) };
+            });
+
+            expect(await window.apiClient.findOwnedCopy('jwt', '3', { pageSize: 2 })).toBe('c');
+            expect(urls).toEqual(['/api/user/collection?limit=2&offset=0', '/api/user/collection?limit=2&offset=2']);
+            expect(await window.apiClient.findOwnedCopy('jwt', '2', { pageSize: 2 })).toBeNull();
+            expect(await window.apiClient.findOwnedCopy('jwt', '9', { pageSize: 2 })).toBeNull();
+            expect(await window.apiClient.findOwnedCopy('jwt', '9', { pageSize: 2, maxPages: 1 })).toBeNull();
+            expect(await window.apiClient.findOwnedCopy(null, '3')).toBeNull();
+        });
+
+        it('stops at an empty page or a failed read', async () => {
+            vi.stubGlobal('fetch', async () => ({ ok: false, status: 500, json: async () => ({}) }));
+            expect(await window.apiClient.findOwnedCopy('jwt', '3')).toBeNull();
+        });
+
+        it('posts an observation about a copy', async () => {
+            let captured;
+            vi.stubGlobal('fetch', async (url, options) => {
+                captured = { url, options };
+                return { ok: true, status: 201, json: async () => ({ id: 'o1' }) };
+            });
+
+            const result = await window.apiClient.createObservation('jwt', 'copy/1', { kind: 'grading', value: 'VG+', source: 'user' });
+            expect(captured.url).toBe('/api/user/copies/copy%2F1/observations');
+            expect(captured.options.method).toBe('POST');
+            expect(captured.options.headers.Authorization).toBe('Bearer jwt');
+            expect(JSON.parse(captured.options.body)).toEqual({ kind: 'grading', value: 'VG+', source: 'user' });
+            expect(result).toEqual({ ok: true, status: 201, body: { id: 'o1' } });
+            expect(await window.apiClient.createObservation(null, 'c', {})).toEqual({ ok: false, status: 0, body: null });
+        });
+    });
+
     describe('explore', () => {
         it('should return explore data on success', async () => {
             const exploreData = { center: { id: 'Radiohead', type: 'artist' }, categories: [] };

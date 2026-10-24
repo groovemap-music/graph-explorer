@@ -7,7 +7,9 @@ full-screen view, timeline filtering, year comparison, and shareable snapshots.
 
 The always-visible navigation provides these public workflows:
 
-- **Explore** renders the interactive relationship graph and timeline.
+- **Explore** renders the interactive relationship graph and timeline. For an artist it also opens
+  **Discography Strata**, their credits, masters, and pressings on three planes, and a table of the
+  same entries; see [Discography Strata](discography-strata.md).
 - **Trends** compares time-series data for selected entities.
 - **Find Path** finds a connection between two named entities.
 - **Search** filters artists, labels, masters, and releases, including canonical media families,
@@ -145,6 +147,8 @@ each action records and what the three settings cards do.
 - In the main and Credits autocomplete lists, use Arrow Down/Arrow Up, Enter, and Escape.
 - Open **Ask** with Control+K, Command+K, or `?`; Enter submits from its input and Escape collapses
   it. The Ask close and answer-clear controls expose accessible names.
+- Discography Strata and its table are fully operable from the keyboard; the keys are listed in
+  [Discography Strata](discography-strata.md#the-3d-view).
 - Escape closes the account and Discogs connection dialogs and exits graph full-screen mode.
 - The Missing pane's media control is a native multi-select grouped by family. Its accessible name
   is “Media,” and its hint explains that no selection includes all media.

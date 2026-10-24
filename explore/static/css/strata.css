@@ -1,0 +1,577 @@
+/* Discography Strata renderer (static/js/strata-renderer.js).
+   The renderer reads the --strata-* properties through getComputedStyle and re-reads them on
+   refreshColors(), so they follow the theme palette in styles.css. Node colors are the promoted
+   collector state tokens (brand/tokens.css). Labels are positioned through CSSOM transforms and
+   shown with the hidden attribute; nothing here depends on a style attribute. */
+:root {
+    --strata-canvas: var(--bg-deep);
+    --strata-plane-fill: var(--inner-bg);
+    --strata-plane-line: var(--border-color);
+    --strata-link: var(--text-dim);
+    --strata-accent: var(--cyan-500);
+    --strata-hover: var(--cyan-glow);
+    --strata-node-stateless: var(--text-dim);
+    --strata-blocked: var(--accent-red);
+    --strata-hull-1: var(--cyan-500);
+    --strata-hull-2: var(--purple-300);
+    --strata-hull-3: var(--node-release);
+    --strata-hull-4: var(--accent-yellow);
+    --strata-edge-member: var(--purple-300);
+    --strata-edge-collab: var(--node-release);
+    --strata-edge-personnel: var(--cyan-500);
+    --strata-edge-company: var(--node-category);
+}
+
+.strata-stage {
+    position: relative;
+    overflow: hidden;
+    background: var(--strata-canvas);
+}
+
+.strata-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+}
+
+.strata-labels {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.strata-label,
+.strata-tag,
+.strata-plane-label {
+    position: absolute;
+    left: 0;
+    top: 0;
+    white-space: nowrap;
+    will-change: transform;
+}
+
+.strata-label[hidden],
+.strata-tag[hidden],
+.strata-plane-label[hidden] {
+    display: none;
+}
+
+.strata-label {
+    font: 500 10.5px/1.25 var(--font-mono, ui-monospace, monospace);
+    color: var(--text-high);
+    background: var(--label-bg);
+    padding: 1px 5px;
+    border-radius: 3px;
+}
+
+.strata-label--credit {
+    font: 700 12.5px/1.2 var(--font-body, system-ui, sans-serif);
+    padding: 2px 6px;
+}
+
+.strata-tag {
+    font: 500 10px/1 var(--font-mono, ui-monospace, monospace);
+    padding: 3px 7px;
+    border-radius: 999px;
+    border: 1px solid currentColor;
+    background: var(--label-bg);
+}
+
+.strata-tag--hull-1 { color: var(--strata-hull-1); }
+.strata-tag--hull-2 { color: var(--strata-hull-2); }
+.strata-tag--hull-3 { color: var(--strata-hull-3); }
+.strata-tag--hull-4 { color: var(--strata-hull-4); }
+
+.strata-plane-label {
+    font: 400 11px/1 var(--font-mono, ui-monospace, monospace);
+    color: var(--text-dim);
+}
+
+.strata-plane-label b {
+    font: 700 14px/1 var(--font-body, system-ui, sans-serif);
+    color: var(--text-high);
+    margin-right: 6px;
+}
+
+/* ---------------------------------------------------------------------------------------------
+   Explore integration (static/js/strata-explore.js): the view toggle, the strata view's toolbar,
+   stage, and panel. Built from classes only; the script writes no style attribute.
+   --------------------------------------------------------------------------------------------- */
+
+.explore-view-toggle {
+    display: flex;
+    gap: 4px;
+    padding: 6px 16px;
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+.explore-view-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--inner-bg);
+    color: var(--text-mid);
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.explore-view-btn .material-symbols-outlined {
+    font-size: 18px;
+}
+
+.explore-view-btn.active {
+    background: var(--strata-accent);
+    border-color: var(--strata-accent);
+    color: var(--bg-deep);
+}
+
+.explore-view-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.strata-view {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.strata-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 14px;
+    padding: 8px 16px;
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.85rem;
+    color: var(--text-mid);
+}
+
+.strata-search {
+    display: flex;
+    gap: 6px;
+}
+
+.strata-search input {
+    width: 16rem;
+}
+
+.strata-check,
+.strata-recorded {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.strata-recorded output {
+    min-width: 6.5rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-high);
+}
+
+.strata-recorded input[type="range"] {
+    accent-color: var(--purple-accent);
+}
+
+.strata-planes {
+    display: inline-flex;
+    gap: 4px;
+}
+
+.strata-tool-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 9px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--inner-bg);
+    color: var(--text-high);
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.strata-tool-btn .material-symbols-outlined {
+    font-size: 16px;
+}
+
+.strata-tool-btn[aria-pressed="true"] {
+    border-color: var(--strata-accent);
+    color: var(--strata-accent);
+}
+
+.strata-body {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+}
+
+.strata-stage-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+}
+
+.strata-stage-wrap .strata-stage {
+    position: absolute;
+    inset: 0;
+}
+
+.strata-stage:focus-visible {
+    outline: 2px solid var(--strata-accent);
+    outline-offset: -2px;
+}
+
+.strata-message {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 36rem;
+    margin: 0;
+    padding: 10px 14px;
+    border: 1px solid var(--strata-blocked);
+    border-radius: 6px;
+    background: var(--card-bg);
+    color: var(--text-high);
+    font-size: 0.9rem;
+    z-index: 12;
+}
+
+.strata-message[hidden],
+.strata-trail[hidden] {
+    display: none;
+}
+
+.strata-panel {
+    width: 320px;
+    flex-shrink: 0;
+    overflow-y: auto;
+    padding: 14px 16px;
+    background: var(--card-bg);
+    border-left: 1px solid var(--border-color);
+    font-size: 0.85rem;
+    color: var(--text-mid);
+}
+
+.strata-summary-title,
+.strata-selection-title {
+    margin: 0 0 6px;
+    color: var(--text-high);
+    font-weight: 600;
+}
+
+.strata-summary-title {
+    font-size: 1.05rem;
+}
+
+.strata-summary-line,
+.strata-selection-plane,
+.strata-selection-facts,
+.strata-hint {
+    margin: 0 0 6px;
+}
+
+.strata-trail {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: 10px 0;
+    padding: 8px 0;
+    border-top: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.strata-trail-label {
+    flex-basis: 100%;
+    color: var(--text-high);
+}
+
+.strata-trail-btn,
+.strata-action {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--inner-bg);
+    color: var(--text-high);
+    font-size: 0.8rem;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.strata-action:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+#strataSelection {
+    margin-top: 12px;
+}
+
+.strata-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 10px 0 6px;
+}
+
+.strata-blocked {
+    margin: 6px 0;
+    color: var(--strata-blocked);
+}
+
+.strata-observation {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 8px 0;
+}
+
+.strata-field {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.strata-state,
+.strata-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.strata-state::before,
+.strata-chip::before {
+    content: "";
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--strata-chip, var(--strata-node-stateless));
+}
+
+.strata-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    margin: 10px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.strata-chip--blocked::before {
+    background: transparent;
+    border: 2px solid var(--strata-blocked);
+}
+
+/* State swatches follow the theme the renderer reads (strata-collector.js activeTheme). */
+.strata-state--none, .strata-chip--none { --strata-chip: var(--groovemap-state-collector-none-light); }
+.strata-state--wanted, .strata-chip--wanted { --strata-chip: var(--groovemap-state-collector-wanted-light); }
+.strata-state--owned, .strata-chip--owned { --strata-chip: var(--groovemap-state-collector-owned-light); }
+.strata-state--wanted-owned, .strata-chip--wanted-owned { --strata-chip: var(--groovemap-state-collector-wanted-owned-light); }
+.dark .strata-state--none, .dark .strata-chip--none { --strata-chip: var(--groovemap-state-collector-none-dark); }
+.dark .strata-state--wanted, .dark .strata-chip--wanted { --strata-chip: var(--groovemap-state-collector-wanted-dark); }
+.dark .strata-state--owned, .dark .strata-chip--owned { --strata-chip: var(--groovemap-state-collector-owned-dark); }
+.dark .strata-state--wanted-owned, .dark .strata-chip--wanted-owned { --strata-chip: var(--groovemap-state-collector-wanted-owned-dark); }
+
+.strata-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* ---------------------------------------------------------------------------------------------
+   The strata table (static/js/strata-table.js). A native table in a scroll region; the script
+   writes no style attribute.
+   --------------------------------------------------------------------------------------------- */
+
+.strata-planes[hidden],
+.strata-tool-btn[hidden] {
+    display: none;
+}
+
+.strata-table-wrap {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--strata-canvas);
+}
+
+.strata-table-wrap[hidden] {
+    display: none;
+}
+
+.strata-table-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 16px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--card-bg);
+    font-size: 0.85rem;
+    color: var(--text-mid);
+}
+
+.strata-table-status {
+    margin: 0;
+}
+
+.strata-table-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+
+.strata-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    color: var(--text-mid);
+}
+
+.strata-table-caption {
+    padding: 8px 16px;
+    text-align: left;
+    color: var(--text-high);
+    caption-side: top;
+}
+
+.strata-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 0;
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border-color);
+    text-align: left;
+    font-weight: 600;
+}
+
+.strata-table th[aria-sort="ascending"] .strata-table-sort::after {
+    content: " \25B2";
+}
+
+.strata-table th[aria-sort="descending"] .strata-table-sort::after {
+    content: " \25BC";
+}
+
+.strata-table-sort,
+.strata-table-open {
+    font: inherit;
+    color: var(--text-high);
+    cursor: pointer;
+}
+
+.strata-table-sort {
+    width: 100%;
+    padding: 6px 10px;
+    border: 0;
+    background: transparent;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.strata-table-open {
+    padding: 2px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--inner-bg);
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
+.strata-table-sort:focus-visible,
+.strata-table-open:focus-visible,
+.strata-row:focus-visible {
+    outline: 2px solid var(--strata-accent);
+    outline-offset: -2px;
+}
+
+.strata-table td,
+.strata-table tbody th {
+    padding: 5px 10px;
+    border-bottom: 1px solid var(--border-color);
+    text-align: left;
+    font-weight: 400;
+    vertical-align: top;
+}
+
+.strata-table tbody th {
+    color: var(--text-high);
+}
+
+.strata-row[aria-current="true"] {
+    background: var(--strata-hover);
+    box-shadow: inset 3px 0 0 var(--strata-accent);
+}
+
+.strata-row--credit th,
+.strata-row--creditGroup th {
+    font-weight: 600;
+}
+
+.strata-row--master th,
+.strata-row--masterGroup th,
+.strata-row--lane th {
+    padding-left: 22px;
+}
+
+.strata-row--pressing th,
+.strata-row--pressingGroup th {
+    padding-left: 34px;
+}
+
+.strata-cell-blocked {
+    max-width: 28rem;
+    color: var(--strata-blocked);
+}
+
+.strata-cell-year,
+.strata-cell-releases {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+/* A phone is narrower than the details panel, which would leave the stage and the table a sliver
+   beside it. Below that width the panel goes under them, and the view takes the height it needs
+   rather than what is left in the pane. */
+@media (max-width: 760px) {
+    .strata-view {
+        flex: none;
+        min-height: 44rem;
+    }
+
+    .strata-body {
+        flex-direction: column;
+    }
+
+    .strata-stage-wrap {
+        flex: none;
+        height: 28rem;
+    }
+
+    .strata-panel {
+        width: auto;
+        max-height: 16rem;
+        border-left: 0;
+        border-top: 1px solid var(--border-color);
+    }
+}
