@@ -1332,14 +1332,10 @@ class ExploreApp {
         const token = window.authManager.getToken();
         if (!token) return;
 
-        const nodes = this.graph.nodes
-            .filter(n => !n.isCategory)
-            .map(n => ({ id: n.nodeId || n.name, type: n.type }));
-        const centerName = this.graph.centerName;
-        const centerType = this.graph.centerType;
-        if (!centerName || nodes.length === 0) return;
+        const snapshot = this.graph.shareableSnapshot();
+        if (!snapshot) return;
 
-        const result = await window.apiClient.saveSnapshot(nodes, { id: centerName, type: centerType }, token);
+        const result = await window.apiClient.saveSnapshot(snapshot.nodes, snapshot.center, token);
         if (!result) return;
 
         const url = `${window.location.origin}/?snapshot=${result.token}`;
