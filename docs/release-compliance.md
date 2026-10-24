@@ -32,10 +32,33 @@ flowchart TD
 - `just audit` checks the locked Python and JavaScript environments for known vulnerabilities.
 - `just image` builds and inspects the repository-named non-root image with its exact source
   revision, license, repository, legal files, third-party notices, and brand provenance.
-- `just e2e` instruments browser JavaScript, runs Chromium, Firefox, WebKit, iPhone, and iPad,
-  emits per-project and merged LCOV, captures failure artifacts, and restores every source file.
+- `just e2e` instruments browser JavaScript, runs Chromium, Firefox, WebKit, iPhone, and iPad
+  concurrently, emits per-project and merged LCOV, captures failure artifacts, and restores every
+  source file.
 - `just release-dry-run` creates the wheel, source archive, checksums, notices, SBOM, and
   provenance locally. It does not commit, tag, push, publish, or create a release.
+
+## Concurrent browser projects
+
+`scripts/run-e2e-matrix.sh` runs the five browser projects as concurrent pytest processes. One
+after another they took about 45 minutes on a hosted runner (8.5 to 10 minutes each), which is the
+whole Required-validation budget. `GROOVEMAP_E2E_JOBS` bounds how many run at once; it defaults to
+the CPU count, capped at the five projects. The longest project, Firefox, starts first.
+
+Each project owns everything it writes, so running them side by side changes none of it:
+
+| per project | where |
+| --- | --- |
+| App server port | a listening socket the session binds and the server inherits |
+| Playwright output, videos, failure screenshots and traces | `test-results/<project>/` |
+| pytest log | `test-results/<project>/pytest.log` |
+| Istanbul coverage fragments | `coverage/e2e/raw/<project>/` |
+| pytest cache | `.pytest_cache/e2e-<project>/` |
+
+`explore/scripts/finalize-e2e-coverage.mjs` and the CI browser-coverage mapping read exactly those
+directories. The live output prefixes every line with its project. When a project fails, its log is
+repeated whole after the run, and the run fails if any project does. An interrupt stops every
+project's process tree.
 
 ## Browser-context budget
 
