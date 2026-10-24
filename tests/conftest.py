@@ -5,11 +5,13 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import time
-from contextlib import suppress
+from contextlib import contextmanager, nullcontext, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -20,6 +22,7 @@ from playwright.sync_api import Browser, BrowserContext, Page, sync_playwright
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Iterator
+    from contextlib import AbstractContextManager
 
 
 E2E_PROJECTS = {"chromium", "firefox", "webkit", "iphone", "ipad"}
@@ -45,17 +48,23 @@ E2E_CONTEXTS_PER_BROWSER = 32
 # than letting the session drift into the engine ceiling and fail somewhere unrelated.
 E2E_LIVE_CONTEXT_BUDGET = 8
 
-# On Linux, Firefox decides at launch whether this machine may have WebGL2: it forks a `glxtest`
-# probe and gives it 4 seconds (GFX_TEST_TIMEOUT in widget/gtk/GfxInfo.cpp). On a loaded CI runner
-# the probe can miss that deadline, and then the whole browser process refuses every WebGL2 context
-# with "AllowWebgl2:false restricts context creation on this system". three.js draws only WebGL2,
-# so every Discography Strata journey in that process failed, while the same journeys passed in the
-# next run. `webgl.force-enabled` skips that verdict (WebGLContext::CreateAndInitGL) and goes
-# straight to creating the context, which the runner's GL can do: the journeys pass whenever the
-# probe answers in time. Whether the 3D view can be tested no longer depends on how busy the runner
-# was in Firefox's first 4 seconds. What a visitor sees when WebGL really is refused is the view's
-# own message, covered in Vitest.
+# Headless Firefox on Linux draws WebGL through GLX, so it needs an X server even though it opens no
+# window. With none, nothing can create a GL context: the `glxtest` probe Firefox forks at launch
+# fails, every WebGL2 context is refused ("AllowWebgl2:false restricts context creation on this
+# system"), and `webgl.force-enabled` only moves the refusal to "tryNativeGL ... Exhausted GL driver
+# options". A CI runner has no display, so on the Firefox project every Discography Strata and Genre
+# Atlas journey that draws the 3D view failed, while the same journeys passed on the other four.
+# Measured in mcr.microsoft.com/playwright/python:v1.64.0-noble with Playwright's Firefox 157: with
+# no DISPLAY there is no WebGL under any pref or Mesa/EGL variable tried; with DISPLAY on an Xvfb
+# server, headless Firefox gets WebGL2 on Mesa's llvmpipe. So the session starts a private Xvfb for
+# Firefox when there is no display (`playwright install --with-deps` installs it), and fails rather
+# than skipping when it cannot: a Firefox run with no WebGL would test only the fallback message.
+#
+# `webgl.force-enabled` stays as well. The probe has 4 seconds (GFX_TEST_TIMEOUT in
+# widget/gtk/GfxInfo.cpp) to answer against that display, and a loaded runner can miss the deadline;
+# the pref skips that verdict (WebGLContext::CreateAndInitGL) and creates the context directly.
 FIREFOX_E2E_PREFS: dict[str, Any] = {"webgl.force-enabled": True}
+FIREFOX_XVFB_SCREEN = "1280x1024x24"
 
 # Every standard OpenTelemetry variable that changes what the SDK records or exports, for both
 # signals. The telemetry suite asserts on what in-memory providers recorded, so it must not
@@ -256,20 +265,75 @@ class BrowserContextSupply:
             )
 
 
+class FirefoxDisplayError(RuntimeError):
+    """Firefox on Linux has no X display to draw WebGL with, and the session could not start one."""
+
+
+@contextmanager
+def firefox_display() -> Iterator[dict[str, str]]:
+    """Yield the environment that gives Firefox an X display, starting Xvfb when there is none.
+
+    Only Linux needs one, and a display the caller already has (a desktop, or `xvfb-run`) is used as
+    it is. Otherwise the server picks a free display number and writes it to `-displayfd` once it
+    accepts connections, so the browser is never launched against a server that is still starting.
+    """
+    if sys.platform != "linux" or os.environ.get("DISPLAY"):
+        yield {}
+        return
+    xvfb = shutil.which("Xvfb")
+    if xvfb is None:
+        raise FirefoxDisplayError(
+            "Firefox needs an X display for WebGL on Linux, and Xvfb is not installed. "
+            "Run `just e2e-setup`, which installs it with the browsers' system dependencies."
+        )
+    with tempfile.TemporaryFile() as errors:
+        read_end, write_end = os.pipe()
+        try:
+            server = subprocess.Popen(  # noqa: S603
+                [xvfb, "-displayfd", str(write_end), "-screen", "0", FIREFOX_XVFB_SCREEN, "-nolisten", "tcp"],
+                pass_fds=(write_end,),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=errors,
+            )
+        finally:
+            os.close(write_end)
+        try:
+            with os.fdopen(read_end) as announced:
+                display = announced.readline().strip()
+            if not display:
+                server.wait(timeout=5)
+                errors.seek(0)
+                raise FirefoxDisplayError(
+                    f"Xvfb exited with status {server.returncode} before it offered a display for Firefox:\n{errors.read().decode(errors='replace')}"
+                )
+            yield {"DISPLAY": f":{display}"}
+        finally:
+            server.terminate()
+            try:
+                server.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                server.kill()
+                server.wait()
+
+
 @pytest.fixture(scope="session")
 def browser_engine(browser_type_launch_args: dict[str, Any]) -> Iterator[Callable[[], Browser]]:
     """Yield a launcher for the selected desktop browser or standard emulated WebKit device."""
     project = os.environ.get("GROOVEMAP_E2E_PROJECT", "chromium")
     if project not in E2E_PROJECTS:
         raise ValueError(f"Unknown GROOVEMAP_E2E_PROJECT: {project}")
-    with sync_playwright() as playwright:
-        engine_name = "webkit" if project in {"iphone", "ipad"} else project
+    engine_name = "webkit" if project in {"iphone", "ipad"} else project
+    display: AbstractContextManager[dict[str, str]] = firefox_display() if engine_name == "firefox" else nullcontext({})
+    with display as display_environment, sync_playwright() as playwright:
         engine = getattr(playwright, engine_name)
         launch_args = dict(browser_type_launch_args)
         if engine_name == "chromium":
             launch_args["args"] = ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
         if engine_name == "firefox":
             launch_args["firefox_user_prefs"] = FIREFOX_E2E_PREFS
+        if display_environment:
+            launch_args["env"] = {**os.environ, **display_environment}
         _DEVICE_CONTEXT.clear()
         if project in {"iphone", "ipad"}:
             device_name = "iPhone 15" if project == "iphone" else "iPad (gen 11)"
