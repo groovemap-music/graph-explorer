@@ -2,12 +2,15 @@
 
 import copy
 import json
+import socket
+import sys
 from collections.abc import AsyncGenerator  # noqa: TC003  # Required for runtime annotation evaluation.
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import uvicorn
 from fastapi import FastAPI, Header, Query, Request
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -956,3 +959,13 @@ def create_test_app() -> FastAPI:
     app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
 
     return app
+
+
+def serve(listener_fd: int) -> None:
+    """Serve the test app on a listening socket the E2E session bound and passed down."""
+    config = uvicorn.Config(create_test_app, factory=True, log_level="warning", access_log=False)
+    uvicorn.Server(config).run(sockets=[socket.socket(fileno=listener_fd)])
+
+
+if __name__ == "__main__":
+    serve(int(sys.argv[1]))
