@@ -46,11 +46,13 @@ export const OBSERVATION_KINDS = Object.freeze([
 ]);
 const PLANE_NAMES = Object.freeze(['Credit', 'Master', 'Release']);
 const DISCOGS = 'https://www.discogs.com';
-const COLLECTION_PAGE = 200;
-const COLLECTION_PAGES = 10;
 const DAY_MS = 86_400_000;
 
 export const PAST_REASON = 'History is read-only. Move "Recorded as of" to now to record an observation.';
+/** Why "Record an observation" is off when the route sent no copy ids at all (a degraded read). */
+export const COPY_UNREAD_REASON = 'GrooveMap could not read the id of your copy just now. Reload the view to try again.';
+/** Why it is off when the route sent an empty list: the sync has not minted a copy id yet. */
+export const NO_COPY_REASON = 'Your copy has no GrooveMap id yet. Run "Sync now", then reload the view.';
 
 // ---------------------------------------------------------------------------------------------
 // Errors.
@@ -240,6 +242,12 @@ export function discogsLinks(node) {
     }));
 }
 
+/** The copy an observation is recorded against: the caller's earliest-acquired copy, or null. */
+export function copyIdOf(node) {
+    const [first] = node?.ownedCopyIds || [];
+    return first ?? null;
+}
+
 /**
  * What a selected node offers, following the collector machine (strata-collector.js): opening a
  * cursor, "Open on Discogs", and on a Discogs release for a signed-in collector "Sync now" and,
@@ -263,7 +271,12 @@ export function nodeActions(node, { signedIn = false, past = false } = {}) {
     if (node.level !== 2 || node.agg || node.provider !== 'discogs' || !signedIn || !node.state) return actions;
     if (canPerform(node.state, CollectorAction.SYNC_NOW)) actions.push({ id: CollectorAction.SYNC_NOW, label: 'Sync now', enabled: true });
     if (canPerform(node.state, CollectorAction.RECORD_OBSERVATION)) {
-        actions.push(past ? { id: CollectorAction.RECORD_OBSERVATION, label: 'Record an observation', enabled: false, reason: PAST_REASON } : { id: CollectorAction.RECORD_OBSERVATION, label: 'Record an observation', enabled: true });
+        const record = { id: CollectorAction.RECORD_OBSERVATION, label: 'Record an observation' };
+        // The route names the copy on the node (earliest acquired first). Without the list there is
+        // nothing to record against, and the collection is never scanned to find one.
+        if (past) actions.push({ ...record, enabled: false, reason: PAST_REASON });
+        else if (!copyIdOf(node)) actions.push({ ...record, enabled: false, reason: node.ownedCopyIds ? NO_COPY_REASON : COPY_UNREAD_REASON });
+        else actions.push({ ...record, enabled: true });
     }
     return actions;
 }
@@ -338,6 +351,20 @@ export function strataKeyCommand(event, { nodes = [], selected = null, solo = nu
         case 'Escape': return current ? { type: 'select', id: null } : solo !== null ? { type: 'solo', level: null } : null;
         default: return null;
     }
+}
+
+const MBID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The strata cursor and node id a search hit names: `m:<id>` for a master, `r:<id>` for a Discogs
+ * pressing, `mb:<mbid>` for a MusicBrainz-only one. Null for any other kind of hit.
+ */
+export function hitNodeId(hit) {
+    if (!hit || hit.id === undefined || hit.id === null || hit.id === '') return null;
+    const id = String(hit.id);
+    if (hit.type === 'master') return `m:${id}`;
+    if (hit.type !== 'release') return null;
+    return MBID.test(id) ? `mb:${id.toLowerCase()}` : `r:${id}`;
 }
 
 function searchText(node) {
@@ -574,8 +601,12 @@ export class StrataExplore {
         return this.api.getStrata(this.artist.id, { focus, page, budget: DEFAULT_BUDGET }, token);
     }
 
-    /** Load the overview, or a page of a cursor. Returns whether the view changed. */
-    async load({ focus = null, page = 0 } = {}, { quiet = false } = {}) {
+    /**
+     * Load the overview, or a page of a cursor. Returns whether the view changed. `from` is the
+     * cursor being left: it goes on the trail when the load succeeds, before the view is drawn, so
+     * the trail's first button already reads "Back" on the first drill.
+     */
+    async load({ focus = null, page = 0 } = {}, { quiet = false, from = null } = {}) {
         if (!this.artist) return false;
         const requestId = ++this.requestId;
         this.setLoading(true);
@@ -600,6 +631,7 @@ export class StrataExplore {
         }
         this.showMessage(null);
         this.graph = graph;
+        if (from) this.trail.push(from);
         this.cursor = { focus: graph.focus ? graph.focus.id : null, page: graph.focus ? graph.focus.page : 0 };
         this.render();
         return true;
@@ -607,10 +639,7 @@ export class StrataExplore {
 
     /** Open a cursor: an aggregate, a lane, or a master. The current view goes on the trail. */
     async drill(cursor) {
-        const from = { ...this.cursor };
-        const ok = await this.load({ focus: cursor, page: 0 });
-        if (ok) this.trail.push(from);
-        return ok;
+        return this.load({ focus: cursor, page: 0 }, { from: { ...this.cursor } });
     }
 
     /** Move through the focused cursor's pages. The route wraps them. */
@@ -945,8 +974,8 @@ export class StrataExplore {
     }
 
     /**
-     * Record an observation about the caller's own copy of a release. The copy is the one the
-     * Discogs sync minted for that release, read from the caller's collection.
+     * Record an observation about the caller's own copy: the earliest-acquired copy the route
+     * named on the release node. The collection is never read to find it.
      */
     async recordObservation(node, { kind, value }) {
         const text = String(value || '').trim();
@@ -954,13 +983,12 @@ export class StrataExplore {
             this.setStatus('Write what you observed first.');
             return false;
         }
-        const token = this.auth?.getToken?.();
-        this.setStatus('Finding your copy…');
-        const copyId = await this.api.findOwnedCopy(token, node.releaseId, { pageSize: COLLECTION_PAGE, maxPages: COLLECTION_PAGES });
+        const copyId = copyIdOf(node);
         if (!copyId) {
-            this.setStatus('Your copy has no GrooveMap id yet. Run "Sync now", then try again.');
+            this.setStatus(node.ownedCopyIds ? NO_COPY_REASON : COPY_UNREAD_REASON);
             return false;
         }
+        const token = this.auth?.getToken?.();
         const result = await this.api.createObservation(token, copyId, { kind, value: text, source: 'user' });
         this.setStatus(result?.ok ? 'Observation recorded.' : result?.body?.detail || result?.body?.error || 'The observation could not be recorded.');
         return !!result?.ok;
@@ -968,7 +996,10 @@ export class StrataExplore {
 
     /**
      * Search-to-focus (gm-design-on0x Recommendation 6): select a drawn match, or open the view on
-     * a named master through the route's `m:<id>` cursor. A pressing is reached through its master.
+     * what a hit names. A master opens through its `m:<id>` cursor and a pressing through the
+     * route's `r:<id>` or `mb:<mbid>` cursor, which resolves to the page that holds it however deep
+     * it sits, so the pressing is drawn and selected. A hit that belongs to another artist is a 404
+     * for the cursor and the next hit is tried.
      */
     async focusSearch(query) {
         const q = String(query || '').trim();
@@ -985,21 +1016,19 @@ export class StrataExplore {
             return null;
         }
         const results = await this.api.search(q, ['master', 'release'], [], null, null, 10);
-        const hits = results?.results || [];
-        for (const hit of hits.filter((item) => item.type === 'master')) {
-            const from = { ...this.cursor };
-            if (await this.load({ focus: `m:${hit.id}`, page: 0 }, { quiet: true })) {
-                this.trail.push(from);
-                this.selectNode(this.byId.has(`m:${hit.id}`) ? `m:${hit.id}` : null);
-                return `m:${hit.id}`;
+        for (const hit of results?.results || []) {
+            const id = hitNodeId(hit);
+            if (!id) continue;
+            if (!id.startsWith('m:') && this.byId.has(id)) {
+                this.selectNode(id);
+                return id;
+            }
+            if (await this.load({ focus: id, page: 0 }, { quiet: true, from: { ...this.cursor } })) {
+                this.selectNode(this.byId.has(id) ? id : null);
+                return id;
             }
         }
-        const pressing = hits.find((item) => item.type === 'release' && this.byId.has(`r:${item.id}`));
-        if (pressing) {
-            this.selectNode(`r:${pressing.id}`);
-            return `r:${pressing.id}`;
-        }
-        this.showMessage(`Nothing named “${q}” in ${this.graph.root?.name || 'this discography'}'s masters or drawn pressings. A pressing opens through its master: search for the master's title.`);
+        this.showMessage(`Nothing named “${q}” in ${this.graph.root?.name || 'this discography'}'s masters or pressings.`);
         return null;
     }
 }

@@ -71,27 +71,9 @@ describe('ApiClient', () => {
         });
     });
 
-    describe('findOwnedCopy and createObservation', () => {
-        it('pages the collection until it finds the release, and returns its copy id', async () => {
-            const urls = [];
-            vi.stubGlobal('fetch', async (url) => {
-                urls.push(url);
-                const offset = Number(new URL(url, 'http://x').searchParams.get('offset'));
-                const releases = offset === 0 ? [{ id: '1', owned_copy_id: 'a' }, { id: '2', owned_copy_id: null }] : [{ id: '3', owned_copy_id: 'c' }];
-                return { ok: true, status: 200, json: async () => ({ releases, total: 3 }) };
-            });
-
-            expect(await window.apiClient.findOwnedCopy('jwt', '3', { pageSize: 2 })).toBe('c');
-            expect(urls).toEqual(['/api/user/collection?limit=2&offset=0', '/api/user/collection?limit=2&offset=2']);
-            expect(await window.apiClient.findOwnedCopy('jwt', '2', { pageSize: 2 })).toBeNull();
-            expect(await window.apiClient.findOwnedCopy('jwt', '9', { pageSize: 2 })).toBeNull();
-            expect(await window.apiClient.findOwnedCopy('jwt', '9', { pageSize: 2, maxPages: 1 })).toBeNull();
-            expect(await window.apiClient.findOwnedCopy(null, '3')).toBeNull();
-        });
-
-        it('stops at an empty page or a failed read', async () => {
-            vi.stubGlobal('fetch', async () => ({ ok: false, status: 500, json: async () => ({}) }));
-            expect(await window.apiClient.findOwnedCopy('jwt', '3')).toBeNull();
+    describe('createObservation', () => {
+        it('has no way to scan the collection for a copy: the route names the copy on the release', () => {
+            expect(window.apiClient.findOwnedCopy).toBeUndefined();
         });
 
         it('posts an observation about a copy', async () => {

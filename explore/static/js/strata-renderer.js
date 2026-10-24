@@ -32,11 +32,12 @@ import {
     SOLO_ELEVATION,
     cameraPose,
     clampCamera,
+    collapseRepeats,
     displayLabel,
     indexNodes,
     isBlocked,
+    labelBoxes,
     labelCandidates,
-    labelWidth,
     levelOfDetail,
     lineage,
     nodeCentre,
@@ -792,17 +793,18 @@ export class StrataRenderer extends EventTarget {
     // Labels: only candidates get an element; placement is greedy by priority.
     // -----------------------------------------------------------------------------------------
 
-    nodeLabel(node) {
+    nodeLabel(node, text) {
         let el = this.nodeLabels.get(node.id);
         if (!el) {
             el = document.createElement('div');
             el.className = node.level === 0 ? 'strata-label strata-label--credit' : 'strata-label';
-            el.textContent = this.labelOf(node);
             el.dataset.node = node.id;
             el.hidden = true;
             this.overlay.append(el);
             this.nodeLabels.set(node.id, el);
         }
+        // A count label's text follows the pressings it stands for, so it can change between frames.
+        if (el.textContent !== text) el.textContent = text;
         return el;
     }
 
@@ -836,13 +838,16 @@ export class StrataRenderer extends EventTarget {
         const key = `${this.layoutVersion}|${lod.labelDepth}|${this.soloed}|${this.selected}|${this.hovered}`;
         if (key !== this.candidatesKey) {
             this.candidatesKey = key;
-            this.candidates = labelCandidates(this.layout.nodes, {
-                labelDepth: lod.labelDepth,
-                solo: this.soloed,
-                selected: this.selected,
-                selection: this.selection,
-                hovered: this.hovered,
-            });
+            this.candidates = collapseRepeats(
+                labelCandidates(this.layout.nodes, {
+                    labelDepth: lod.labelDepth,
+                    solo: this.soloed,
+                    selected: this.selected,
+                    selection: this.selection,
+                    hovered: this.hovered,
+                }),
+                this.labelOf,
+            );
         }
         this.stats.labelCandidates = this.candidates.length;
 
@@ -864,26 +869,11 @@ export class StrataRenderer extends EventTarget {
             reserved.push({ x, y, w: 150, h: 20 });
         });
 
-        const items = [];
-        for (const { node, priority } of this.candidates) {
-            const c = nodeCentre(node);
-            const s = project(c.x, c.y + node.size * 1.25, c.z);
-            if (!s.ok || s.x < -40 || s.x > width + 40 || s.y < -20 || s.y > height + 20) continue;
-            const w = labelWidth(this.labelOf(node), node.level);
-            items.push({ node, priority, x: s.x - w / 2, y: s.y - 18, w, h: node.level === 0 ? 19 : 16 });
-        }
-        items.sort((a, b) => a.priority - b.priority);
-        const kept = items.filter((item, i) => item.priority === 0 || i < MAX_NODE_LABELS);
-        this.hullTags.forEach((tag, i) => {
-            if (tag.dim || !this.planeVisible(tag.level)) return;
-            const s = project(tag.x, planeY(tag.level), tag.z);
-            if (!s.ok) return;
-            const w = labelWidth(tag.text, 1) + 6;
-            kept.push({ tag, index: i, priority: 2.5 + tag.level * 0.01, x: s.x - w / 2, y: s.y - 2, w, h: 17 });
-        });
+        const tags = this.hullTags.filter((tag) => !tag.dim && this.planeVisible(tag.level));
+        const kept = labelBoxes(this.candidates, tags, { project, width, height, maxNodeLabels: MAX_NODE_LABELS });
         const placed = placeLabels(kept, reserved, width, height);
         for (const item of placed) {
-            const el = item.node ? this.nodeLabel(item.node) : this.hullTag(item.index, item.tag);
+            const el = item.node ? this.nodeLabel(item.node, item.text) : this.hullTag(item.index, item.tag);
             this.show(el, item.x, item.y, shown);
         }
         this.stats.labelsShown = placed.length;

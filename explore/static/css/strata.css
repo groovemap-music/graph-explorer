@@ -490,12 +490,21 @@
 }
 
 .strata-table-open {
+    max-width: 9rem;
     padding: 2px 8px;
     border: 1px solid var(--border-color);
     border-radius: 6px;
     background: var(--inner-bg);
     font-size: 0.8rem;
-    white-space: nowrap;
+    line-height: 1.25;
+    text-align: left;
+    white-space: normal;
+}
+
+/* The Open column takes what its button needs and no more: the label wraps rather than pushing the
+   column past the scroll region, where the button would be cut off. */
+.strata-cell-open {
+    width: 1%;
 }
 
 .strata-table-sort:focus-visible,

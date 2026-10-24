@@ -105,7 +105,8 @@ export function rowBlocked(entry) {
     if (entry.level === 2 && !entry.agg) return null;
     const count = entry.musicbrainzReleases || 0;
     if (!count) return null;
-    return { text: `${plural(count, 'pressing')} here exist only in MusicBrainz and cannot change state (ADR 0009).${entryCursor(entry) ? ' Open this row to list them.' : ''}`, count };
+    const [verb, pronoun] = count === 1 ? ['exists', 'it'] : ['exist', 'them'];
+    return { text: `${plural(count, 'pressing')} here ${verb} only in MusicBrainz, so GrooveMap has no collector state for ${pronoun}.${entryCursor(entry) ? ' Open this row to list them.' : ''}`, count };
 }
 
 function startOf(entry) {

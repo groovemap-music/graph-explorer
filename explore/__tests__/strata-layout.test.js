@@ -381,9 +381,9 @@ const EXAMPLE = {
             level: 2,
             kind: 'release',
             nodes: [
-                { id: 'r:9', parent: 'm:502', provider: 'discogs', release_id: '9', title: 'xxxx', year: null, year_source: null, undated: true, state: 'none', recorded_at: { owned: null, wanted: null } },
-                { id: 'r:10', parent: 'm:501', provider: 'discogs', release_id: '10', title: 'xxxx', year: 1971, year_source: 'release', undated: false, state: 'wanted_owned', recorded_at: { owned: '2019-04-01T00:00:00Z', wanted: '2015-01-01T00:00:00Z' } },
-                { id: 'mb:0f9e', parent: 'm:501', provider: 'musicbrainz', release_id: '0f9e', title: 'xxxx', year: 1972, year_source: 'release', undated: false, state: null, recorded_at: null },
+                { id: 'r:9', parent: 'm:502', provider: 'discogs', release_id: '9', title: 'xxxx', year: null, year_source: null, undated: true, state: 'none', recorded_at: { owned: null, wanted: null }, owned_copy_ids: [] },
+                { id: 'r:10', parent: 'm:501', provider: 'discogs', release_id: '10', title: 'xxxx', year: 1971, year_source: 'release', undated: false, state: 'wanted_owned', recorded_at: { owned: '2019-04-01T00:00:00Z', wanted: '2015-01-01T00:00:00Z' }, owned_copy_ids: ['c-10-a', 'c-10-b'] },
+                { id: 'mb:0f9e', parent: 'm:501', provider: 'musicbrainz', release_id: '0f9e', title: 'xxxx', year: 1972, year_source: 'release', undated: false, state: null, recorded_at: null, owned_copy_ids: [] },
             ],
             aggregates: [
                 { id: 'ra:m:501', parent: 'm:501', releases: 2, undated_releases: 0, musicbrainz_releases: 0, y0: 1980, y1: 2016, states: { owned: 1, none: 1 } },
@@ -408,9 +408,26 @@ describe('adaptStrataPayload', () => {
         expect(byId.get('r:9')).toMatchObject({ releases: 1, undated: true, y0: null, undatedReleases: 1 });
         expect(byId.get('r:10')).toMatchObject({ state: 'wanted-owned', recordedAt: { owned: '2019-04-01T00:00:00Z', wanted: '2015-01-01T00:00:00Z' } });
         expect(byId.get('mb:0f9e')).toMatchObject({ provider: 'musicbrainz', state: null, recordedAt: null, releaseId: '0f9e' });
+        // The copies the caller holds, earliest first: a list when the route sent one, else null.
+        expect(byId.get('r:10').ownedCopyIds).toEqual(['c-10-a', 'c-10-b']);
+        expect(byId.get('r:9').ownedCopyIds).toEqual([]);
+        expect(byId.get('m:501').ownedCopyIds).toBeNull();
         expect(byId.get('ra:m:501')).toMatchObject({ aggKind: 'releases', states: { owned: 1, none: 1 } });
         expect(byId.get('ra:nm:c:1:undated')).toMatchObject({ decade: 'undated', undated: true });
         expect(Object.isFrozen(byId.get('r:9'))).toBe(true);
+    });
+
+    it('has no copies for a release the route sent none for, as for an anonymous caller', () => {
+        const [credit, masters, releases] = EXAMPLE.planes;
+        const anonymous = { ...EXAMPLE, signed_in: false, planes: [credit, masters, { ...releases, nodes: releases.nodes.map(({ owned_copy_ids, ...rest }) => rest) }] };
+        const byId = new Map(adaptStrataPayload(anonymous).entries.map((entry) => [entry.id, entry]));
+        expect(byId.get('r:10').ownedCopyIds).toBeNull();
+        expect(layoutStrata(adaptStrataPayload(anonymous)).nodes.find((node) => node.id === 'r:10').ownedCopyIds).toBeNull();
+    });
+
+    it('carries the copies through the layout onto the node the panel describes', () => {
+        const layout = layoutStrata(adaptStrataPayload(EXAMPLE));
+        expect(layout.nodes.find((node) => node.id === 'r:10').ownedCopyIds).toEqual(['c-10-a', 'c-10-b']);
     });
 
     it('lays the example out with both lanes, the payload cursors, and the route edges', () => {
@@ -484,6 +501,8 @@ describe('adaptStrataPayload', () => {
         ['an unknown provider', payloadWith([credit], [master], [{ id: 'x:1', parent: 'm:1', provider: 'spotify' }]), /unknown provider/],
         ['a provider its id contradicts', payloadWith([credit], [master], [{ id: 'r:1', parent: 'm:1', provider: 'musicbrainz' }]), /is a discogs id/],
         ['a recorded_at that is not an object', payloadWith([credit], [master], [{ id: 'r:1', parent: 'm:1', recorded_at: '2020-01-01' }]), /recorded_at/],
+        ['owned_copy_ids that is not a list', payloadWith([credit], [master], [{ id: 'r:1', parent: 'm:1', owned_copy_ids: 'c-1' }]), /not a list/],
+        ['an owned_copy_ids entry that is not an id', payloadWith([credit], [master], [{ id: 'r:1', parent: 'm:1', owned_copy_ids: ['c-1', {}] }]), /not an id/],
         ['a focus with no cursor', { ...payloadWith([credit]), focus: { plane: 'master' } }, /focus has no cursor/],
         ['a focus on an unknown plane', { ...payloadWith([credit]), focus: { id: 'c:other', plane: 'credits' } }, /unknown plane/],
         ['a focus past its last page', { ...payloadWith([credit]), focus: { id: 'c:other', plane: 'credit', page: 2, pages: 2, page_size: 1, members: 2 } }, /page 2 of 2/],
