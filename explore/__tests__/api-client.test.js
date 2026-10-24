@@ -536,6 +536,26 @@ describe('ApiClient', () => {
             await expect(window.apiClient.getStyleCotags('House')).rejects.toThrow('list');
         });
     });
+    describe('getTasteProjection', () => {
+        it('reads the caller\'s projection with their bearer token, and words a failure by status', async () => {
+            const body = { totals: { items: 0, owned: 0, wanted: 0 }, recorded_at: { owned: null, wanted: null }, genres: [], styles: [], masters: [] };
+            const mockFetch = vi.fn(createMockFetch({ '/api/user/taste-projection': { data: body } }));
+            vi.stubGlobal('fetch', mockFetch);
+            expect(await window.apiClient.getTasteProjection('tok')).toEqual({ ok: true, status: 200, body });
+            expect(mockFetch.mock.calls[0][1].headers.Authorization).toBe('Bearer tok');
+
+            vi.stubGlobal('fetch', createMockFetch({ '/api/user/taste-projection': { status: 503, data: { detail: 'down' } } }));
+            expect(await window.apiClient.getTasteProjection('tok')).toMatchObject({ ok: false, status: 503 });
+        });
+
+        it('asks nothing without a token', async () => {
+            const mockFetch = vi.fn();
+            vi.stubGlobal('fetch', mockFetch);
+            expect(await window.apiClient.getTasteProjection(null)).toEqual({ ok: false, status: 401, body: null });
+            expect(mockFetch).not.toHaveBeenCalled();
+        });
+    });
+
     describe('getGenreTree', () => {
         it('should return genre tree data on success', async () => {
             const treeData = {

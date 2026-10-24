@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { ATLAS_KEY_HELP, GenreAtlas, atlasErrorMessage, atlasKeyCommand, initGenreAtlas, stageWord } from '../static/js/strata-atlas.js';
 import { COTAGS_FAILED, EMPTY_MESSAGE, NO_COTAGS, NO_MASTERS, adaptAtlasPayload, layoutAtlas } from '../static/js/strata-atlas-layout.js';
 import { emptyAtlasPayload } from './strata-atlas-fixtures.js';
+import { TASTE_AS_OF_NOTE, TASTE_EMPTY, TASTE_FAILED, TASTE_SIGN_IN } from '../static/js/strata-taste.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BODY = JSON.parse(readFileSync(resolve(HERE, '..', '..', 'tests', 'fixtures', 'style-atlas.json'), 'utf8')).body;
@@ -563,5 +564,174 @@ describe('CSP', () => {
         expect(innerHTML).not.toHaveBeenCalled();
         expect(text(atlas)).toContain('Genre Atlas');
         vi.restoreAllMocks();
+    });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Taste Strata: the signed-in collector's layer (strata-taste.js).
+// ---------------------------------------------------------------------------------------------
+
+const fixture = (name) => JSON.parse(readFileSync(resolve(HERE, '..', '..', 'tests', 'fixtures', name), 'utf8'));
+const WITH_MASTERS = { ...BODY, masters: fixture('style-atlas-masters.json').masters };
+const TASTE = fixture('taste-projection.json').body;
+
+/** A stand-in for window.authManager: a token, and listeners told about sign-in and sign-out. */
+function standInAuth(token = 'tok') {
+    const listeners = [];
+    return {
+        token,
+        isLoggedIn() { return !!this.token; },
+        getToken() { return this.token; },
+        onChange(fn) {
+            listeners.push(fn);
+            return () => listeners.splice(listeners.indexOf(fn), 1);
+        },
+        set(next) {
+            this.token = next;
+            for (const fn of [...listeners]) fn(!!next);
+        },
+    };
+}
+
+function tasteAtlas({ auth = standInAuth(), taste = async () => ({ ok: true, status: 200, body: TASTE }) } = {}) {
+    let renderer = null;
+    const api = { getStyleAtlas: vi.fn(async () => ({ ok: true, status: 200, body: WITH_MASTERS })), getTasteProjection: vi.fn(taste) };
+    const atlas = new GenreAtlas({ doc: document, api, auth, createRenderer: () => (renderer = Object.assign(new StandInRenderer(), { refreshTaste: vi.fn() })), observeTheme: false });
+    document.body.append(atlas.root);
+    return { atlas, api, auth, renderer: () => renderer };
+}
+
+const collectorNodes = (layout) => layout.nodes.filter((node) => node.entity === 'master' && node.master.collector);
+const tasteText = (atlas) => atlas.ui.taste.textContent;
+
+describe('Taste Strata', () => {
+    it('shows an anonymous visitor the atlas without the layer, and a hint to sign in', async () => {
+        const { atlas, api, renderer } = tasteAtlas({ auth: standInAuth(null) });
+        await atlas.show();
+        expect(api.getTasteProjection).not.toHaveBeenCalled();
+        expect(tasteText(atlas)).toBe(TASTE_SIGN_IN);
+        expect(atlas.ui.recorded.hidden).toBe(true);
+        expect(renderer().layout.nodes.some((node) => node.held)).toBe(false);
+        expect(collectorNodes(renderer().layout)).toEqual([]);
+    });
+
+    it('lays a signed-in collector\'s items on the atlas: marks, collector masters, and what is only counted', async () => {
+        const { atlas, api, renderer } = tasteAtlas();
+        await atlas.show();
+        expect(api.getTasteProjection).toHaveBeenCalledWith('tok');
+        const { layout } = renderer();
+        expect(collectorNodes(layout).map((node) => node.master.masterId).sort()).toEqual(['7100001', '7100002', '7100003']);
+        expect(layout.nodes.find((node) => node.id === 's:Copper Drift').held).toMatchObject({ state: 'wanted-owned', items: 1 });
+        const words = tasteText(atlas);
+        expect(words).toContain('Your collection');
+        expect(words).toContain('7 items: 5 owned, 3 wanted, 1 in both.');
+        expect(words).toContain('2 items have no master, so they are counted here and not drawn.');
+        expect(words).toContain('1 item carries a genre and no style, so it marks a genre only.');
+        expect(words).toContain('1 of your styles is not drawn on this atlas.');
+        expect(words).toContain('1 of your masters has no style drawn here, so it is not placed.');
+        expect(words).toContain(TASTE_AS_OF_NOTE);
+        const chips = [...atlas.ui.taste.querySelectorAll('.strata-chip')].map((chip) => chip.className);
+        expect(chips).toEqual(['strata-chip strata-chip--wanted', 'strata-chip strata-chip--owned', 'strata-chip strata-chip--wanted-owned']);
+    });
+
+    it('says in the panel what of a selected node is the collector\'s, and names a collector master as theirs', async () => {
+        const { atlas, renderer } = tasteAtlas();
+        await atlas.show();
+        renderer().select('s:Copper Drift');
+        expect(atlas.ui.selection.querySelector('.atlas-held').textContent).toBe('Yours 1 item · 1 owned · 1 wanted · first recorded in 2014, last in 2015');
+        renderer().select('m:7100001@Copper Drift');
+        expect(atlas.ui.selection.textContent).toContain('Your master, in its dominant style Copper Drift');
+        expect(atlas.ui.selection.textContent).toContain('1988');
+        renderer().select('m:910001@Amber Bop');
+        expect(atlas.ui.selection.textContent).toContain('Landmark master of Amber Bop');
+        expect(atlas.ui.selection.querySelector('.atlas-held').textContent).toContain('Yours 1 item');
+    });
+
+    it('scrubs the recorded-as-of year: marks follow the recorded times, and nothing moves', async () => {
+        const { atlas, renderer } = tasteAtlas();
+        await atlas.show();
+        const { recorded, recordedRange, recordedOutput } = atlas.ui;
+        expect(recorded.hidden).toBe(false);
+        expect([recordedRange.min, recordedRange.max, recordedRange.value]).toEqual(['2014', '2025', '2025']);
+        expect(recordedOutput.textContent).toBe('now');
+        expect(recordedRange.getAttribute('aria-valuetext')).toBe('now, everything you hold');
+        const before = renderer().layout.nodes.map((node) => [node.id, node.x, node.z]);
+        recordedRange.value = '2016';
+        recordedRange.dispatchEvent(new Event('input'));
+        expect(recordedOutput.textContent).toBe('2016');
+        expect(renderer().refreshTaste).toHaveBeenCalled();
+        const byId = new Map(renderer().layout.nodes.map((node) => [node.id, node]));
+        expect(byId.get('s:Amber Bop').held).toBeNull();
+        expect(byId.get('s:Copper Drift').held.state).toBe('wanted-owned');
+        expect(tasteText(atlas)).toContain('Recorded by the end of 2016: 2 genres, 1 style, and 1 master (0 of them landmarks).');
+        renderer().select('s:Amber Bop');
+        expect(atlas.ui.selection.querySelector('.atlas-held').textContent).toBe('Yours, but first recorded after 2016.');
+        expect(renderer().layout.nodes.map((node) => [node.id, node.x, node.z])).toEqual(before);
+        atlas.setTasteYear(9999);
+        expect(atlas.tasteYear).toBeNull();
+        expect(byId.get('s:Amber Bop').held).not.toBeNull();
+    });
+
+    it.each([
+        [401, TASTE_SIGN_IN],
+        [503, TASTE_FAILED],
+    ])('words a %i from the projection, and keeps the atlas', async (status, words) => {
+        const { atlas, renderer } = tasteAtlas({ taste: async () => ({ ok: false, status, body: null }) });
+        await atlas.show();
+        expect(tasteText(atlas)).toBe(words);
+        expect(renderer().layout.nodes.length).toBeGreaterThan(0);
+        expect(collectorNodes(renderer().layout)).toEqual([]);
+    });
+
+    it('says so for an unreadable projection, a failed request, and an empty collection', async () => {
+        for (const [taste, words] of [
+            [async () => ({ ok: true, status: 200, body: { totals: {} } }), TASTE_FAILED],
+            [async () => { throw new Error('offline'); }, TASTE_FAILED],
+            [async () => ({ ok: true, status: 200, body: { ...TASTE, totals: { ...TASTE.totals, items: 0 }, genres: [], styles: [], masters: [] } }), TASTE_EMPTY],
+        ]) {
+            const { atlas } = tasteAtlas({ taste });
+            await atlas.show();
+            expect(tasteText(atlas)).toBe(words);
+            expect(atlas.ui.recorded.hidden).toBe(true);
+        }
+    });
+
+    it('drops the layer and the projection on sign-out, and loads it again on sign-in', async () => {
+        const { atlas, api, auth, renderer } = tasteAtlas();
+        await atlas.show();
+        renderer().select('m:7100002@Amber Bop');
+        auth.set(null);
+        expect(atlas.taste).toBeNull();
+        expect(tasteText(atlas)).toBe(TASTE_SIGN_IN);
+        expect(renderer().layout.nodes.some((node) => node.held || node.heldLater)).toBe(false);
+        expect(collectorNodes(renderer().layout)).toEqual([]);
+        expect(atlas.selected).toBeNull();
+        expect(atlas.ui.recorded.hidden).toBe(true);
+        auth.set('tok2');
+        await new Promise((r) => setTimeout(r, 0));
+        expect(api.getTasteProjection).toHaveBeenLastCalledWith('tok2');
+        expect(collectorNodes(renderer().layout)).toHaveLength(3);
+    });
+
+    it('drops an answer that arrives after the collector signed out', async () => {
+        let release;
+        const { atlas, auth, renderer } = tasteAtlas({ taste: () => new Promise((done) => (release = () => done({ ok: true, status: 200, body: TASTE }))) });
+        const shown = atlas.show();
+        await new Promise((r) => setTimeout(r, 0));
+        auth.set(null);
+        release();
+        await shown;
+        expect(atlas.taste).toBeNull();
+        expect(collectorNodes(renderer().layout)).toEqual([]);
+        expect(tasteText(atlas)).toBe(TASTE_SIGN_IN);
+    });
+
+    it('keeps the projection out of the URL and the browser\'s storage', async () => {
+        const url = window.location.href;
+        const { atlas } = tasteAtlas();
+        await atlas.show();
+        expect(window.location.href).toBe(url);
+        expect(Object.keys(localStorage)).toEqual([]);
+        expect(Object.keys(sessionStorage)).toEqual([]);
     });
 });

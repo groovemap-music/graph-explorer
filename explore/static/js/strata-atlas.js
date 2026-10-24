@@ -17,7 +17,12 @@
  *   - the table, the same genres and styles as sortable rows (strata-atlas-table.js), chosen from
  *     the view toggle. It shares the scrubber, the selection, and the panel with the 3D view, and
  *     needs no WebGL;
- *   - the empty month before the first monthly run, and route failures, in words.
+ *   - the empty month before the first monthly run, and route failures, in words;
+ *   - Taste Strata (concept C′, strata-taste.js), for a signed-in collector only: their items
+ *     marked on the genres and styles they carry, their masters in collector slots on the master
+ *     plane, the counts that are not drawn, and a "recorded as of" control over transaction time.
+ *     An anonymous visitor gets the atlas without it and a hint to sign in. The projection is held
+ *     here, in memory, and nowhere else: not in the URL, storage, or any shareable snapshot.
  *
  * The DOM is built with createElement and textContent only, and styled through classes in
  * strata-atlas.css, so a `style-src 'self'` policy holds.
@@ -45,6 +50,18 @@ import {
     stageCounts,
 } from './strata-atlas-layout.js';
 import { atlasMasterSlot } from './strata-master-slots.js';
+import {
+    TASTE_AS_OF_NOTE,
+    TASTE_EMPTY,
+    TASTE_FAILED,
+    TASTE_SIGN_IN,
+    adaptTasteProjection,
+    heldCounts,
+    paintTaste,
+    recordedYears,
+    withCollectorMasters,
+} from './strata-taste.js';
+import { COLLECTOR_STATES, stateLabel } from './strata-collector.js';
 
 /** The panes the atlas opens in, and the element in each that holds it. */
 export const ATLAS_MOUNTS = Object.freeze({ genres: 'genreAtlasMount', insights: 'insightsAtlasMount' });
@@ -137,6 +154,26 @@ function percent(share) {
     return `${Math.round(share * 100)}%`;
 }
 
+function plural(count, one, many = `${one}s`) {
+    return `${count} ${count === 1 ? one : many}`;
+}
+
+function yearOf(at) {
+    return at === null ? null : new Date(at).getUTCFullYear();
+}
+
+/** The years a taste entry's states were first and last recorded, as words, or null when none were. */
+export function recordedWords(item) {
+    const times = ['owned', 'wanted'].flatMap((state) => {
+        const recorded = item.recordedAt[state];
+        return recorded ? [recorded.first, recorded.last].filter((at) => at !== null) : [];
+    });
+    if (!times.length) return null;
+    const first = yearOf(Math.min(...times));
+    const last = yearOf(Math.max(...times));
+    return first === last ? `recorded in ${first}` : `first recorded in ${first}, last in ${last}`;
+}
+
 /**
  * The Genre Atlas view. It builds its own DOM; `mount(host)` puts it in a pane. Every dependency
  * is injectable for tests.
@@ -151,8 +188,19 @@ export class GenreAtlas {
         observeTheme = true,
         masterSlot = atlasMasterSlot,
         cotagSource,
+        auth = globalThis.authManager,
     } = {}) {
         this.doc = doc;
+        // The signed-in collector's projection (strata-taste.js), or null. `tasteStatus` is
+        // `anonymous`, `loading`, `failed`, `empty`, or `ready`; `tasteYear` is the "recorded as of"
+        // year, null for now; `tastePlaced` is what withCollectorMasters drew and did not.
+        this.auth = auth || null;
+        this.taste = null;
+        this.tasteStatus = 'anonymous';
+        this.tasteYear = null;
+        this.tastePlaced = null;
+        this.tasteMarked = null;
+        this.tasteRequest = 0;
         // Co-tagged styles for the selected style: `async (style) => [{other, release_count, rank}]`,
         // `GET /api/insights/style-atlas/cotags?style=<name>` by default. It rejects when the read
         // fails. With no source (an api that has none, or null), the panel says none are served.
@@ -194,6 +242,8 @@ export class GenreAtlas {
             this.themeObserver = new MutationObserver(() => this.renderer?.refreshColors());
             this.themeObserver.observe(doc.documentElement, { attributes: true, attributeFilter: ['class'] });
         }
+        this.authUnsubscribe = typeof this.auth?.onChange === 'function' ? this.auth.onChange((signedIn) => this.onAuthChange(signedIn)) : null;
+        this.renderTaste();
     }
 
     // -----------------------------------------------------------------------------------------
@@ -235,6 +285,21 @@ export class GenreAtlas {
         play.setAttribute('aria-pressed', 'false');
         time.append(label, track, output, note, play);
 
+        // Transaction time for the collector's layer: hidden until a signed-in projection with
+        // recorded times arrives. The top of the range is now.
+        const recorded = el(doc, 'div', 'atlas-time atlas-recorded');
+        recorded.hidden = true;
+        const recordedLabel = el(doc, 'label', 'atlas-time-label', 'Your items recorded as of');
+        recordedLabel.htmlFor = 'atlasRecorded';
+        const recordedRange = el(doc, 'input', 'atlas-recorded-year');
+        recordedRange.type = 'range';
+        recordedRange.id = 'atlasRecorded';
+        recordedRange.step = '1';
+        recordedRange.setAttribute('aria-describedby', 'atlasRecordedNote');
+        const recordedOutput = el(doc, 'output', 'atlas-recorded-value');
+        recordedOutput.htmlFor = 'atlasRecorded';
+        recorded.append(recordedLabel, recordedRange, recordedOutput);
+
         const planes = el(doc, 'div', 'strata-planes');
         planes.setAttribute('role', 'group');
         planes.setAttribute('aria-label', 'Planes');
@@ -260,7 +325,7 @@ export class GenreAtlas {
             views.append(button);
             return button;
         });
-        toolbar.append(time, views, planes, reset);
+        toolbar.append(time, recorded, views, planes, reset);
 
         const body = el(doc, 'div', 'atlas-body');
         const stageWrap = el(doc, 'div', 'atlas-stage-wrap');
@@ -295,12 +360,15 @@ export class GenreAtlas {
         legend.setAttribute('aria-label', 'Legend');
         const selection = el(doc, 'div', 'atlas-selection');
         selection.setAttribute('aria-live', 'polite');
-        panel.append(selection, legend, rule);
+        const taste = el(doc, 'section', 'atlas-taste');
+        taste.setAttribute('aria-label', 'Your collection');
+        panel.append(selection, taste, legend, rule);
         body.append(stageWrap, panel);
         root.append(head, toolbar, body);
 
         this.root = root;
-        this.ui = { summary, range, output, note, strip, play, planeButtons, reset, stage, help, message, rule, legend, selection, viewButtons, tableWrap, table, tableStatus, tableNote, stageOnly: [planes, reset] };
+        this.ui = { summary, range, output, note, strip, play, planeButtons, reset, stage, help, message, rule, legend, selection, taste, recorded, recordedRange, recordedOutput, viewButtons, tableWrap, table, tableStatus, tableNote, stageOnly: [planes, reset] };
+        recordedRange.addEventListener('input', () => this.setTasteYear(Number(recordedRange.value)));
         range.addEventListener('input', () => this.setYear(Number(range.value)));
         play.addEventListener('click', () => (this.playHandle === null ? this.play() : this.pause()));
         for (const button of planeButtons) button.addEventListener('click', () => this.setSolo(button.dataset.atlasSolo === '' ? null : Number(button.dataset.atlasSolo)));
@@ -356,6 +424,7 @@ export class GenreAtlas {
             return;
         }
         this.setAtlas(atlas);
+        if (!atlas.empty && this.signedIn()) await this.loadTaste();
     }
 
     /** Draw an adapted atlas, or say there is none yet. The rule is shown either way. */
@@ -373,10 +442,8 @@ export class GenreAtlas {
             this.renderTable();
             return;
         }
-        this.layout = layoutAtlas(atlas, { masterSlot: this.masterSlot });
-        this.byId = new Map(this.layout.nodes.map((node) => [node.id, node]));
         this.year = atlas.timeline.lastYear;
-        paintAtlas(this.layout, this.year);
+        this.relayout();
         this.renderSummary();
         this.renderTimeline();
         this.setTimelineEnabled(true);
@@ -385,6 +452,21 @@ export class GenreAtlas {
         this.renderLegend();
         this.renderSelection();
         this.renderTable();
+    }
+
+    /**
+     * Lay the atlas out again, with the collector's masters when there is a projection, and paint
+     * both the valid-time stages and the collector's marks. Served positions never change; only the
+     * master plane gains or loses the collector's masters.
+     */
+    relayout() {
+        const { atlas } = this;
+        this.tastePlaced = this.taste ? withCollectorMasters(atlas, this.taste) : null;
+        this.layout = layoutAtlas(this.tastePlaced ? this.tastePlaced.atlas : atlas, { masterSlot: this.masterSlot });
+        this.byId = new Map(this.layout.nodes.map((node) => [node.id, node]));
+        paintAtlas(this.layout, this.year);
+        this.tasteMarked = paintTaste(this.layout, this.taste, this.tasteYear);
+        if (this.selected && !this.byId.has(this.selected)) this.selected = null;
     }
 
     startRenderer() {
@@ -411,9 +493,162 @@ export class GenreAtlas {
     dispose() {
         this.pause();
         this.themeObserver?.disconnect();
+        this.authUnsubscribe?.();
         this.renderer?.dispose();
         this.renderer = null;
         this.root.remove();
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Taste Strata: the signed-in collector's layer.
+    // -----------------------------------------------------------------------------------------
+
+    signedIn() {
+        return !!this.auth?.isLoggedIn?.() && typeof this.api?.getTasteProjection === 'function';
+    }
+
+    /** Sign-in loads the layer; sign-out drops it, and the projection with it. */
+    onAuthChange(signedIn) {
+        if (signedIn && this.signedIn()) {
+            if (this.atlas && !this.atlas.empty && !this.taste && this.tasteStatus !== 'loading') this.loadTaste();
+        } else this.setTaste(null, 'anonymous');
+    }
+
+    /** Fetch the caller's projection and lay it on the atlas. A later sign-out drops a late answer. */
+    async loadTaste() {
+        const request = ++this.tasteRequest;
+        this.tasteStatus = 'loading';
+        this.renderTaste();
+        let answer;
+        try {
+            answer = await this.api.getTasteProjection(this.auth.getToken());
+        } catch {
+            answer = { ok: false, status: 0, body: null };
+        }
+        if (request !== this.tasteRequest) return;
+        if (!answer.ok) {
+            // A 401 is a stale session (the client signs it out): the visitor is anonymous.
+            this.setTaste(null, answer.status === 401 || !this.signedIn() ? 'anonymous' : 'failed');
+            return;
+        }
+        let taste;
+        try {
+            taste = adaptTasteProjection(answer.body);
+        } catch {
+            this.setTaste(null, 'failed');
+            return;
+        }
+        if (taste.totals.items) this.setTaste(taste, 'ready');
+        else this.setTaste(null, 'empty');
+    }
+
+    /** Put a projection on the atlas, or take it off, and redraw everything that shows it. */
+    setTaste(taste, status) {
+        if (!taste) this.tasteRequest++;
+        this.taste = taste;
+        this.tasteStatus = status;
+        this.tasteYear = null;
+        if (this.layout) {
+            this.relayout();
+            this.renderer?.setLayout(this.layout);
+            this.renderLegend();
+            this.renderSelection();
+            this.renderTable();
+        }
+        this.renderRecorded();
+        this.renderTaste();
+    }
+
+    /** Scrub transaction time: the marks follow when each item was first recorded. Nothing moves. */
+    setTasteYear(year) {
+        const years = this.taste ? recordedYears(this.taste) : null;
+        if (!years || !this.layout) return;
+        const at = Math.min(years.last + 1, Math.max(years.first, Math.round(year)));
+        this.tasteYear = at > years.last ? null : at;
+        this.tasteMarked = paintTaste(this.layout, this.taste, this.tasteYear);
+        this.renderer?.refreshTaste?.();
+        this.renderRecorded();
+        this.renderSelection();
+        this.renderTaste();
+    }
+
+    renderRecorded() {
+        const { recorded, recordedRange, recordedOutput } = this.ui;
+        const years = this.taste && this.layout ? recordedYears(this.taste) : null;
+        recorded.hidden = !years;
+        if (!years) return;
+        const now = this.tasteYear === null;
+        recordedRange.min = String(years.first);
+        recordedRange.max = String(years.last + 1);
+        recordedRange.value = String(now ? years.last + 1 : this.tasteYear);
+        recordedOutput.textContent = now ? 'now' : String(this.tasteYear);
+        recordedRange.setAttribute('aria-valuetext', now ? 'now, everything you hold' : `the end of ${this.tasteYear}`);
+    }
+
+    /** The panel's collector section: the sign-in hint, or what is drawn and what is only counted. */
+    renderTaste() {
+        const { doc } = this;
+        const box = this.ui.taste;
+        box.textContent = '';
+        box.dataset.tasteStatus = this.tasteStatus;
+        const hint = (text) => box.append(el(doc, 'p', 'strata-hint atlas-taste-hint', text));
+        if (this.tasteStatus === 'anonymous') return hint(TASTE_SIGN_IN);
+        if (this.tasteStatus === 'loading') return hint('Loading your collection...');
+        if (this.tasteStatus === 'failed') return hint(TASTE_FAILED);
+        if (this.tasteStatus === 'empty') return hint(TASTE_EMPTY);
+        const { totals } = this.taste;
+        box.append(el(doc, 'h4', 'atlas-taste-title', 'Your collection'));
+        box.append(el(doc, 'p', 'strata-selection-facts', `${plural(totals.items, 'item')}: ${totals.owned} owned, ${totals.wanted} wanted, ${totals.wantedOwned} in both.`));
+        if (!this.layout) return;
+        const marked = this.tasteMarked;
+        const placed = this.tastePlaced;
+        const drawnStyles = new Set(this.atlas.styles.map((style) => style.style));
+        const offAtlas = [...this.taste.styles.keys()].filter((style) => !drawnStyles.has(style)).length;
+        const lines = [
+            `${this.tasteYear === null ? 'Marked' : `Recorded by the end of ${this.tasteYear}`}: ${plural(marked.genres, 'genre')}, ${plural(marked.styles, 'style')}, and ${plural(marked.masters + marked.collectors, 'master')} (${marked.masters} of them landmarks).`,
+            `${plural(totals.masterlessItems, 'item has', 'items have')} no master, so ${totals.masterlessItems === 1 ? 'it is' : 'they are'} counted here and not drawn.`,
+            totals.genreOnlyItems ? `${plural(totals.genreOnlyItems, 'item carries', 'items carry')} a genre and no style, so ${totals.genreOnlyItems === 1 ? 'it marks' : 'they mark'} a genre only.` : null,
+            totals.unplacedItems ? `${plural(totals.unplacedItems, 'item carries', 'items carry')} no genre, so ${totals.unplacedItems === 1 ? 'it is' : 'they are'} not on the atlas.` : null,
+            offAtlas ? `${plural(offAtlas, 'of your styles is', 'of your styles are')} not drawn on this atlas.` : null,
+            placed && placed.notDrawn ? `${plural(placed.notDrawn, 'of your masters has', 'of your masters have')} no style drawn here, so ${placed.notDrawn === 1 ? 'it is' : 'they are'} not placed.` : null,
+        ].filter(Boolean);
+        for (const line of lines) box.append(el(doc, 'p', 'strata-selection-facts', line));
+        const legend = el(doc, 'ul', 'strata-legend atlas-taste-legend');
+        legend.setAttribute('aria-label', 'Your styles by collector state');
+        const counts = heldCounts(this.layout);
+        for (const state of COLLECTOR_STATES.filter((name) => name !== 'none')) {
+            const item = el(doc, 'li');
+            item.append(el(doc, 'span', `strata-chip strata-chip--${state}`, `${stateLabel(state)} ${counts.get(state) || 0}`));
+            legend.append(item);
+        }
+        box.append(legend);
+        box.append(el(doc, 'p', 'atlas-rule-note', 'A ring in the state\'s color marks a genre, style, or landmark master you hold; your other masters are drawn in that color on the master plane, in their dominant style\'s cell.'));
+        const note = el(doc, 'p', 'atlas-rule-note', recordedYears(this.taste) ? TASTE_AS_OF_NOTE : 'Discogs recorded no dates for your items, so they cannot be scrubbed by when they were recorded.');
+        note.id = 'atlasRecordedNote';
+        box.append(note);
+    }
+
+    /** The selected node's line about the collector, when it is theirs. */
+    renderHeld(box, node) {
+        const { doc } = this;
+        if (node.held) {
+            const { state, items, owned, wanted } = node.held;
+            const line = el(doc, 'p', 'strata-selection-facts atlas-held');
+            line.append(el(doc, 'span', `strata-chip strata-chip--${state}`, 'Yours'), doc.createTextNode(` ${plural(items, 'item')} · ${owned} owned · ${wanted} wanted`));
+            const item = this.tasteItem(node);
+            const when = item ? recordedWords(item) : null;
+            if (when) line.append(doc.createTextNode(` · ${when}`));
+            box.append(line);
+        } else if (node.heldLater) {
+            box.append(el(doc, 'p', 'strata-selection-facts atlas-held', `Yours, but first recorded after ${this.tasteYear}.`));
+        }
+    }
+
+    tasteItem(node) {
+        if (!this.taste) return null;
+        if (node.entity === 'genre') return this.taste.genres.get(node.genre) ?? null;
+        if (node.entity === 'master') return this.taste.byMaster.get(node.master.masterId) ?? null;
+        return this.taste.styles.get(node.style) ?? null;
     }
 
     // -----------------------------------------------------------------------------------------
@@ -671,15 +906,17 @@ export class GenreAtlas {
         box.append(el(doc, 'p', 'strata-selection-plane', 'Genre'));
         box.append(el(doc, 'p', 'strata-selection-facts', node.emergenceYear === null ? 'Has not reached 25 releases.' : `Emerged in ${node.emergenceYear} (25 cumulative releases).`));
         box.append(el(doc, 'p', 'strata-selection-facts', `Its hull holds ${styles} ${styles === 1 ? 'style' : 'styles'} drawn here and ${ghosts} ${ghosts === 1 ? 'ghost copy' : 'ghost copies'} of styles whose dominant parent is another genre.`));
+        this.renderHeld(box, node);
     }
 
     renderMaster(box, node) {
         const { doc } = this;
         const { master } = node;
         box.append(el(doc, 'h4', 'strata-selection-title', node.label));
-        box.append(el(doc, 'p', 'strata-selection-plane', `Landmark master of ${master.style}`));
+        box.append(el(doc, 'p', 'strata-selection-plane', master.collector ? `Your master, in its dominant style ${master.style}` : `Landmark master of ${master.style}`));
         const facts = [master.year === null ? 'No year' : String(master.year), master.releaseCount === null ? null : `${master.releaseCount} releases`, master.rank === null ? null : `rank ${master.rank} in ${master.style}`].filter(Boolean);
         box.append(el(doc, 'p', 'strata-selection-facts', facts.join(' · ')));
+        this.renderHeld(box, node);
     }
 
     renderStyle(box, node) {
@@ -704,6 +941,7 @@ export class GenreAtlas {
         box.append(latest);
 
         box.append(el(doc, 'p', 'strata-selection-facts', style.emergenceYear === null ? 'Has not reached 25 releases, so it has not emerged.' : `Emerged in ${style.emergenceYear} (25 cumulative releases).`));
+        this.renderHeld(box, node);
 
         box.append(el(doc, 'p', 'atlas-parents-title', 'Parent genres (share of its releases)'));
         const parents = el(doc, 'ul', 'atlas-parents');
