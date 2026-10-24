@@ -378,8 +378,8 @@ export class AtlasRenderer extends StrataRenderer {
         this.stats.verticalBuilds++;
     }
 
-    nodeLabel(node) {
-        const el = super.nodeLabel(node);
+    nodeLabel(node, text) {
+        const el = super.nodeLabel(node, text);
         if (node.entity === 'ghost') el.classList.add('strata-label--ghost');
         return el;
     }

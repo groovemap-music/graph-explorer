@@ -194,11 +194,16 @@ export function ruleText(rule) {
     const thresholds = Object.entries(rule)
         .filter(([name, value]) => name !== 'rule_version' && typeof value === 'number')
         .map(([name, value]) => ({ name, value: num(value) }));
+    const version = typeof rule.rule_version === 'string' ? rule.rule_version : 'unversioned';
+    // The served id is internal (a design decision and its revision). The heading says the revision
+    // alone; the full id stays in `version` for the detail line and its tooltip.
+    const revision = /\/(\d+)$/.exec(version);
     return {
-        version: typeof rule.rule_version === 'string' ? rule.rule_version : 'unversioned',
-        title: `Stage rule ${typeof rule.rule_version === 'string' ? rule.rule_version : '(unversioned)'}, over ${basis}`,
+        version,
+        title: `Stage rule${revision ? ` (version ${revision[1]})` : ''}`,
         stages: rule.stages.map((stage) => ({ stage, condition: STAGE_DESCRIPTIONS[stage] ? STAGE_DESCRIPTIONS[stage](rule) : 'defined by the rule; this view has no description for it' })),
         notes: [
+            `Stages are judged over ${basis}.`,
             `The trailing mean is over ${num(rule.window)} years. Emergence is the first year with ${num(rule.emerge_total)} cumulative releases, not the first release.`,
             `The latest ${num(rule.provisional_years)} years are provisional: their counts still grow as the catalogue catches up.`,
         ],

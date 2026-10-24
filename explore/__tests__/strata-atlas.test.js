@@ -76,7 +76,7 @@ describe('loading', () => {
         expect(atlas.ui.message.hidden).toBe(false);
         expect(atlas.ui.message.textContent).toBe(EMPTY_MESSAGE);
         expect(atlas.ui.summary.textContent).toBe('No monthly run yet.');
-        expect(atlas.ui.rule.textContent).toContain('Stage rule gm-design-4804/1');
+        expect(atlas.ui.rule.textContent).toContain('Stage rule (version 1)');
         expect(atlas.ui.range.disabled).toBe(true);
         expect(atlas.ui.play.disabled).toBe(true);
         expect(renderer()).toBeNull();
@@ -128,19 +128,24 @@ describe('the stage rule on screen', () => {
         const { atlas } = makeAtlas();
         await atlas.show();
         const rule = atlas.ui.rule.textContent;
-        expect(rule).toContain('Stage rule gm-design-4804/1, over release-year counts');
+        expect(atlas.ui.rule.querySelector('.atlas-rule-title').textContent).toBe('Stage rule (version 1)');
+        expect(rule).toContain('Stages are judged over release-year counts.');
         for (const stage of BODY.rule.stages) expect(rule).toContain(stageWord(stage));
         expect(rule).toContain('trailing mean at least 0.5 × its peak, under 10 years after emergence');
         expect(rule).toContain('but at least 1.5 × its trough and 0.25 × its peak');
         expect(rule).toContain('emerge_total 25 · active_share 0.5 · establish_years 10 · revive_ratio 1.5 · revive_floor 0.25 · window 3 · provisional_years 2');
-        expect(rule).toContain('Rule version gm-design-4804/1');
+        // The internal id is a small support line with a tooltip, never the heading.
+        const detail = atlas.ui.rule.querySelector('.atlas-rule-version');
+        expect(detail.textContent).toBe('Rule id gm-design-4804/1');
+        expect(detail.title).toContain('gm-design-4804/1');
+        expect(atlas.ui.rule.querySelector('h4').textContent).not.toContain('gm-design');
         expect(rule).toContain('The latest 2 years are provisional');
     });
 
     it('follows a changed rule', async () => {
         const { atlas } = makeAtlas({ body: { ...BODY, rule: { ...BODY.rule, active_share: 0.6, rule_version: 'gm-design-4804/2' } } });
         await atlas.show();
-        expect(atlas.ui.rule.textContent).toContain('Rule version gm-design-4804/2');
+        expect(atlas.ui.rule.textContent).toContain('Rule id gm-design-4804/2');
         expect(atlas.ui.rule.textContent).toContain('0.6 × its peak');
     });
 });
