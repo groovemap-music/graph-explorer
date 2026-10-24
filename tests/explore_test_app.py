@@ -17,6 +17,10 @@ MOCK_AUTOCOMPLETE_RESULTS: dict[str, list[dict[str, Any]]] = {
     "artist": [
         {"id": "1", "name": "Radiohead", "score": 9.5},
         {"id": "2", "name": "Radio Dept.", "score": 7.2},
+        # Artists whose strata the mock route answers (STRATA_* below).
+        {"id": "9001", "name": "The Placeholder Band", "score": 6.0},
+        {"id": "too-large", "name": "Overlong Catalog", "score": 5.0},
+        {"id": "timeout", "name": "Slow Reader", "score": 4.0},
     ],
     "genre": [
         {"id": "Rock", "name": "Rock", "score": 1.0},
@@ -50,6 +54,16 @@ MOCK_EXPLORE_RESULTS: dict[str, dict[str, Any]] = {
         "artist_count": 120,
     },
 }
+
+# The artists Explore can center whose Discography Strata the mock route answers: the one the
+# recorded fixture describes, and the two that make the route fail the way it does at scale.
+MOCK_STRATA_ARTISTS: dict[str, dict[str, Any]] = {
+    "the placeholder band": {"id": "9001", "name": "The Placeholder Band", "release_count": 169, "label_count": 4, "alias_count": 2},
+    "overlong catalog": {"id": "too-large", "name": "Overlong Catalog", "release_count": 1356055, "label_count": 900, "alias_count": 0},
+    "slow reader": {"id": "timeout", "name": "Slow Reader", "release_count": 80000, "label_count": 40, "alias_count": 0},
+}
+# The release years the timeline scrubber spans.
+MOCK_YEAR_RANGE: dict[str, int] = {"min_year": 1985, "max_year": 2026}
 
 # Mock auth data
 MOCK_USER: dict[str, Any] = {
@@ -690,6 +704,8 @@ def create_test_app() -> FastAPI:
     ) -> JSONResponse:
         entity_type = type.lower()
         result = MOCK_EXPLORE_RESULTS.get(entity_type)
+        if entity_type == "artist":
+            result = MOCK_STRATA_ARTISTS.get(name.lower(), result)
         if not result:
             return JSONResponse(content={"error": "Not found"}, status_code=404)
 
@@ -717,6 +733,10 @@ def create_test_app() -> FastAPI:
                 "categories": categories,
             }
         )
+
+    @app.get("/api/explore/year-range")
+    async def explore_year_range() -> JSONResponse:
+        return JSONResponse(content=MOCK_YEAR_RANGE)
 
     @app.get("/api/explore/strata")
     async def explore_strata(

@@ -200,6 +200,13 @@ a database. Artist ids `too-large` and `timeout` answer with the 422 and 504.
 - `explore/__tests__/strata-csp.test.js` scans the strata modules and the vendored three.js for
   the forbidden constructs, and checks at run time that the renderer never writes a style
   attribute or sets `innerHTML`.
+- `tests/e2e/test_discography_strata.py` walks the feature in a real browser on every project in the
+  E2E matrix, against the mock route above: search to the strata, drill and page a group, a
+  MusicBrainz-only pressing and its reason, both clocks, the table (filter, sort, keyboard), "Only what
+  I collect", a signed-out visitor, and the 422 and 504 messages. It drives the 3D view from the
+  keyboard. Searching to a pressing that is not drawn is not covered:
+  it is not supported yet (gm-graph-explorer-sqjq).
+  The user-facing description is [Discography Strata](discography-strata.md).
 - `tests/perf/test_strata_renderer_perf.py` is the performance smoke test below. `just test` and the
   E2E matrix skip it (marker `benchmark`).
 

@@ -549,3 +549,29 @@
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }
+
+/* A phone is narrower than the details panel, which would leave the stage and the table a sliver
+   beside it. Below that width the panel goes under them, and the view takes the height it needs
+   rather than what is left in the pane. */
+@media (max-width: 760px) {
+    .strata-view {
+        flex: none;
+        min-height: 44rem;
+    }
+
+    .strata-body {
+        flex-direction: column;
+    }
+
+    .strata-stage-wrap {
+        flex: none;
+        height: 28rem;
+    }
+
+    .strata-panel {
+        width: auto;
+        max-height: 16rem;
+        border-left: 0;
+        border-top: 1px solid var(--border-color);
+    }
+}
