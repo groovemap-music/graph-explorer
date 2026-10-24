@@ -395,3 +395,157 @@
     white-space: nowrap;
     border: 0;
 }
+
+/* ---------------------------------------------------------------------------------------------
+   The strata table (static/js/strata-table.js). A native table in a scroll region; the script
+   writes no style attribute.
+   --------------------------------------------------------------------------------------------- */
+
+.strata-planes[hidden],
+.strata-tool-btn[hidden] {
+    display: none;
+}
+
+.strata-table-wrap {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--strata-canvas);
+}
+
+.strata-table-wrap[hidden] {
+    display: none;
+}
+
+.strata-table-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 16px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--card-bg);
+    font-size: 0.85rem;
+    color: var(--text-mid);
+}
+
+.strata-table-status {
+    margin: 0;
+}
+
+.strata-table-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+
+.strata-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    color: var(--text-mid);
+}
+
+.strata-table-caption {
+    padding: 8px 16px;
+    text-align: left;
+    color: var(--text-high);
+    caption-side: top;
+}
+
+.strata-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 0;
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border-color);
+    text-align: left;
+    font-weight: 600;
+}
+
+.strata-table th[aria-sort="ascending"] .strata-table-sort::after {
+    content: " \25B2";
+}
+
+.strata-table th[aria-sort="descending"] .strata-table-sort::after {
+    content: " \25BC";
+}
+
+.strata-table-sort,
+.strata-table-open {
+    font: inherit;
+    color: var(--text-high);
+    cursor: pointer;
+}
+
+.strata-table-sort {
+    width: 100%;
+    padding: 6px 10px;
+    border: 0;
+    background: transparent;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.strata-table-open {
+    padding: 2px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--inner-bg);
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
+.strata-table-sort:focus-visible,
+.strata-table-open:focus-visible,
+.strata-row:focus-visible {
+    outline: 2px solid var(--strata-accent);
+    outline-offset: -2px;
+}
+
+.strata-table td,
+.strata-table tbody th {
+    padding: 5px 10px;
+    border-bottom: 1px solid var(--border-color);
+    text-align: left;
+    font-weight: 400;
+    vertical-align: top;
+}
+
+.strata-table tbody th {
+    color: var(--text-high);
+}
+
+.strata-row[aria-current="true"] {
+    background: var(--strata-hover);
+    box-shadow: inset 3px 0 0 var(--strata-accent);
+}
+
+.strata-row--credit th,
+.strata-row--creditGroup th {
+    font-weight: 600;
+}
+
+.strata-row--master th,
+.strata-row--masterGroup th,
+.strata-row--lane th {
+    padding-left: 22px;
+}
+
+.strata-row--pressing th,
+.strata-row--pressingGroup th {
+    padding-left: 34px;
+}
+
+.strata-cell-blocked {
+    max-width: 28rem;
+    color: var(--strata-blocked);
+}
+
+.strata-cell-year,
+.strata-cell-releases {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}

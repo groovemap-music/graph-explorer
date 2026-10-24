@@ -18,7 +18,7 @@ import { COLLECTOR_STATES, stateTokenName } from '../static/js/strata-collector.
 import { syntheticLayout } from './strata-synthetic.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const STRATA_MODULES = ['strata-renderer.js', 'strata-scene.js', 'strata-layout.js', 'strata-collector.js', 'strata-explore.js'].map((name) => resolve(ROOT, 'static', 'js', name));
+const STRATA_MODULES = ['strata-renderer.js', 'strata-scene.js', 'strata-layout.js', 'strata-collector.js', 'strata-explore.js', 'strata-table.js'].map((name) => resolve(ROOT, 'static', 'js', name));
 const THREE_FILES = ['three.module.js', 'three.core.js'].map((name) => resolve(ROOT, 'node_modules', 'three', 'build', name));
 
 const FORBIDDEN = [

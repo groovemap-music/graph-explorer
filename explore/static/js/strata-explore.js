@@ -12,6 +12,8 @@
  *   - search-to-focus and the "only what I collect" filter (gm-design-on0x Recommendation 6);
  *   - keyboard navigation of planes and nodes, bound to the renderer's camera, select, and solo
  *     (ADR 0016 section 1, gm-design-on0x section "Accessibility");
+ *   - the table view, the same planes, lanes, aggregates, and server page as rows (strata-table.js),
+ *     which needs no WebGL: the renderer is built only when the 3D view is first shown;
  *   - the panel, whose actions are only "Open on Discogs", "Sync now", and "Record an observation"
  *     on an owned copy. GrooveMap never writes a wantlist or a collection; every state change is
  *     observed at Discogs sync (strata-collector.js).
@@ -24,7 +26,12 @@
 import { StrataRenderer } from './strata-renderer.js';
 import { adaptStrataPayload, layoutStrata } from './strata-layout.js';
 import { COLLECTOR_STATES, CollectorAction, canPerform, hasOwn, hasWant, stateFromFlags, stateLabel } from './strata-collector.js';
-import { displayLabel } from './strata-scene.js';
+import { BLOCKED_REASON, blockedReason, displayLabel } from './strata-scene.js';
+import { StrataTable, buildTableRows } from './strata-table.js';
+
+// The blocked-pressing words live with the scene logic so the table can use them without this
+// module, which imports the renderer.
+export { BLOCKED_REASON, blockedReason };
 
 /** The route's default budget, the one the view draws legibly (gm-design-on0x Recommendation 2). */
 export const DEFAULT_BUDGET = '3/12/16';
@@ -43,7 +50,6 @@ const COLLECTION_PAGE = 200;
 const COLLECTION_PAGES = 10;
 const DAY_MS = 86_400_000;
 
-export const BLOCKED_REASON = 'MusicBrainz-only pressing: it has no Discogs release, so no wantlist or collection edge can carry a change to it (ADR 0009). It has no collector state.';
 export const PAST_REASON = 'History is read-only. Move "Recorded as of" to now to record an observation.';
 
 // ---------------------------------------------------------------------------------------------
@@ -262,11 +268,6 @@ export function nodeActions(node, { signedIn = false, past = false } = {}) {
     return actions;
 }
 
-/** Why a node cannot change state, or null. */
-export function blockedReason(node) {
-    return node && node.level === 2 && !node.agg && node.provider === 'musicbrainz' ? BLOCKED_REASON : null;
-}
-
 /** A cursor in words, for the drill-down trail. */
 export function describeCursor(cursor, byId = new Map()) {
     if (cursor === 'c:other') return 'other credits';
@@ -418,7 +419,25 @@ export class StrataExplore {
             recordedLabel: $('strataRecordedAsOfLabel'),
             reset: $('strataResetCameraBtn'),
             planes: [...doc.querySelectorAll('[data-strata-solo]')],
+            stageOnly: [...doc.querySelectorAll('[data-strata-only="stage"]')],
+            stageHelp: $('strataKeyHelp'),
+            tableWrap: $('strataTableWrap'),
+            table: $('strataTable'),
+            tableBlockedOnly: $('strataTableBlockedOnly'),
+            tableStatus: $('strataTableStatus'),
         };
+        this.mode = 'strata';
+        this.rows = [];
+        this.rowById = new Map();
+        this.table = this.ui.table
+            ? new StrataTable({
+                doc,
+                host: this.ui.table,
+                onSelect: (id) => this.selectRow(id),
+                onOpen: (cursor) => this.drill(cursor),
+                onStatus: (text) => this.setTableStatus(text),
+            })
+            : null;
         this.artist = null;
         this.cursor = { focus: null, page: 0 };
         this.trail = [];
@@ -457,6 +476,7 @@ export class StrataExplore {
             button.addEventListener('click', () => this.renderer?.solo(button.dataset.strataSolo === '' ? null : Number(button.dataset.strataSolo)));
         }
         ui.stage?.addEventListener('keydown', (event) => this.handleKey(event));
+        ui.tableBlockedOnly?.addEventListener('change', () => this.table?.setFilter({ blockedOnly: ui.tableBlockedOnly.checked }));
     }
 
     get signedIn() {
@@ -477,18 +497,48 @@ export class StrataExplore {
         if (this.active && next) this.load();
     }
 
-    show() {
+    /**
+     * Show the view as the 3D strata or as the table. The table builds no renderer, so it opens
+     * where WebGL does not.
+     */
+    show({ mode = 'strata' } = {}) {
         this.active = true;
+        this.setMode(mode);
         this.ui.view?.classList.remove('hidden');
+        if (this.mode === 'strata') this.startRenderer();
+        if (this.artist && !this.graph) return this.load();
+        return Promise.resolve();
+    }
+
+    startRenderer() {
         if (!this.renderer && this.ui.stage) {
             this.renderer = this.createRenderer(this.ui.stage);
             this.renderer.addEventListener('select', (event) => this.onSelect(event.detail.id));
             this.renderer.addEventListener('solo', (event) => this.onSolo(event.detail.level));
+            // A view loaded in the table before the 3D view was first shown.
+            if (this.layout) this.renderer.setLayout(this.layout);
         }
         this.renderer?.start();
         this.renderer?.resize?.();
-        if (this.artist && !this.graph) return this.load();
-        return Promise.resolve();
+        this.syncRendererSelection();
+    }
+
+    setMode(mode) {
+        const next = mode === 'table' ? 'table' : 'strata';
+        const { ui } = this;
+        this.mode = next;
+        const table = next === 'table';
+        ui.view?.classList.toggle('strata-view--table', table);
+        if (ui.stage) ui.stage.hidden = table;
+        if (ui.stageHelp) ui.stageHelp.hidden = table;
+        if (ui.tableWrap) ui.tableWrap.hidden = !table;
+        for (const item of ui.stageOnly) item.hidden = table;
+        if (table) this.renderer?.stop();
+        else if (this.selected && !this.byId?.has(this.selected)) this.selected = null;
+        if (this.graph) {
+            this.renderTable();
+            this.renderSelection();
+        }
     }
 
     hide() {
@@ -503,7 +553,7 @@ export class StrataExplore {
     }
 
     resume() {
-        if (this.active) this.renderer?.start();
+        if (this.active && this.mode === 'strata') this.renderer?.start();
     }
 
     refreshColors() {
@@ -605,13 +655,39 @@ export class StrataExplore {
         // Keep the year axis steady while the clocks and pages move.
         if (!this.axisHint) this.axisHint = { y0: this.layout.axis.y0, y1: this.layout.axis.y1 };
         this.byId = new Map(this.layout.nodes.map((node) => [node.id, node]));
-        if (this.selected && !this.byId.has(this.selected)) this.selected = null;
+        this.rows = buildTableRows(this.view, this.layout, { signedIn: this.graph.signedIn, openAction: (node) => nodeActions(node).find((action) => action.id === 'open') ?? null });
+        this.rowById = new Map(this.rows.map((row) => [row.id, row]));
+        if (this.selected && !this.nodeFor(this.selected)) this.selected = null;
         this.renderer?.setLayout(this.layout);
-        if (this.selected) this.renderer?.select(this.selected);
+        this.syncRendererSelection();
+        this.renderTable();
         this.renderControls();
         this.renderSummary();
         this.renderTrail();
         this.renderSelection();
+    }
+
+    /**
+     * The node the panel describes for an id: the one the layout drew, or, in the table, an entry
+     * the layout folded into a count node, which has no node of its own.
+     */
+    nodeFor(id) {
+        return this.byId?.get(id) ?? this.rowById.get(id)?.node ?? null;
+    }
+
+    // The renderer knows drawn nodes only; a folded entry selected in the table is not one.
+    syncRendererSelection() {
+        if (!this.renderer) return;
+        if (this.selected && this.byId?.has(this.selected)) this.renderer.select(this.selected);
+    }
+
+    renderTable() {
+        if (!this.table || this.mode !== 'table') return;
+        this.table.setRows(this.rows, { selected: this.selected });
+    }
+
+    setTableStatus(text) {
+        if (this.ui.tableStatus) this.ui.tableStatus.textContent = text;
     }
 
     renderControls() {
@@ -687,10 +763,10 @@ export class StrataExplore {
         const { doc } = this;
         const box = this.ui.selection;
         if (!box || !this.layout) return;
-        const node = this.selected ? this.byId.get(this.selected) : null;
+        const node = this.selected ? this.nodeFor(this.selected) : null;
         if (!node) {
             box.replaceChildren(
-                el(doc, 'p', 'strata-hint', 'Select a node, or use the keyboard: focus the view and press ] to step through the credits.'),
+                el(doc, 'p', 'strata-hint', this.mode === 'table' ? 'Select a row, or use the keyboard: focus a row and press Space to describe it here.' : 'Select a node, or use the keyboard: focus the view and press ] to step through the credits.'),
                 el(doc, 'p', 'strata-hint', 'Red-ringed pressings exist only in MusicBrainz and have no collector state.'),
                 this.legend(),
             );
@@ -776,6 +852,7 @@ export class StrataExplore {
 
     onSelect(id) {
         this.selected = id ?? null;
+        this.table?.select(this.selected);
         this.renderSelection();
     }
 
@@ -788,7 +865,16 @@ export class StrataExplore {
 
     selectNode(id) {
         this.selected = id;
-        this.renderer?.select(id);
+        if (id === null || this.byId?.has(id)) this.renderer?.select(id);
+        this.table?.select(id, { focus: this.mode === 'table' });
+        this.renderSelection();
+    }
+
+    /** A row chosen in the table, or the selection cleared. */
+    selectRow(id) {
+        this.selected = id;
+        if (this.renderer && (id === null || this.byId?.has(id))) this.renderer.select(id);
+        this.table?.select(id);
         this.renderSelection();
     }
 
@@ -887,7 +973,8 @@ export class StrataExplore {
     async focusSearch(query) {
         const q = String(query || '').trim();
         if (!q || !this.layout) return null;
-        const [drawn] = searchDrawn(this.layout.nodes, q);
+        // The table can reach an entry the 3D view folded into a count node.
+        const [drawn] = searchDrawn(this.mode === 'table' ? this.rows.map((row) => row.node) : this.layout.nodes, q);
         if (drawn) {
             this.selectNode(drawn.id);
             this.showMessage(null);

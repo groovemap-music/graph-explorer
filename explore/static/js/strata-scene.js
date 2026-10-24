@@ -110,6 +110,14 @@ export function isBlocked(node) {
     return node.provider === 'musicbrainz' && !node.agg;
 }
 
+/** What a blocked pressing says about itself, wherever it is listed. */
+export const BLOCKED_REASON = 'MusicBrainz-only pressing: it has no Discogs release, so no wantlist or collection edge can carry a change to it (ADR 0009). It has no collector state.';
+
+/** Why a node cannot change state, or null. */
+export function blockedReason(node) {
+    return node && node.level === 2 && isBlocked(node) ? BLOCKED_REASON : null;
+}
+
 /** Index a layout's nodes by id. */
 export function indexNodes(layout) {
     return new Map(layout.nodes.map((node) => [node.id, node]));

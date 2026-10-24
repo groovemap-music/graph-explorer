@@ -16,6 +16,7 @@ harness's `webgl-inst` mode is the source of the port.
 | `explore/static/js/strata-scene.js` | The decisions that need no GPU: resolve picking, label candidates and placement, level of detail, camera tweens and reduced motion, vertical links |
 | `explore/static/css/strata.css` | The `--strata-*` color properties, the label classes, and the Explore view's chrome. `index.html` links it |
 | `explore/static/js/strata-explore.js` | The Explore integration: fetching, drill-down, both clocks, the filter, search-to-focus, keyboard, and the panel (below) |
+| `explore/static/js/strata-table.js` | The strata table: every credit, lane, master, and pressing as a sortable, keyboard-navigable table (below) |
 
 ## API
 
@@ -114,8 +115,10 @@ loads. A future `style-src 'self'` policy without `'unsafe-inline'` holds.
 
 ## Explore integration
 
-`strata-explore.js` opens the view from the Explore pane's toggle (graph, strata, and a disabled
-table entry for the next release) on the artist Explore centers. It reads `GET
+`strata-explore.js` opens the view from the Explore pane's toggle (graph, strata, and table) on the
+artist Explore centers. The last view chosen is kept in `localStorage` under `explore.view` (every
+access is in a try/catch, so denied or full storage only loses the preference) and opens once an
+artist is centered after a reload. It reads `GET
 /api/explore/strata` (promoted in `contracts/catalog-api/graph-explorer/v1`) at the default 3, 12,
 16 budget, with the caller's token when signed in.
 
@@ -143,6 +146,35 @@ table entry for the next release) on the artist Explore centers. It reads `GET
 - **Errors**: a 422 (a root above 134,051 releases) and a 504 (a read past its bound) get their own
   words. A theme change calls `refreshColors()`.
 
+### The table
+
+The table is a peer of the 3D view, not a fallback (ADR 0016 section 1). It is the only view that
+answers "which items cannot change state, and why" at every scale, and it needs no WebGL: choosing
+it builds no renderer. It reads the same clock-applied graph and layout the 3D view draws from, so
+it shows the same planes, lanes, aggregates, and server page, and drilling an aggregate or a master
+(its **Open** button, or Enter on its row) issues the same `focus=<cursor>&page=<n>` request. The
+trail and Previous and Next in the panel page it, as they do in 3D.
+
+- **Every entry the route sent is a row**, folded into a count node in the 3D view or not. A row
+  says which in "In the 3D view" (`drawn`, or the count node that holds it), so
+  `buildTableRows(view, layout)` is conserved against the layout: one row per entry, each held by
+  exactly one layout node, and the blocked counts add up to the route's totals the way the
+  layout's releases do.
+- **Columns**: kind, name, under (the path of ancestors), year, state, "Cannot change because",
+  releases, in the 3D view, and open. A MusicBrainz-only pressing carries the full reason (ADR
+  0009); a credit, master, or group says how many such pressings it holds and that opening it lists
+  them. "Only what cannot change state" filters to those rows.
+- **Sorting**: each column header is a button. Ascending, descending, then the outline order again,
+  with `aria-sort` and a live sentence ("5 rows, sorted by year, descending."). Empty years and
+  reasons sort last either way.
+- **Keyboard**: one row is the tab stop. Up, Down, Home, and End move between rows; PageUp moves to
+  the row's parent and PageDown to its first child, as in 3D; Space selects a row and describes it
+  in the panel; Enter opens a group or master (a folded pressing opens through its parent's cursor)
+  and otherwise selects; Escape clears the selection. Focus stays in the table across a redraw.
+- **Screen readers**: a native table with a caption, `scope` on every header, row headers, a
+  description of the keys, and `aria-current` on the selected row.
+- **Search** in the table also finds an entry the 3D view folded away.
+
 `tests/explore_test_app.py` serves `/api/explore/strata` from `tests/fixtures/strata-route.json`,
 bodies recorded from catalog-api's fold over an invented catalog, so the view runs locally without
 a database. Artist ids `too-large` and `timeout` answer with the 422 and 504.
@@ -159,6 +191,9 @@ a database. Artist ids `too-large` and `timeout` answer with the 422 and 504.
 - `explore/__tests__/strata-explore.test.js` covers the integration: both clocks, the filter,
   actions against the collector machine, keyboard commands, search-to-focus, errors, and the view
   over recorded route bodies with a stand-in renderer and the real `index.html` markup.
+- `explore/__tests__/strata-table.test.js` holds the table's conservation against the layout (the
+  recorded bodies, 200 generated discographies, and every server page of 100 more), its sorting and
+  filter, and the DOM table's roving focus, keys, and markup.
 - `explore/__tests__/strata-layout.test.js` holds the layout's properties over payloads from the
   route's fold, ported in `strata-fixtures.js`; `strata-route-recorded.test.js` checks the port
   against bodies the Python wrote.
