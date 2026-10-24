@@ -72,6 +72,26 @@ readable instead of letting the session drift into the engine ceiling and fail s
 `tests/test_e2e_context_budget.py` covers the schedule and both guards without launching a browser,
 so `just check` keeps them honest.
 
+## Firefox WebGL on Linux
+
+Headless Firefox on Linux creates WebGL contexts through GLX, so it needs an X server even though it
+opens no window. A hosted Linux runner has no display, and there Firefox refuses every WebGL2
+context, so the Discography Strata and Genre Atlas journeys that draw the 3D view fail on the
+`firefox` project alone. No Firefox pref or Mesa/EGL variable changes that: `webgl.force-enabled`
+only moves the refusal from the launch-time blocklist to context creation.
+
+| Firefox 157 in `mcr.microsoft.com/playwright/python:v1.64.0-noble`, headless | WebGL2 |
+| --- | --- |
+| no `DISPLAY` | refused |
+| no `DISPLAY`, `webgl.force-enabled`, `gfx.x11-egl.force-enabled`, `MOZ_X11_EGL=1`, `EGL_PLATFORM=surfaceless` | refused |
+| `DISPLAY` on an Xvfb server | Mesa llvmpipe |
+
+`tests/conftest.py` therefore starts a private Xvfb for the `firefox` project on Linux when there is
+no `DISPLAY`, and uses the display it has otherwise. `just e2e-setup` installs Xvfb with the
+browsers' system dependencies. When the server cannot be started the session fails instead of
+running the journeys against the no-WebGL fallback, which has journeys of its own.
+`tests/test_e2e_firefox_display.py` covers the server's lifecycle without launching a browser.
+
 ## Automation
 
 The thin CI and release callers pin `groovemap-music/automation` at
