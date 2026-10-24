@@ -27,6 +27,7 @@ import {
 } from '../static/js/strata-explore.js';
 import { adaptStrataPayload, layoutStrata } from '../static/js/strata-layout.js';
 import { COLLECTOR_STATES, CollectorAction, canPerform } from '../static/js/strata-collector.js';
+import { TABLE_HELP } from '../static/js/strata-table.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const RECORDED = JSON.parse(readFileSync(resolve(HERE, '..', '..', 'tests', 'fixtures', 'strata-route.json'), 'utf8'));
@@ -694,6 +695,260 @@ describe('StrataExplore', () => {
         strata.pause();
         strata.resume();
         expect(renderers[0].calls.slice(-2)).toEqual([['stop'], ['start']]);
+    });
+});
+
+describe('StrataExplore table view', () => {
+    let api;
+    let strata;
+    const renderers = [];
+
+    beforeEach(() => {
+        mountMarkup();
+        api = fakeApi();
+        strata = new StrataExplore({
+            api,
+            auth: { isLoggedIn: vi.fn(() => true), getToken: vi.fn(() => 'jwt') },
+            createRenderer: (stage) => {
+                const renderer = new FakeRenderer(stage);
+                renderers.push(renderer);
+                return renderer;
+            },
+            now: () => Date.parse('2026-10-23T12:00:00Z'),
+        });
+    });
+
+    afterEach(() => {
+        strata.dispose();
+        renderers.length = 0;
+        document.body.textContent = '';
+        document.documentElement.className = '';
+    });
+
+    const $ = (id) => document.getElementById(id);
+    const tableIds = () => [...$('strataTable').querySelectorAll('tbody tr')].map((tr) => tr.dataset.id);
+    const tableRow = (id) => $('strataTable').querySelector(`tr[data-id="${CSS.escape(id)}"]`);
+    const openTable = async (artist = { id: '9001', name: 'The Placeholder Band' }) => {
+        strata.setArtist(artist);
+        await strata.show({ mode: 'table' });
+    };
+
+    it('opens as a table without building a renderer, and shows only the table\'s chrome', async () => {
+        await openTable();
+        expect(renderers).toHaveLength(0);
+        expect(strata.mode).toBe('table');
+        expect($('strataView').classList.contains('strata-view--table')).toBe(true);
+        expect($('strataTableWrap').hidden).toBe(false);
+        expect($('strataStage').hidden).toBe(true);
+        expect($('strataKeyHelp').hidden).toBe(true);
+        expect($('strataResetCameraBtn').hidden).toBe(true);
+        expect(document.querySelector('.strata-planes').hidden).toBe(true);
+        // The collector controls, search, and the panel are the 3D view's.
+        expect($('strataSearchForm').hidden).toBe(false);
+        expect($('strataOnlyCollected').disabled).toBe(false);
+        expect($('strataSummary').textContent).toContain('6 credits · 40 masters · 169 releases');
+        expect($('strataSelection').textContent).toContain('Select a row');
+    });
+
+    it('lists every entry the 3D view holds, drawn or folded, once (conservation against the layout)', async () => {
+        await openTable();
+        const held = new Map();
+        for (const node of strata.layout.nodes) for (const id of node.members) held.set(id, (held.get(id) || 0) + 1);
+        expect(tableIds().sort()).toEqual(strata.graph.entries.map((entry) => entry.id).sort());
+        expect([...held.values()].every((count) => count === 1)).toBe(true);
+        expect(new Set(tableIds())).toEqual(new Set(held.keys()));
+        const folded = strata.rows.filter((row) => !row.drawn);
+        expect(folded.length).toBeGreaterThan(0);
+        expect(folded.every((row) => tableRow(row.id).querySelector('.strata-cell-drawn').textContent.startsWith('in “'))).toBe(true);
+        // Switching to the 3D view draws the same layout, and builds the renderer then.
+        await strata.show({ mode: 'strata' });
+        expect(renderers).toHaveLength(1);
+        expect(renderers[0].layout).toBe(strata.layout);
+        expect(renderers[0].calls).toContainEqual(['start']);
+        expect($('strataTableWrap').hidden).toBe(true);
+        expect($('strataStage').hidden).toBe(false);
+        expect($('strataResetCameraBtn').hidden).toBe(false);
+        expect($('strataView').classList.contains('strata-view--table')).toBe(false);
+    });
+
+    it('drills an aggregate with the same focus request as the 3D view, and pages as the server does', async () => {
+        await openTable();
+        const group = strata.rows.find((row) => row.kind === 'pressingGroup' && row.open);
+        const button = tableRow(group.id).querySelector('.strata-table-open');
+        expect(button.getAttribute('aria-label')).toBe(`${group.open.label}: ${group.name}`);
+        button.click();
+        await vi.waitFor(() => expect(strata.graph.focus?.id).toBe(group.id));
+        expect(api.getStrata).toHaveBeenLastCalledWith('9001', { focus: group.id, page: 0, budget: '3/12/16' }, 'jwt');
+        // The 3D view asked for exactly this and drew exactly these entries.
+        expect(tableIds().sort()).toEqual(strata.graph.entries.map((entry) => entry.id).sort());
+        expect($('strataTrail').textContent).toContain(`page 1 of ${strata.graph.focus.pages}`);
+        expect($('strataTableWrap').textContent).not.toBe('');
+        if (strata.graph.focus.pages > 1) {
+            [...$('strataTrail').querySelectorAll('button')].find((item) => item.textContent === 'Next page').click();
+            await vi.waitFor(() => expect(strata.graph.focus.page).toBe(1));
+            expect(api.getStrata).toHaveBeenLastCalledWith('9001', { focus: group.id, page: 1, budget: '3/12/16' }, 'jwt');
+            expect(tableIds().sort()).toEqual(strata.graph.entries.map((entry) => entry.id).sort());
+        }
+        await strata.back();
+        expect(strata.graph.focus).toBeNull();
+        expect(tableIds()).toHaveLength(strata.graph.entries.length);
+    });
+
+    it('opens a master with Enter and keeps keyboard focus in the table', async () => {
+        await openTable();
+        const master = strata.rows.find((row) => row.kind === 'master' && row.drawn);
+        tableRow(master.id).focus();
+        tableRow(master.id).dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        await vi.waitFor(() => expect(strata.graph.focus?.id).toBe(`ra:${master.id}`));
+        expect(api.getStrata).toHaveBeenLastCalledWith('9001', { focus: master.id, page: 0, budget: '3/12/16' }, 'jwt');
+        expect(document.activeElement.tagName).toBe('TR');
+        expect($('strataTable').contains(document.activeElement)).toBe(true);
+    });
+
+    it('describes a selected row in the panel, folded or not, without telling the renderer about a folded one', async () => {
+        await openTable();
+        await strata.show({ mode: 'strata' });
+        await strata.show({ mode: 'table' });
+        const renderer = renderers[0];
+        const folded = strata.rows.find((row) => !row.drawn && row.kind === 'pressing');
+        const select = renderer.calls.length;
+        tableRow(folded.id).click();
+        expect(strata.selected).toBe(folded.id);
+        expect(tableRow(folded.id).getAttribute('aria-current')).toBe('true');
+        expect($('strataSelection').querySelector('.strata-selection-title').textContent).toBe(folded.name);
+        expect([...$('strataSelection').querySelectorAll('.strata-action')].map((item) => item.textContent)).toContain('Show these pressings');
+        expect(renderer.selected).toBeNull();
+        expect(renderer.calls.slice(select).filter((call) => call[0] === 'select')).toEqual([]);
+
+        const drawn = strata.rows.find((row) => row.drawn && row.kind === 'master');
+        tableRow(drawn.id).click();
+        expect($('strataSelection').querySelector('.strata-selection-title').textContent).toBe(drawn.name);
+        expect(renderer.selected).toBe(drawn.id);
+        // Escape clears it, in the table and in the renderer.
+        tableRow(drawn.id).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+        expect(strata.selected).toBeNull();
+        expect(renderer.selected).toBeNull();
+        expect($('strataTable').querySelectorAll('[aria-current]')).toHaveLength(0);
+    });
+
+    it('shows a blocked pressing\'s reason in its row and in the panel', async () => {
+        await openTable();
+        await strata.drill('ra:m:70025');
+        const blocked = strata.rows.find((row) => row.blocked === BLOCKED_REASON);
+        expect(tableRow(blocked.id).querySelector('.strata-cell-blocked').textContent).toBe(BLOCKED_REASON);
+        tableRow(blocked.id).querySelector('th').click();
+        tableRow(blocked.id).click();
+        expect($('strataSelection').querySelector('.strata-blocked').textContent).toBe(BLOCKED_REASON);
+        expect($('strataSelection').textContent).not.toContain('Sync now');
+    });
+
+    it('filters to the items that cannot change state, with the count read out', async () => {
+        await openTable();
+        const checkbox = $('strataTableBlockedOnly');
+        checkbox.checked = true;
+        checkbox.dispatchEvent(new Event('change'));
+        const expected = strata.rows.filter((row) => row.blocked !== null).map((row) => row.id);
+        expect(tableIds()).toEqual(expected);
+        expect($('strataTableStatus').textContent).toBe(`${expected.length} of ${strata.rows.length} rows that cannot change state, in outline order.`);
+        // The filter survives a redraw from the clocks.
+        strata.setOnlyCollected(true);
+        expect(tableIds().every((id) => expected.includes(id))).toBe(true);
+        checkbox.checked = false;
+        checkbox.dispatchEvent(new Event('change'));
+        expect(tableIds()).toHaveLength(strata.rows.length);
+    });
+
+    it('follows both clocks and the collector filter as the 3D view does', async () => {
+        await openTable();
+        const all = tableIds().length;
+        strata.setBeforeYear(1995);
+        expect(tableIds().length).toBeLessThan(all);
+        expect(tableIds().sort()).toEqual(strata.view.entries.map((entry) => entry.id).sort());
+        strata.setBeforeYear(null);
+        expect(tableIds()).toHaveLength(all);
+        strata.setOnlyCollected(true);
+        expect(tableIds().length).toBeLessThan(all);
+        strata.setOnlyCollected(false);
+        const input = $('strataRecordedAsOf');
+        input.value = String(Date.parse('2012-01-01T00:00:00Z'));
+        input.dispatchEvent(new Event('input'));
+        const group = strata.rows.find((row) => row.kind === 'pressingGroup');
+        expect(tableRow(group.id).querySelector('.strata-cell-state').textContent).toBe('not known');
+        expect($('strataSummary').textContent).toContain('States as recorded on 2012-01-01');
+    });
+
+    it('searches every entry, including one the 3D view folded away', async () => {
+        await openTable();
+        const folded = strata.rows.find((row) => !row.drawn && row.kind === 'pressing' && row.name);
+        const found = await strata.focusSearch(folded.name);
+        expect(found).toBe(folded.id);
+        expect(strata.selected).toBe(folded.id);
+        expect(document.activeElement).toBe(tableRow(folded.id));
+        expect($('strataSelection').querySelector('.strata-selection-title').textContent).toBe(folded.name);
+        expect(api.search).not.toHaveBeenCalled();
+    });
+
+    it('keeps the table selection in sync with a renderer selection', async () => {
+        await openTable();
+        await strata.show({ mode: 'strata' });
+        renderers[0].select('m:70030');
+        await strata.show({ mode: 'table' });
+        expect(tableRow('m:70030').getAttribute('aria-current')).toBe('true');
+        expect(tableRow('m:70030').tabIndex).toBe(0);
+    });
+
+    it('drops a folded selection when the 3D view returns, and keeps a drawn one', async () => {
+        await openTable();
+        const folded = strata.rows.find((row) => !row.drawn && row.kind === 'pressing');
+        strata.selectRow(folded.id);
+        await strata.show({ mode: 'strata' });
+        expect(strata.selected).toBeNull();
+        expect($('strataSelection').textContent).toContain('press ] to step through the credits');
+        await strata.show({ mode: 'table' });
+        const drawn = strata.rows.find((row) => row.drawn && row.kind === 'master');
+        strata.selectRow(drawn.id);
+        await strata.show({ mode: 'strata' });
+        expect(strata.selected).toBe(drawn.id);
+        expect(renderers[0].selected).toBe(drawn.id);
+    });
+
+    it('leaves the frame loop alone in table mode, and starts it for the 3D view', async () => {
+        await openTable();
+        strata.resume();
+        strata.pause();
+        expect(renderers).toHaveLength(0);
+        await strata.show({ mode: 'strata' });
+        strata.pause();
+        strata.resume();
+        expect(renderers[0].calls.slice(-2)).toEqual([['stop'], ['start']]);
+        await strata.show({ mode: 'table' });
+        expect(renderers[0].calls.at(-1)).toEqual(['stop']);
+        strata.resume();
+        expect(renderers[0].calls.at(-1)).toEqual(['stop']);
+    });
+
+    it('names each screen-reader region the table needs', async () => {
+        await openTable();
+        const table = $('strataTable').querySelector('table');
+        expect($(table.getAttribute('aria-describedby')).textContent).toMatch(/PageUp moves to the row's parent/);
+        expect(table.querySelector('caption').textContent).toMatch(/^Credits, masters, and pressings: \d+ rows/);
+        expect($('strataTableStatus').getAttribute('role')).toBe('status');
+        expect(document.querySelector('label:has(#strataTableBlockedOnly)').textContent).toContain('Only what cannot change state');
+        expect(table.querySelectorAll('[style]')).toHaveLength(0);
+        // The markup in index.html and the module agree on the help text.
+        expect($('strataTableHelp').textContent).toBe(TABLE_HELP);
+    });
+
+    it('opens the table when the renderer cannot be built', async () => {
+        strata.dispose();
+        strata = new StrataExplore({
+            api,
+            auth: { isLoggedIn: () => true, getToken: () => 'jwt' },
+            createRenderer: () => { throw new Error('WebGL is not available'); },
+        });
+        await openTable();
+        expect(tableIds()).toHaveLength(strata.graph.entries.length);
+        expect(() => strata.show({ mode: 'strata' })).toThrow(/WebGL/);
     });
 });
 

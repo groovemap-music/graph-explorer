@@ -632,7 +632,7 @@ body {
         <!-- Explore pane -->
         <div class="pane active" id="explorePane">
             <!-- View toggle: the graph, Discography Strata (an artist's credits, masters, and
-                 releases on three planes), and the strata table, which arrives in the next release -->
+                 releases on three planes), and the strata table (the same entries as rows) -->
             <div class="explore-view-toggle" role="group" aria-label="Explore view" id="exploreViewToggle">
                 <button type="button" class="explore-view-btn active" data-explore-view="graph" aria-pressed="true">
                     <span class="material-symbols-outlined" aria-hidden="true">hub</span>Graph
@@ -642,7 +642,7 @@ body {
                     <span class="material-symbols-outlined" aria-hidden="true">layers</span>Strata
                 </button>
                 <button type="button" class="explore-view-btn" data-explore-view="table" aria-pressed="false" disabled
-                        title="The strata table arrives in the next release">
+                        title="Search for an artist to open the strata table">
                     <span class="material-symbols-outlined" aria-hidden="true">table_rows</span>Table
                 </button>
             </div>
@@ -764,13 +764,13 @@ body {
                         <output id="strataRecordedAsOfLabel" for="strataRecordedAsOf">now</output>
                         <span class="strata-sr-only" id="strataRecordedAsOfHelp">Your wantlist and collection as Discogs recorded them on a date</span>
                     </div>
-                    <div class="strata-planes" role="group" aria-label="Planes">
+                    <div class="strata-planes" role="group" aria-label="Planes" data-strata-only="stage">
                         <button type="button" class="strata-tool-btn" data-strata-solo="" aria-pressed="true">All planes</button>
                         <button type="button" class="strata-tool-btn" data-strata-solo="0" aria-pressed="false">Credits</button>
                         <button type="button" class="strata-tool-btn" data-strata-solo="1" aria-pressed="false">Masters</button>
                         <button type="button" class="strata-tool-btn" data-strata-solo="2" aria-pressed="false">Releases</button>
                     </div>
-                    <button type="button" class="strata-tool-btn" id="strataResetCameraBtn">Reset view</button>
+                    <button type="button" class="strata-tool-btn" id="strataResetCameraBtn" data-strata-only="stage">Reset view</button>
                 </div>
                 <div class="strata-body">
                     <div class="strata-stage-wrap">
@@ -778,6 +778,19 @@ body {
                              aria-label="Discography strata: credits, masters, and releases on three planes"
                              aria-describedby="strataKeyHelp"></div>
                         <p class="strata-sr-only" id="strataKeyHelp">Arrow keys orbit and tilt, plus and minus zoom, 0 resets the camera. 1, 2, and 3 show one plane, and the same key again shows all. PageUp and PageDown move to the parent or first child, [ and ] move along a plane, Enter opens a count node, and Escape clears the selection.</p>
+                        <!-- The strata table (strata-table.js): every credit, lane, master, and pressing the
+                             route sent, folded into a count node in the 3D view or not. -->
+                        <div class="strata-table-wrap" id="strataTableWrap" hidden>
+                            <div class="strata-table-toolbar">
+                                <label class="strata-check">
+                                    <input type="checkbox" id="strataTableBlockedOnly">
+                                    Only what cannot change state
+                                </label>
+                                <p class="strata-table-status" id="strataTableStatus" role="status"></p>
+                            </div>
+                            <div class="strata-table-scroll" id="strataTable"></div>
+                            <p class="strata-sr-only" id="strataTableHelp">Up and Down move between rows, Home and End go to the first and last. PageUp moves to the row's parent and PageDown to its first child. Space selects a row and describes it in the panel. Enter opens a group or a master as the 3D view does, and selects any other row. Escape clears the selection. Column headers are buttons that sort.</p>
+                        </div>
                         <p class="strata-message" id="strataMessage" role="alert" hidden></p>
                         <div class="loading-overlay" id="strataLoading">
                             <div class="spinner" role="status"></div>
