@@ -1,0 +1,368 @@
+/* Genre Atlas (static/js/strata-atlas.js), concept B of ADR 0016, in the Genres and Insights panes.
+   The 3D stage reuses the Strata renderer's classes (strata.css). Lifecycle swatches read the
+   promoted --groovemap-state-lifecycle-<stage>-<theme> tokens (brand/tokens.css). The provisional
+   treatment is a hatch or a dashed outline in the `provisional` token over the stage color, so the
+   cue is never color alone (design brand/README.md). Built from classes only: the script writes no
+   style attribute. */
+
+.atlas {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--card-bg);
+    overflow: hidden;
+}
+
+.atlas-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 14px;
+    padding: 10px 16px 0;
+}
+
+.atlas-title {
+    margin: 0;
+    font: 600 1.05rem/1.3 var(--font-body, system-ui, sans-serif);
+    color: var(--text-high);
+}
+
+.atlas-summary {
+    margin: 0;
+    font-size: 0.82rem;
+    color: var(--text-mid);
+}
+
+.atlas-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 14px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.85rem;
+    color: var(--text-mid);
+}
+
+.atlas-time {
+    display: flex;
+    flex: 1 1 28rem;
+    align-items: center;
+    gap: 8px;
+}
+
+.atlas-track {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 10rem;
+}
+
+.atlas-year {
+    width: 100%;
+    margin: 0;
+    accent-color: var(--strata-accent);
+}
+
+/* One cell per timeline year under the slider; the provisional years are hatched. */
+.atlas-years {
+    display: flex;
+    height: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.atlas-year-cell {
+    flex: 1;
+    background: var(--inner-bg);
+}
+
+.atlas-year-cell--provisional {
+    background: repeating-linear-gradient(135deg, var(--atlas-provisional) 0 2px, transparent 2px 4px);
+}
+
+.atlas-year-value {
+    min-width: 3rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-high);
+    font-weight: 600;
+}
+
+.atlas-year-value--provisional {
+    text-decoration: underline dashed var(--atlas-provisional);
+    text-underline-offset: 3px;
+}
+
+.atlas-provisional-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 0 6px;
+    border: 1px dashed var(--atlas-provisional);
+    border-radius: 999px;
+    font-size: 0.75rem;
+    color: var(--text-high);
+}
+
+.atlas-provisional-badge[hidden] {
+    display: none;
+}
+
+.atlas-body {
+    display: flex;
+    height: min(72vh, 46rem);
+    min-height: 26rem;
+}
+
+.atlas-stage-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+}
+
+.atlas-stage-wrap .strata-stage {
+    position: absolute;
+    inset: 0;
+}
+
+.atlas-stage:focus-visible {
+    outline: 2px solid var(--strata-accent);
+    outline-offset: -2px;
+}
+
+.atlas-message {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 36rem;
+    margin: 0;
+    padding: 10px 14px;
+    border: 1px solid var(--strata-blocked);
+    border-radius: 6px;
+    background: var(--card-bg);
+    color: var(--text-high);
+    font-size: 0.9rem;
+    z-index: 12;
+}
+
+.atlas-message--note {
+    border-color: var(--border-color);
+}
+
+.atlas-message[hidden] {
+    display: none;
+}
+
+.atlas-panel {
+    width: 340px;
+    flex-shrink: 0;
+    overflow-y: auto;
+    padding: 12px 16px;
+    border-left: 1px solid var(--border-color);
+    font-size: 0.83rem;
+    color: var(--text-mid);
+}
+
+.atlas-rule {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-color);
+}
+
+.atlas-rule-title {
+    margin: 0 0 6px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-high);
+}
+
+.atlas-rule-stages {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 4px 10px;
+    margin: 0 0 8px;
+}
+
+.atlas-rule-stages dd {
+    margin: 0;
+}
+
+.atlas-rule-note,
+.atlas-rule-thresholds,
+.atlas-rule-version {
+    margin: 0 0 6px;
+}
+
+.atlas-rule-thresholds {
+    font: 400 0.75rem/1.4 var(--font-mono, ui-monospace, monospace);
+}
+
+.atlas-rule-label {
+    color: var(--text-high);
+}
+
+.atlas-rule-version {
+    font: 500 0.75rem/1.4 var(--font-mono, ui-monospace, monospace);
+    color: var(--text-high);
+}
+
+.atlas-legend {
+    margin-top: 12px;
+}
+
+.atlas-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-high);
+}
+
+.atlas-chip::before {
+    content: "";
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--atlas-chip, var(--strata-node-stateless));
+}
+
+.atlas-chip--provisional::before {
+    background: repeating-linear-gradient(135deg, var(--atlas-provisional) 0 2px, transparent 2px 4px);
+    border: 1px dashed var(--atlas-provisional);
+}
+
+.atlas-chip--ghost::before {
+    background: transparent;
+    border: 1px dashed var(--text-mid);
+}
+
+.atlas-stage-line {
+    margin: 0 0 6px;
+}
+
+.atlas-parents-title {
+    margin: 10px 0 4px;
+    color: var(--text-high);
+}
+
+.atlas-parents {
+    margin: 0 0 8px;
+    padding-left: 18px;
+}
+
+.atlas-link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--strata-accent);
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.strata-label--ghost {
+    font-style: italic;
+    color: var(--text-mid);
+}
+
+/* The table (static/js/strata-atlas-table.js) reuses the Strata table's classes (strata.css) for
+   the scroll region, headers, sort arrows, focus ring, and selected row, and adds its own cells.
+   Genre rows lead their styles, which are indented under them. */
+.atlas-stage[hidden] {
+    display: none;
+}
+
+.atlas-row--genre th {
+    font-weight: 600;
+}
+
+.atlas-row--style th {
+    padding-left: 22px;
+}
+
+/* The selected row keeps its text readable: a tint of the accent and a bar, where the Strata table's
+   row color (--strata-hover) is the solid hover cyan the 3D rings use. */
+.atlas-row[aria-current="true"] {
+    background: var(--inner-bg);
+    background: color-mix(in srgb, var(--strata-accent) 16%, transparent);
+    box-shadow: inset 3px 0 0 var(--strata-accent);
+}
+
+.atlas-row[aria-current="true"] th {
+    color: var(--text-high);
+    text-decoration: underline;
+    text-decoration-color: var(--strata-accent);
+    text-underline-offset: 3px;
+}
+
+.atlas-cell-name,
+.atlas-cell-stage,
+.atlas-cell-provisional,
+.atlas-cell-year {
+    white-space: nowrap;
+}
+
+.atlas-cell-year {
+    font-variant-numeric: tabular-nums;
+}
+
+.atlas-cell-parents,
+.atlas-cell-edges {
+    min-width: 13rem;
+}
+
+.atlas-table-note:empty {
+    display: none;
+}
+
+/* The Genres pane: the atlas beside the flat tree, chosen by a toggle. */
+.genres-view-toggle {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 12px;
+}
+
+#genreAtlasMount[hidden],
+#genreTreeContainer[hidden] {
+    display: none;
+}
+
+.insights-atlas-section {
+    margin-top: 24px;
+}
+
+/* Lifecycle swatches follow the theme the renderer reads (strata-collector.js activeTheme). */
+:root { --atlas-provisional: var(--groovemap-state-lifecycle-provisional-light); }
+.dark { --atlas-provisional: var(--groovemap-state-lifecycle-provisional-dark); }
+.atlas-stage--absent { --atlas-chip: var(--groovemap-state-lifecycle-absent-light); }
+.atlas-stage--emerging { --atlas-chip: var(--groovemap-state-lifecycle-emerging-light); }
+.atlas-stage--established { --atlas-chip: var(--groovemap-state-lifecycle-established-light); }
+.atlas-stage--reviving { --atlas-chip: var(--groovemap-state-lifecycle-reviving-light); }
+.atlas-stage--declining { --atlas-chip: var(--groovemap-state-lifecycle-declining-light); }
+.dark .atlas-stage--absent { --atlas-chip: var(--groovemap-state-lifecycle-absent-dark); }
+.dark .atlas-stage--emerging { --atlas-chip: var(--groovemap-state-lifecycle-emerging-dark); }
+.dark .atlas-stage--established { --atlas-chip: var(--groovemap-state-lifecycle-established-dark); }
+.dark .atlas-stage--reviving { --atlas-chip: var(--groovemap-state-lifecycle-reviving-dark); }
+.dark .atlas-stage--declining { --atlas-chip: var(--groovemap-state-lifecycle-declining-dark); }
+
+@media (max-width: 760px) {
+    .atlas-body {
+        flex-direction: column;
+        height: auto;
+    }
+
+    .atlas-stage-wrap {
+        flex: none;
+        height: 26rem;
+    }
+
+    .atlas-panel {
+        width: auto;
+        max-height: 20rem;
+        border-left: 0;
+        border-top: 1px solid var(--border-color);
+    }
+}

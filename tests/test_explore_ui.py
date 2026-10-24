@@ -416,6 +416,8 @@ class TestExploreGenreTree:
         _goto_ready(page, test_server)
 
         _switch_pane(page, "genres")
+        # The pane opens on the Genre Atlas; the flat tree is the other view.
+        page.locator("[data-genres-view='tree']").click()
 
         # Wait for genre tree items to appear (fetched from /api/genre-tree)
         items = page.locator(".genre-tree-item")

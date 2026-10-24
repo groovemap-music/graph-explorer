@@ -298,6 +298,18 @@ def strata_response(artist_id: str, focus: str | None, page: int, signed_in: boo
     return 200, body if signed_in else _anonymous(body)
 
 
+# A recorded GET /api/insights/style-atlas body (tests/fixtures/style-atlas.json): analytics-engine's
+# read path over its layout and lifecycle rule, on a seeded synthetic catalogue with invented style
+# names. No live database is read.
+STYLE_ATLAS_FIXTURE = Path(__file__).parent / "fixtures" / "style-atlas.json"
+
+
+def style_atlas_response() -> dict[str, Any]:
+    """The recorded style-atlas body."""
+    body: dict[str, Any] = json.loads(STYLE_ATLAS_FIXTURE.read_text())["body"]
+    return body
+
+
 def create_test_app() -> FastAPI:
     """Create a test instance of the Explore FastAPI app."""
     app = FastAPI(
@@ -769,6 +781,10 @@ def create_test_app() -> FastAPI:
         signed_in = bool(authorization and authorization.startswith("Bearer "))
         status, body = strata_response(artist_id, focus, page, signed_in)
         return JSONResponse(content=body, status_code=status)
+
+    @app.get("/api/insights/style-atlas")
+    async def insights_style_atlas() -> JSONResponse:
+        return JSONResponse(content=style_atlas_response())
 
     @app.get("/api/expand")
     async def expand(

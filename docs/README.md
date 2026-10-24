@@ -4,6 +4,7 @@
 - [Configuration](configuration.md)
 - [User guide and accessibility](user-guide.md)
 - [Discography Strata](discography-strata.md)
+- [Genre Atlas](genre-atlas.md)
 - [Strata renderer](strata-renderer.md)
 - [Activity events and account data controls](activity-and-account-data.md)
 - [Architecture decisions](architecture-decisions.md)

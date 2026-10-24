@@ -107,7 +107,8 @@ const SHAPES = {
 };
 
 // The mockup's ribbon(): two triangles per solid run, optional dashes and arrow head, on y = 0.
-function ribbon(out, segment, { width, dash, arrow }) {
+// Exported for the Genre Atlas renderer (strata-atlas-renderer.js), which draws its own edge kinds.
+export function ribbon(out, segment, { width, dash, arrow }) {
     const [ax, az, bx, bz] = segment;
     let dx = bx - ax;
     let dz = bz - az;

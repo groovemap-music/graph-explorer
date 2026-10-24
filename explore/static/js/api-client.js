@@ -838,6 +838,20 @@ class ApiClient {
         if (!response.ok) return null;
         return this._transport.readJson(response);
     }
+
+    /**
+     * The Genre Atlas: the latest month's genre ring, style and ghost positions, and lifecycle
+     * stages, laid out by analytics-engine. Before the first monthly run the body has no month and
+     * empty lists, with the stage rule still present; that is a 200, not an error. The status and
+     * body come back so the view can word a failure itself.
+     *
+     * @returns {Promise<{ok: boolean, status: number, body: Object|null}>}
+     */
+    async getStyleAtlas() {
+        const response = await this._transport.fetch('/api/insights/style-atlas');
+        const body = await this._transport.readJson(response).catch(() => null);
+        return { ok: response.ok, status: response.status, body };
+    }
     // --- NLQ (Natural Language Query) ---
 
     /**
