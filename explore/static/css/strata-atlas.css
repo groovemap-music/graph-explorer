@@ -53,6 +53,15 @@
     gap: 8px;
 }
 
+/* The collector's "recorded as of" control (Taste Strata), shown only with a signed-in projection. */
+.atlas-recorded {
+    flex: 1 1 20rem;
+}
+
+.atlas-recorded[hidden] {
+    display: none;
+}
+
 .atlas-track {
     display: flex;
     flex: 1;
@@ -61,7 +70,8 @@
     min-width: 10rem;
 }
 
-.atlas-year {
+.atlas-year,
+.atlas-recorded-year {
     width: 100%;
     margin: 0;
     accent-color: var(--strata-accent);
@@ -85,7 +95,8 @@
     background: repeating-linear-gradient(135deg, var(--atlas-provisional) 0 2px, transparent 2px 4px);
 }
 
-.atlas-year-value {
+.atlas-year-value,
+.atlas-recorded-value {
     min-width: 3rem;
     font-variant-numeric: tabular-nums;
     color: var(--text-high);
@@ -212,6 +223,28 @@
 
 .atlas-legend {
     margin-top: 12px;
+}
+
+/* Taste Strata: the signed-in collector's section of the panel. */
+.atlas-taste {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-color);
+}
+
+.atlas-taste-title {
+    margin: 0 0 6px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-high);
+}
+
+.atlas-taste-legend {
+    margin: 6px 0 8px;
+}
+
+.atlas-held .strata-chip {
+    color: var(--text-high);
 }
 
 .atlas-chip {

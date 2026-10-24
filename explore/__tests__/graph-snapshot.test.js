@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { loadScriptDirect } from './helpers.js';
 
 /**
@@ -126,5 +129,97 @@ describe('GraphVisualization snapshot/restore/clearAll/addEntity', () => {
         expect(graph.nodes).toHaveLength(1);
         expect(graph.nodes[0]).toMatchObject({ id: 'Aphex Twin', name: 'Aphex Twin', type: 'artist' });
         expect(graph._render).toHaveBeenCalled();
+    });
+});
+
+/**
+ * Personal layers stay out of shareable snapshots (ADR 0016 section 6). The Taste Strata layer
+ * lives in the Genre Atlas, beside the graph; a share link sends `shareableSnapshot()` and nothing
+ * else (app.js _shareSnapshot). These load the real atlas with a signed-in collector's projection
+ * next to a graph and show that no part of the projection reaches the snapshot body.
+ */
+describe('shareable snapshots carry no Taste Strata layer', () => {
+    const HERE = dirname(fileURLToPath(import.meta.url));
+    const fixture = (name) => JSON.parse(readFileSync(resolve(HERE, '..', '..', 'tests', 'fixtures', name), 'utf8'));
+    const ATLAS = { ...fixture('style-atlas.json').body, masters: fixture('style-atlas-masters.json').masters };
+    const TASTE = fixture('taste-projection.json').body;
+    let graph;
+
+    beforeAll(() => {
+        // The scripts declare globals, so they load once per file, whichever describe runs first.
+        if (typeof GraphVisualization === 'function') return; // eslint-disable-line no-undef
+        delete globalThis.window;
+        globalThis.window = globalThis;
+        globalThis.d3 = createD3Stub();
+        setupDOM();
+        loadScriptDirect('graph-state.js');
+        loadScriptDirect('graph.js');
+    });
+
+    beforeEach(() => {
+        setupDOM();
+        globalThis.d3 = createD3Stub();
+        graph = new GraphVisualization('graphContainer'); // eslint-disable-line no-undef
+        graph.centerName = 'Copper Drift';
+        graph.centerType = 'style';
+        graph.nodes = [
+            { id: 'c', name: 'Copper Drift', type: 'style', isCenter: true },
+            { id: 'cat', name: 'Artists', type: 'category', isCategory: true },
+            { id: 'a', name: 'Kraftwerk', nodeId: '123', type: 'artist' },
+        ];
+    });
+
+    async function signedInAtlas() {
+        const { GenreAtlas } = await import('../static/js/strata-atlas.js');
+        const auth = { isLoggedIn: () => true, getToken: () => 'tok', onChange: () => () => {} };
+        const api = {
+            getStyleAtlas: async () => ({ ok: true, status: 200, body: ATLAS }),
+            getTasteProjection: async () => ({ ok: true, status: 200, body: TASTE }),
+        };
+        const renderer = Object.assign(new EventTarget(), { setLayout() {}, setYear() {}, select() {}, start() {}, stop() {}, resize() {}, refreshTaste() {}, dispose() {} });
+        const atlas = new GenreAtlas({ doc: document, api, auth, createRenderer: () => renderer, observeTheme: false });
+        document.body.append(atlas.root);
+        await atlas.show();
+        return atlas;
+    }
+
+    /** Every id, count, state, and recorded time of the projection, as text that must not leak. */
+    function personalTokens() {
+        const tokens = new Set(['recorded', 'owned', 'wanted', 'held', 'taste', 'collector']);
+        for (const master of TASTE.masters) tokens.add(master.id);
+        for (const list of [TASTE.genres, TASTE.styles, TASTE.masters]) {
+            for (const entry of list) for (const span of Object.values(entry.recorded_at)) if (span) for (const at of [span.first, span.last]) if (at) tokens.add(at);
+        }
+        return [...tokens];
+    }
+
+    it('sends only each drawn entity\'s id and type, and the centre', () => {
+        expect(graph.shareableSnapshot()).toEqual({
+            nodes: [{ id: 'Copper Drift', type: 'style' }, { id: '123', type: 'artist' }],
+            center: { id: 'Copper Drift', type: 'style' },
+        });
+        graph.centerName = null;
+        expect(graph.shareableSnapshot()).toBeNull();
+    });
+
+    it('is the same body, with no part of the projection in it, while the layer is on screen', async () => {
+        const before = JSON.stringify(graph.shareableSnapshot());
+        const atlas = await signedInAtlas();
+        // The layer is really there: the collector's masters are placed and their styles marked.
+        expect(atlas.tasteStatus).toBe('ready');
+        expect(atlas.layout.nodes.filter((node) => node.master?.collector)).toHaveLength(3);
+        expect(atlas.layout.nodes.find((node) => node.id === 's:Copper Drift').held).not.toBeNull();
+        const body = JSON.stringify(graph.shareableSnapshot());
+        expect(body).toBe(before);
+        for (const token of personalTokens()) expect(body).not.toContain(token);
+        const undo = JSON.stringify(graph.snapshot());
+        for (const token of personalTokens().filter((t) => /\d{4}-|^\d+$/.test(t))) expect(undo).not.toContain(token);
+        atlas.dispose();
+    });
+
+    it('drops anything personal a graph node might carry, since only id and type are sent', () => {
+        graph.nodes[2] = { ...graph.nodes[2], held: { state: 'owned', items: 3 }, recorded_at: { owned: { first: '2019-03-02T10:00:00Z' } }, taste: TASTE };
+        const body = JSON.stringify(graph.shareableSnapshot());
+        for (const token of personalTokens()) expect(body).not.toContain(token);
     });
 });

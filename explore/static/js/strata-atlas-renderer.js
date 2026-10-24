@@ -13,7 +13,11 @@
  *     so the cue is never color alone (design brand/README.md);
  *   - genre hulls on the style plane, tagged with the styles and ghosts each one counts;
  *   - vertical links are the emergence edges only, dashed for a ghost;
- *   - lateral edges are the selected style's star only (strata-atlas-layout.js lateralEdges).
+ *   - lateral edges are the selected style's star only (strata-atlas-layout.js lateralEdges);
+ *   - the signed-in collector's layer (strata-taste.js paintTaste), when the view painted one: a
+ *     ring in the collector state's token around each held genre, style, ghost, and landmark master,
+ *     and the collector's own masters on the master plane in their state's color. A node first
+ *     recorded after the "recorded as of" year loses its ring, and a collector master is dimmed.
  *
  * Like the engine, it writes no style attribute and parses no HTML.
  */
@@ -28,6 +32,10 @@ const PLANE_MARGIN = 7;
 const HULL_COLORS = 4;
 const DIM = 0.8;
 const DASHES = 10;
+/** A held ring's radius, as a share of its node's size: inside the footprint check's gap. */
+const HELD_RING = 1.2;
+/** How far a collector master not yet recorded in the "recorded as of" year fades to the canvas. */
+const NOT_YET = 0.6;
 
 /** The lifecycle stages the promoted tokens name, and the provisional treatment's color. */
 export const LIFECYCLE_STAGES = Object.freeze(['absent', 'emerging', 'established', 'reviving', 'declining']);
@@ -43,9 +51,10 @@ export const ATLAS_EDGE_STYLES = Object.freeze({
     cotag: Object.freeze({ width: 0.45, dash: false, arrow: false }),
 });
 
-/** A node's label: a ghost copy is marked as one. */
+/** A node's label: a ghost copy is marked as one, and a node the collector holds says how many items. */
 export function atlasLabel(node) {
-    return node.entity === 'ghost' ? `${node.label} ↗` : node.label || node.id;
+    const label = node.entity === 'ghost' ? `${node.label} ↗` : node.label || node.id;
+    return node.held ? `${label} · ${node.held.items} yours` : label;
 }
 
 function positions(list) {
@@ -68,6 +77,13 @@ function dashedRing() {
     return geometry;
 }
 
+// A flat solid ring in the xz plane, radius 1: the collector's held mark.
+function heldRing() {
+    const geometry = new THREE.RingGeometry(0.78, 1, 32, 1);
+    geometry.rotateX(-Math.PI / 2);
+    return geometry;
+}
+
 // A sector boundary angle (radians, counter-clockwise from east, y north) as world x, z.
 function polar(angle, radius) {
     return [Math.cos(angle) * radius * ATLAS_RADIUS, -Math.sin(angle) * radius * ATLAS_RADIUS];
@@ -85,6 +101,7 @@ export class AtlasRenderer extends StrataRenderer {
         this.cotags = options.cotags || (() => []);
         this.year = null;
         this.provisionalRings = [];
+        this.heldRings = [];
         this.ghostLinks = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ transparent: true, opacity: 0.45, dashSize: 1.2, gapSize: 1.2 }));
         this.ghostLinks.material.color.copy(this.colors.link);
         this.scene.add(this.ghostLinks);
@@ -101,8 +118,19 @@ export class AtlasRenderer extends StrataRenderer {
         const ghosts = layout.nodes.filter((node) => node.entity === 'ghost').length;
         this.planeLabels[0].count.textContent = String(layout.nodes.filter((node) => node.level === 0).length);
         this.planeLabels[1].count.textContent = `${styles} + ${ghosts} ghosts`;
-        const masters = layout.nodes.filter((node) => node.level === MASTER_PLANE).length;
-        this.planeLabels[MASTER_PLANE].count.textContent = masters ? String(masters) : layout.atlas.masters?.length ? 'not placed yet' : 'none served';
+        const masters = layout.nodes.filter((node) => node.level === MASTER_PLANE);
+        const collectors = masters.filter((node) => node.master.collector).length;
+        const landmarks = masters.length - collectors;
+        this.planeLabels[MASTER_PLANE].count.textContent = collectors ? `${landmarks} + ${collectors} yours` : landmarks ? String(landmarks) : layout.atlas.masters?.length ? 'not placed yet' : 'none served';
+    }
+
+    /** Redraw the collector's layer after the view repainted it (strata-taste.js paintTaste). Nothing moves. */
+    refreshTaste() {
+        if (!this.layout) return;
+        this.buildHeldRings();
+        this.recolor();
+        this.candidatesKey = null;
+        this.invalidate();
     }
 
     /** Rebuild the selected style's lateral edges, after its co-tags arrive. */
@@ -150,15 +178,18 @@ export class AtlasRenderer extends StrataRenderer {
     clearLayout() {
         super.clearLayout();
         this.provisionalRings = [];
+        this.heldRings = [];
     }
 
     geometry(shape, detail) {
-        if (shape === 'dashed-ring' && !this.geometries.has('dashed-ring')) {
-            const geometry = dashedRing();
+        const own = { 'dashed-ring': dashedRing, 'held-ring': heldRing }[shape];
+        if (!own) return super.geometry(shape, detail);
+        if (!this.geometries.has(shape)) {
+            const geometry = own();
             geometry.userData.shared = true;
-            this.geometries.set('dashed-ring', geometry);
+            this.geometries.set(shape, geometry);
         }
-        return shape === 'dashed-ring' ? this.geometries.get('dashed-ring') : super.geometry(shape, detail);
+        return this.geometries.get(shape);
     }
 
     // The engine's plane, with the served ring in place of the year axis: the disc's edge on every
@@ -227,17 +258,49 @@ export class AtlasRenderer extends StrataRenderer {
             ring.userData = { nodes: staged, level, provisional: true };
             this.provisionalRings.push(this.track(level, ring));
         }
+        this.buildHeldRings();
+    }
+
+    // The collector's held mark: a ring in the state's color around every held node but the
+    // collector's own masters, which carry the color themselves. Not pickable. Rebuilt whenever the
+    // "recorded as of" year changes which nodes are held.
+    buildHeldRings() {
+        for (const ring of this.heldRings) {
+            ring.removeFromParent();
+            ring.material.dispose();
+            this.layoutObjects.splice(this.layoutObjects.indexOf(ring), 1);
+        }
+        this.heldRings = [];
+        const matrix = new THREE.Matrix4();
+        const none = new THREE.Quaternion();
+        const scale = new THREE.Vector3();
+        const at = new THREE.Vector3();
+        for (const level of [0, 1, 2]) {
+            const held = this.layout.nodes.filter((node) => node.level === level && node.held && !node.master?.collector);
+            if (!held.length) continue;
+            const ring = new THREE.InstancedMesh(this.geometry('held-ring'), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.95, depthWrite: false, side: THREE.DoubleSide }), held.length);
+            held.forEach((node, i) => ring.setMatrixAt(i, matrix.compose(at.set(node.x, 0.1, node.z), none, scale.setScalar(node.size * HELD_RING))));
+            ring.userData = { nodes: held, level, held: true };
+            this.heldRings.push(this.track(level, ring));
+        }
     }
 
     stageColor(stage) {
         return (stage && this.lifecycle.stages.get(stage)) || this.colors.stateless;
     }
 
+    // A node's fill: its lifecycle stage, or for the collector's own master its collector state.
+    nodeColor(node, color) {
+        if (!node.master?.collector) return color.copy(this.stageColor(node.stage));
+        if (node.held) return color.copy(this.colors.state(node.held.state));
+        return color.copy(this.colors.stateless).lerp(this.colors.canvas, NOT_YET);
+    }
+
     recolor() {
         const color = new THREE.Color();
         for (const { mesh, nodes } of this.instanced) {
             nodes.forEach((node, i) => {
-                color.copy(this.stageColor(node.stage));
+                this.nodeColor(node, color);
                 if (this.selection && !this.selection.has(node.id)) color.lerp(this.colors.canvas, DIM);
                 mesh.setColorAt(i, color);
             });
@@ -248,6 +311,14 @@ export class AtlasRenderer extends StrataRenderer {
             ring.material.color.copy(this.lifecycle.provisional);
             ring.userData.nodes.forEach((node, i) => {
                 color.setRGB(1, 1, 1);
+                if (this.selection && !this.selection.has(node.id)) color.lerp(this.colors.canvas, DIM);
+                ring.setColorAt(i, color);
+            });
+            if (ring.instanceColor) ring.instanceColor.needsUpdate = true;
+        }
+        for (const ring of this.heldRings) {
+            ring.userData.nodes.forEach((node, i) => {
+                color.copy(this.colors.state(node.held.state));
                 if (this.selection && !this.selection.has(node.id)) color.lerp(this.colors.canvas, DIM);
                 ring.setColorAt(i, color);
             });

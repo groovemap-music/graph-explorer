@@ -1,0 +1,319 @@
+{
+  "description": "A synthetic GET /api/user/taste-projection body over the invented style names of the recorded style-atlas body (style-atlas.json), built with catalog-api's own fold (api/taste_projection.py build_taste_projection) from seven invented held releases. It covers: a held landmark master (910001, Amber Bop's top landmark); collector masters in a primary style (Amber Bop), in a style drawn with a ghost copy (Copper Drift), and with no recorded time (Dusty Drift); a master whose only style is not drawn on the atlas (Phantom Fizz); two masterless items; one genre-only item; and a release both wanted and owned. No real collection is read.",
+  "body": {
+    "totals": {
+      "items": 7,
+      "owned": 5,
+      "wanted": 3,
+      "wanted_owned": 1,
+      "masterless_items": 2,
+      "genre_only_items": 1,
+      "unplaced_items": 0
+    },
+    "recorded_at": {
+      "owned": {
+        "first": "2015-06-10T12:00:00Z",
+        "last": "2022-02-14T08:00:00Z",
+        "undated": 1
+      },
+      "wanted": {
+        "first": "2014-01-05T09:30:00Z",
+        "last": "2024-02-02T20:15:00Z",
+        "undated": 0
+      }
+    },
+    "genres": [
+      {
+        "id": "Electronic",
+        "items": 4,
+        "owned": 2,
+        "wanted": 2,
+        "state": "wanted_owned",
+        "recorded_at": {
+          "owned": {
+            "first": "2019-03-02T10:00:00-08:00",
+            "last": "2022-02-14T08:00:00Z",
+            "undated": 0
+          },
+          "wanted": {
+            "first": "2023-11-20T18:00:00Z",
+            "last": "2024-02-02T20:15:00Z",
+            "undated": 0
+          }
+        }
+      },
+      {
+        "id": "Blues",
+        "items": 2,
+        "owned": 2,
+        "wanted": 1,
+        "state": "wanted_owned",
+        "recorded_at": {
+          "owned": {
+            "first": "2015-06-10T12:00:00Z",
+            "last": "2015-06-10T12:00:00Z",
+            "undated": 1
+          },
+          "wanted": {
+            "first": "2014-01-05T09:30:00Z",
+            "last": "2014-01-05T09:30:00Z",
+            "undated": 0
+          }
+        }
+      },
+      {
+        "id": "Jazz",
+        "items": 1,
+        "owned": 1,
+        "wanted": 0,
+        "state": "owned",
+        "recorded_at": {
+          "owned": {
+            "first": "2018-05-05T11:00:00Z",
+            "last": "2018-05-05T11:00:00Z",
+            "undated": 0
+          },
+          "wanted": null
+        }
+      },
+      {
+        "id": "Pop",
+        "items": 1,
+        "owned": 1,
+        "wanted": 1,
+        "state": "wanted_owned",
+        "recorded_at": {
+          "owned": {
+            "first": "2015-06-10T12:00:00Z",
+            "last": "2015-06-10T12:00:00Z",
+            "undated": 0
+          },
+          "wanted": {
+            "first": "2014-01-05T09:30:00Z",
+            "last": "2014-01-05T09:30:00Z",
+            "undated": 0
+          }
+        }
+      },
+      {
+        "id": "Rock",
+        "items": 1,
+        "owned": 1,
+        "wanted": 0,
+        "state": "owned",
+        "recorded_at": {
+          "owned": {
+            "first": null,
+            "last": null,
+            "undated": 1
+          },
+          "wanted": null
+        }
+      }
+    ],
+    "styles": [
+      {
+        "id": "Amber Bop",
+        "items": 3,
+        "owned": 2,
+        "wanted": 1,
+        "state": "wanted_owned",
+        "recorded_at": {
+          "owned": {
+            "first": "2019-03-02T10:00:00-08:00",
+            "last": "2022-02-14T08:00:00Z",
+            "undated": 0
+          },
+          "wanted": {
+            "first": "2023-11-20T18:00:00Z",
+            "last": "2023-11-20T18:00:00Z",
+            "undated": 0
+          }
+        }
+      },
+      {
+        "id": "Copper Drift",
+        "items": 1,
+        "owned": 1,
+        "wanted": 1,
+        "state": "wanted_owned",
+        "recorded_at": {
+          "owned": {
+            "first": "2015-06-10T12:00:00Z",
+            "last": "2015-06-10T12:00:00Z",
+            "undated": 0
+          },
+          "wanted": {
+            "first": "2014-01-05T09:30:00Z",
+            "last": "2014-01-05T09:30:00Z",
+            "undated": 0
+          }
+        }
+      },
+      {
+        "id": "Copper Swing",
+        "items": 1,
+        "owned": 0,
+        "wanted": 1,
+        "state": "wanted",
+        "recorded_at": {
+          "owned": null,
+          "wanted": {
+            "first": "2023-11-20T18:00:00Z",
+            "last": "2023-11-20T18:00:00Z",
+            "undated": 0
+          }
+        }
+      },
+      {
+        "id": "Dusty Drift",
+        "items": 1,
+        "owned": 1,
+        "wanted": 0,
+        "state": "owned",
+        "recorded_at": {
+          "owned": {
+            "first": null,
+            "last": null,
+            "undated": 1
+          },
+          "wanted": null
+        }
+      },
+      {
+        "id": "Phantom Fizz",
+        "items": 1,
+        "owned": 0,
+        "wanted": 1,
+        "state": "wanted",
+        "recorded_at": {
+          "owned": null,
+          "wanted": {
+            "first": "2024-02-02T20:15:00Z",
+            "last": "2024-02-02T20:15:00Z",
+            "undated": 0
+          }
+        }
+      }
+    ],
+    "masters": [
+      {
+        "id": "910001",
+        "year": 1971,
+        "genres": [
+          "Electronic"
+        ],
+        "styles": [
+          "Amber Bop"
+        ],
+        "items": 1,
+        "owned": 1,
+        "wanted": 0,
+        "state": "owned",
+        "recorded_at": {
+          "owned": {
+            "first": "2019-03-02T10:00:00-08:00",
+            "last": "2019-03-02T10:00:00-08:00",
+            "undated": 0
+          },
+          "wanted": null
+        }
+      },
+      {
+        "id": "7100001",
+        "year": 1988,
+        "genres": [
+          "Blues",
+          "Pop"
+        ],
+        "styles": [
+          "Copper Drift"
+        ],
+        "items": 1,
+        "owned": 1,
+        "wanted": 1,
+        "state": "wanted_owned",
+        "recorded_at": {
+          "owned": {
+            "first": "2015-06-10T12:00:00Z",
+            "last": "2015-06-10T12:00:00Z",
+            "undated": 0
+          },
+          "wanted": {
+            "first": "2014-01-05T09:30:00Z",
+            "last": "2014-01-05T09:30:00Z",
+            "undated": 0
+          }
+        }
+      },
+      {
+        "id": "7100002",
+        "year": 2003,
+        "genres": [
+          "Electronic"
+        ],
+        "styles": [
+          "Amber Bop",
+          "Copper Swing"
+        ],
+        "items": 1,
+        "owned": 0,
+        "wanted": 1,
+        "state": "wanted",
+        "recorded_at": {
+          "owned": null,
+          "wanted": {
+            "first": "2023-11-20T18:00:00Z",
+            "last": "2023-11-20T18:00:00Z",
+            "undated": 0
+          }
+        }
+      },
+      {
+        "id": "7100003",
+        "year": null,
+        "genres": [
+          "Blues",
+          "Rock"
+        ],
+        "styles": [
+          "Dusty Drift"
+        ],
+        "items": 1,
+        "owned": 1,
+        "wanted": 0,
+        "state": "owned",
+        "recorded_at": {
+          "owned": {
+            "first": null,
+            "last": null,
+            "undated": 1
+          },
+          "wanted": null
+        }
+      },
+      {
+        "id": "7100004",
+        "year": 1999,
+        "genres": [
+          "Electronic"
+        ],
+        "styles": [
+          "Phantom Fizz"
+        ],
+        "items": 1,
+        "owned": 0,
+        "wanted": 1,
+        "state": "wanted",
+        "recorded_at": {
+          "owned": null,
+          "wanted": {
+            "first": "2024-02-02T20:15:00Z",
+            "last": "2024-02-02T20:15:00Z",
+            "undated": 0
+          }
+        }
+      }
+    ]
+  }
+}

@@ -934,6 +934,21 @@ class GraphVisualization {
     }
 
     /**
+     * The body of a shareable snapshot (`POST /api/snapshot`): the drawn entities as `{id, type}`
+     * and the centre, or null when nothing is centred. Only these fields leave the browser, so
+     * nothing personal a view keeps beside the graph (the Taste Strata layer, ADR 0016 section 6)
+     * can ride along.
+     * @returns {{ nodes: Array<{id: string, type: string}>, center: {id: string, type: string} } | null}
+     */
+    shareableSnapshot() {
+        const nodes = (this.nodes || [])
+            .filter(n => !n.isCategory)
+            .map(n => ({ id: n.nodeId || n.name, type: n.type }));
+        if (!this.centerName || nodes.length === 0) return null;
+        return { nodes, center: { id: this.centerName, type: this.centerType } };
+    }
+
+    /**
      * Replace current nodes and links with a previously captured snapshot and re-render.
      * @param {{ nodes: Array, links: Array }} snap
      */

@@ -14,6 +14,9 @@ import { STRATA_TOKENS } from '../static/js/strata-renderer.js';
 import { AtlasRenderer, LIFECYCLE_STAGES, atlasLabel, lifecycleTokenName } from '../static/js/strata-atlas-renderer.js';
 import { adaptAtlasPayload, layoutAtlas } from '../static/js/strata-atlas-layout.js';
 import { resolvePick } from '../static/js/strata-scene.js';
+import { atlasMasterSlot } from '../static/js/strata-master-slots.js';
+import { stateTokenName } from '../static/js/strata-collector.js';
+import { adaptTasteProjection, paintTaste, withCollectorMasters } from '../static/js/strata-taste.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BODY = JSON.parse(readFileSync(resolve(HERE, '..', '..', 'tests', 'fixtures', 'style-atlas.json'), 'utf8')).body;
@@ -26,6 +29,7 @@ const TOKENS = new Map([
     ...[...LIFECYCLE_STAGES, 'provisional'].flatMap((stage, i) => ['light', 'dark'].map((theme) => [lifecycleTokenName(stage, theme), `#c0${i}0${theme === 'dark' ? 'f' : '0'}0`])),
 ]);
 TOKENS.set(STRATA_TOKENS.canvas, '#000000');
+const COLLECTOR_TOKENS = new Map(['none', 'wanted', 'owned', 'wanted-owned'].map((state, i) => [stateTokenName(state, 'dark'), `#e0${i}0e0`]));
 
 let mounted = [];
 
@@ -279,5 +283,61 @@ describe('picking and labels', () => {
         renderer.dispose();
         expect(renderer.ghostLinks.parent).toBeNull();
         expect(stage.querySelector('canvas')).toBeNull();
+    });
+});
+
+describe('the Taste Strata layer', () => {
+    const fixture = (name) => JSON.parse(readFileSync(resolve(HERE, '..', '..', 'tests', 'fixtures', name), 'utf8'));
+    const ATLAS = { ...BODY, masters: fixture('style-atlas-masters.json').masters };
+    const TASTE = adaptTasteProjection(fixture('taste-projection.json').body);
+    const tokens = new Map([...TOKENS, ...COLLECTOR_TOKENS]);
+    const collectorToken = (state) => COLLECTOR_TOKENS.get(stateTokenName(state, 'dark'));
+
+    function tasteMount(year = null) {
+        const layout = layoutAtlas(withCollectorMasters(adaptAtlasPayload(ATLAS), TASTE).atlas, { masterSlot: atlasMasterSlot });
+        paintTaste(layout, TASTE, year);
+        return mount({ layout, tokens });
+    }
+
+    function ringColor(renderer, id) {
+        const ring = renderer.heldRings.find((r) => r.userData.nodes.some((n) => n.id === id));
+        if (!ring) return null;
+        const color = new THREE.Color();
+        ring.getColorAt(ring.userData.nodes.findIndex((n) => n.id === id), color);
+        return `#${color.getHexString()}`;
+    }
+
+    it('rings every held genre, style, ghost, and landmark master in its collector state token, and nothing else', () => {
+        const { renderer, layout } = tasteMount();
+        const ringed = renderer.heldRings.flatMap((ring) => ring.userData.nodes.map((n) => n.id)).sort();
+        expect(ringed).toEqual(layout.nodes.filter((n) => n.held && !n.master?.collector).map((n) => n.id).sort());
+        expect(ringColor(renderer, 's:Copper Drift')).toBe(collectorToken('wanted-owned'));
+        expect(ringColor(renderer, 'h:Copper Drift@Blues')).toBe(collectorToken('wanted-owned'));
+        expect(ringColor(renderer, 'm:910001@Amber Bop')).toBe(collectorToken('owned'));
+        expect(renderer.instanced.some((entry) => renderer.heldRings.includes(entry.mesh))).toBe(false);
+    });
+
+    it('draws the collector\'s masters in their state color on the master plane, and counts them there', () => {
+        const { renderer, stage } = tasteMount();
+        expect(colorOf(renderer, 'm:7100002@Amber Bop')).toBe(collectorToken('wanted'));
+        expect(colorOf(renderer, 'm:7100001@Copper Drift')).toBe(collectorToken('wanted-owned'));
+        expect(ringColor(renderer, 'm:7100001@Copper Drift')).toBeNull();
+        expect(stage.querySelectorAll('.strata-plane-label')[2].textContent).toBe(`Masters${ATLAS.masters.length} + 3 yours`);
+        expect(atlasLabel(renderer.byId.get('s:Copper Drift'))).toBe('Copper Drift · 1 yours');
+    });
+
+    it('follows the recorded-as-of year: a later node loses its ring and a later master fades, and nothing moves', () => {
+        const { renderer, layout } = tasteMount();
+        const at = layout.nodes.map((n) => [n.id, n.x, n.z]);
+        paintTaste(layout, TASTE, 2016);
+        renderer.refreshTaste();
+        expect(ringColor(renderer, 's:Amber Bop')).toBeNull();
+        expect(ringColor(renderer, 's:Copper Drift')).toBe(collectorToken('wanted-owned'));
+        expect(colorOf(renderer, 'm:7100002@Amber Bop')).not.toBe(collectorToken('wanted'));
+        expect(layout.nodes.map((n) => [n.id, n.x, n.z])).toEqual(at);
+        paintTaste(layout, TASTE, null);
+        renderer.refreshTaste();
+        expect(ringColor(renderer, 's:Amber Bop')).toBe(collectorToken('wanted-owned'));
+        expect(renderer.layoutObjects.filter((object) => object.userData?.held)).toHaveLength(renderer.heldRings.length);
     });
 });
