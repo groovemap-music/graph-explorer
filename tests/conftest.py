@@ -45,6 +45,18 @@ E2E_CONTEXTS_PER_BROWSER = 32
 # than letting the session drift into the engine ceiling and fail somewhere unrelated.
 E2E_LIVE_CONTEXT_BUDGET = 8
 
+# On Linux, Firefox decides at launch whether this machine may have WebGL2: it forks a `glxtest`
+# probe and gives it 4 seconds (GFX_TEST_TIMEOUT in widget/gtk/GfxInfo.cpp). On a loaded CI runner
+# the probe can miss that deadline, and then the whole browser process refuses every WebGL2 context
+# with "AllowWebgl2:false restricts context creation on this system". three.js draws only WebGL2,
+# so every Discography Strata journey in that process failed, while the same journeys passed in the
+# next run. `webgl.force-enabled` skips that verdict (WebGLContext::CreateAndInitGL) and goes
+# straight to creating the context, which the runner's GL can do: the journeys pass whenever the
+# probe answers in time. Whether the 3D view can be tested no longer depends on how busy the runner
+# was in Firefox's first 4 seconds. What a visitor sees when WebGL really is refused is the view's
+# own message, covered in Vitest.
+FIREFOX_E2E_PREFS: dict[str, Any] = {"webgl.force-enabled": True}
+
 # Every standard OpenTelemetry variable that changes what the SDK records or exports, for both
 # signals. The telemetry suite asserts on what in-memory providers recorded, so it must not
 # inherit the ambient configuration — CI runners in particular may set OTEL_SDK_DISABLED=true to
@@ -256,6 +268,8 @@ def browser_engine(browser_type_launch_args: dict[str, Any]) -> Iterator[Callabl
         launch_args = dict(browser_type_launch_args)
         if engine_name == "chromium":
             launch_args["args"] = ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+        if engine_name == "firefox":
+            launch_args["firefox_user_prefs"] = FIREFOX_E2E_PREFS
         _DEVICE_CONTEXT.clear()
         if project in {"iphone", "ipad"}:
             device_name = "iPhone 15" if project == "iphone" else "iPad (gen 11)"

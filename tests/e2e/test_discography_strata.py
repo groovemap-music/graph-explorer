@@ -11,7 +11,9 @@ release ceiling answers 422 and a slow read answers 504.
 
 The 3D view is driven from the keyboard, which is how it is documented to be used without a
 pointer: a canvas click would only prove where the camera happened to be. Nothing here reads the
-GPU, so the journey holds on every project in the matrix.
+GPU, so the journey holds on every project in the matrix. Nothing waits on time either: labels are
+placed by the renderer's frame loop, after the DOM that names the page, so every step that reads or
+drives the 3D view first waits for the readiness signal the view and its renderer expose.
 
 Searching for a pressing the current page does not draw goes through the route's release cursor
 (`focus=r:<id>` or `mb:<mbid>`): it opens the page that holds the pressing, however deep, and selects
@@ -51,6 +53,19 @@ def _open_artist(page: Page, explore_url: str, name: str, *, signed_in: bool = T
     search.press("Enter")
     # The view toggle stays disabled until the search has centered an artist.
     expect(page.locator('[data-explore-view="strata"]')).to_be_enabled(timeout=15_000)
+
+
+def _wait_for_strata_frame(page: Page) -> None:
+    """Wait until the 3D view has loaded and drawn a settled frame: labels placed, camera at rest.
+
+    `aria-busy` on the view is true while a strata request is in flight. The renderer marks the stage
+    `data-strata-frame="settled"` only after a frame has drawn the current layout, and back to
+    `pending` the moment a key, a click, or a new page changes what it shows. Waiting on both holds
+    however late a loaded runner gets to its next animation frame.
+    """
+    expect(page.locator("#strataView")).to_have_attribute("aria-busy", "false", timeout=15_000)
+    expect(page.locator("#strataStage canvas"), "the 3D view has no WebGL renderer").to_have_count(1)
+    expect(page.locator("#strataStage")).to_have_attribute("data-strata-frame", "settled", timeout=15_000)
 
 
 def _show(page: Page, view: str) -> None:
@@ -111,6 +126,7 @@ def test_strata_journey_from_search_to_a_pressing_nothing_can_change(page: Page,
     expect(page.locator("#strataStage canvas")).to_have_count(1)
     expect(page.locator("#strataTrail")).to_be_hidden()
     assert asked == [(None, 0)]
+    _wait_for_strata_frame(page)
 
     # Drill an aggregate: solo the master plane, step to the 1990s group, and open it.
     page.locator("#strataStage").focus()
@@ -128,17 +144,20 @@ def test_strata_journey_from_search_to_a_pressing_nothing_can_change(page: Page,
     expect(trail).to_contain_text("page 2 of 2")
     trail.get_by_role("button", name="Previous page").click()
     expect(trail).to_contain_text("page 1 of 2")
+    _wait_for_strata_frame(page)
     focus = "ma:c:9001:1990s"
     assert asked[1:] == [(focus, 0), (focus, 1), (focus, 0)]
 
     # Back to the overview, then into one master's pressings.
     trail.get_by_role("button", name="Back").click()
     expect(trail).to_be_hidden()
+    _wait_for_strata_frame(page)
     page.locator("#strataStage").focus()
     page.keyboard.press("Escape")
     _step_to(page, "]", "Lantern Static")
     page.keyboard.press("Enter")
     expect(trail).to_contain_text("pressings of Lantern Static: page 1 of 2")
+    _wait_for_strata_frame(page)
 
     # A pressing that exists only in MusicBrainz says why nothing can be done to it, and offers
     # no action at all: no Discogs page, no sync, no observation.
@@ -190,6 +209,7 @@ def test_strata_search_opens_a_pressing_the_page_does_not_draw(page: Page, explo
     _open_artist(page, explore_url, ARTIST)
     _show(page, "strata")
     expect(page.locator("#strataSummary .strata-summary-title")).to_have_text(ARTIST, timeout=15_000)
+    _wait_for_strata_frame(page)
     trail = page.locator("#strataTrail")
     selection = page.locator("#strataSelection")
 
@@ -203,8 +223,10 @@ def test_strata_search_opens_a_pressing_the_page_does_not_draw(page: Page, explo
     expect(page.locator("#strataMessage")).to_be_hidden()
     # The pressing opened from the overview, so the first button of the trail goes back to it.
     expect(trail.get_by_role("button").first).to_have_text("Back")
+    _wait_for_strata_frame(page)
     trail.get_by_role("button", name="Back").click()
     expect(trail).to_be_hidden()
+    _wait_for_strata_frame(page)
 
     # A MusicBrainz-only pressing opens through the same cursor, spelled mb:<mbid>.
     _search_strata(page, "Willow Orbit (MusicBrainz)")
@@ -212,6 +234,7 @@ def test_strata_search_opens_a_pressing_the_page_does_not_draw(page: Page, explo
     expect(selection.locator(".strata-selection-title")).to_have_text("Willow Orbit (MusicBrainz)")
     expect(selection.locator(".strata-blocked")).to_contain_text("exists only in MusicBrainz")
     assert asked[-1] == ("mb:6f1c0030-0000-4000-8000-000000000030", 0)
+    _wait_for_strata_frame(page)
 
     # The table opens a pressing the same way.
     _show(page, "table")
@@ -247,6 +270,7 @@ def test_strata_labels_and_chips_never_overlap_and_repeated_titles_count(page: P
                 assert not clash, f"{step}: {a['text']!r} overlaps {b['text']!r}"
         return shown
 
+    _wait_for_strata_frame(page)
     check("overview")
     # Open a master that has several pressings under one title, solo the pressings, and zoom in:
     # the places labels are most crowded.
@@ -255,12 +279,15 @@ def test_strata_labels_and_chips_never_overlap_and_repeated_titles_count(page: P
     _step_to(page, "]", "Willow Orbit")
     page.keyboard.press("Enter")
     expect(page.locator("#strataTrail")).to_contain_text("pressings of Willow Orbit")
+    _wait_for_strata_frame(page)
     page.keyboard.press("Escape")
     page.keyboard.press("Escape")
     page.keyboard.press("3")
+    _wait_for_strata_frame(page)
+    check("soloed pressings")
     for _ in range(3):
         page.keyboard.press("+")
-        page.wait_for_timeout(300)
+        _wait_for_strata_frame(page)
         shown = check("zoomed pressings")
     titles = [box["text"] for box in shown if not box["chip"] and box["text"].startswith("Willow Orbit")]
     # One label for each repeated title, with its count, and none left stacked beside it.

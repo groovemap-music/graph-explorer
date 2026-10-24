@@ -12,6 +12,7 @@ import {
     COPY_UNREAD_REASON,
     MAX_ROOT_RELEASES,
     NO_COPY_REASON,
+    NO_WEBGL_MESSAGE,
     PAST_REASON,
     StrataExplore,
     applyClocks,
@@ -509,6 +510,23 @@ describe('StrataExplore', () => {
         expect(renderer.layout.page).toBeNull();
         expect($('strataTrail').hidden).toBe(true);
         expect(await strata.turnPage(1)).toBe(false);
+    });
+
+    it('marks the view busy while a strata request is in flight, and only then', async () => {
+        expect($('strataView').getAttribute('aria-busy')).toBe('false');
+        let answer;
+        api.getStrata.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
+        strata.setArtist({ id: '9001', name: 'The Placeholder Band' });
+        const shown = strata.show();
+        expect($('strataView').getAttribute('aria-busy')).toBe('true');
+        answer({ ok: true, status: 200, body: recordedBody(null) });
+        await shown;
+        expect($('strataView').getAttribute('aria-busy')).toBe('false');
+        const drill = strata.drill('m:70030');
+        expect($('strataView').getAttribute('aria-busy')).toBe('true');
+        await drill;
+        expect($('strataView').getAttribute('aria-busy')).toBe('false');
+        expect($('strataTrail').textContent).toContain('pressings of Willow Orbit');
     });
 
     it('says why a large root or a slow read did not open', async () => {
@@ -1096,7 +1114,33 @@ describe('StrataExplore table view', () => {
         });
         await openTable();
         expect(tableIds()).toHaveLength(strata.graph.entries.length);
-        expect(() => strata.show({ mode: 'strata' })).toThrow(/WebGL/);
+        expect($('strataMessage').hidden).toBe(true);
+        // The 3D view says why it draws nothing, and points to the table.
+        await strata.show({ mode: 'strata' });
+        expect($('strataMessage').hidden).toBe(false);
+        expect($('strataMessage').textContent).toBe(NO_WEBGL_MESSAGE);
+        expect($('strataStage').querySelector('canvas')).toBeNull();
+        await strata.show({ mode: 'table' });
+        expect($('strataMessage').hidden).toBe(true);
+    });
+
+    it('still loads the 3D view without WebGL, and the route\'s own answers come first', async () => {
+        strata.dispose();
+        strata = new StrataExplore({
+            api,
+            auth: { isLoggedIn: () => true, getToken: () => 'jwt' },
+            createRenderer: () => { throw new Error('WebGL is not available'); },
+        });
+        strata.setArtist({ id: '9001', name: 'The Placeholder Band' });
+        await strata.show({ mode: 'strata' });
+        expect(api.getStrata).toHaveBeenCalledTimes(1);
+        expect($('strataSummary').querySelector('.strata-summary-title').textContent).toBe('The Placeholder Band');
+        expect($('strataMessage').textContent).toBe(NO_WEBGL_MESSAGE);
+        // A 422 or a 504 is the answer for this artist whatever the browser can draw.
+        strata.setArtist({ id: 'slow', name: 'Slow' });
+        await vi.waitFor(() => expect($('strataMessage').textContent).toMatch(/took too long/));
+        await strata.show({ mode: 'table' });
+        expect($('strataMessage').textContent).toMatch(/took too long/);
     });
 });
 
