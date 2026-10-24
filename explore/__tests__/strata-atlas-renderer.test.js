@@ -85,10 +85,10 @@ describe('scene', () => {
 
     it('draws placed landmark masters on the master plane, without the provisional ring', () => {
         const body = { ...BODY, masters: BODY.styles.slice(0, 5).map((s, i) => ({ master_id: i + 1, title: `M${i}`, year: 1970, style: s.style, release_count: 9 })) };
-        const layout = layoutAtlas(adaptAtlasPayload(body), { masterSlot: (m, { style }) => ({ x: style.x * 1.01, y: style.y * 1.01 }) });
+        const layout = layoutAtlas(adaptAtlasPayload(body), { masterSlot: (m, { style }) => ({ x: style.x * 1.01, y: style.y * 1.01, radius: 0.001 }) });
         const { renderer, stage } = mount({ layout });
         const masters = renderer.instanced.find((e) => e.level === 2);
-        expect(masters.nodes.map((n) => n.id)).toEqual(['m:1', 'm:2', 'm:3', 'm:4', 'm:5']);
+        expect(masters.nodes.map((n) => n.id)).toEqual(body.masters.map((m) => `m:${m.master_id}@${m.style}`));
         expect(masters.shape).toBe('disc');
         expect(renderer.provisionalRings.every((ring) => ring.userData.nodes.every((n) => n.level === 1))).toBe(true);
         expect(stage.querySelectorAll('.strata-plane-label')[2].textContent).toBe('Masters5');
