@@ -239,7 +239,9 @@ class Ladder {
     }
 
     resolveFocus(focusId, page, budget) {
-        const parsed = this.parseFocus(focusId);
+        // A pressing is a cursor too: it opens the member set that holds it, on the page that holds it.
+        const pressing = this.pressing(focusId);
+        const parsed = this.parseFocus(pressing === null ? focusId : this.pressingCursor(pressing));
         if (!parsed) throw new FocusNotFound(`focus '${focusId}' names nothing under this artist`);
         const { id, level, members, credit, master, lane, label } = parsed;
         const [credits, masters, releases] = budget;
@@ -264,7 +266,7 @@ class Ladder {
             size = pageSize(members.length, room, room - 1);
         }
         const pages = Math.ceil(members.length / size);
-        const index = ((page % pages) + pages) % pages;
+        const index = pressing === null ? ((page % pages) + pages) % pages : Math.floor(members.indexOf(pressing) / size);
         const start = index * size;
         return {
             id,
@@ -280,6 +282,18 @@ class Ladder {
             pageMembers: members.slice(start, start + size),
             rest: [...members.slice(0, start), ...members.slice(start + size)],
         };
+    }
+
+    /** The release a `r:<id>` or `mb:<mbid>` cursor names, if this root holds it. */
+    pressing(focusId) {
+        if (!focusId.startsWith('r:') && !focusId.startsWith('mb:')) return null;
+        const wanted = focusId.startsWith('mb:') ? focusId.toLowerCase() : focusId;
+        return this.items.find((item) => nodeId(item) === wanted) ?? null;
+    }
+
+    /** The aggregate cursor whose members hold a pressing: its master, else its credit's lane. */
+    pressingCursor(item) {
+        return item.release.masterId !== null ? `ra:m:${item.release.masterId}` : `ra:nm:${creditId(item.credit)}`;
     }
 
     parseFocus(focusId) {
@@ -482,6 +496,7 @@ class Ladder {
         if (this.signedIn) {
             node.state = item.state;
             node.recorded_at = item.mark === null ? null : { owned: item.mark.ownedAt, wanted: item.mark.wantedAt };
+            node.owned_copy_ids = item.mark?.ownedCopyIds ? [...item.mark.ownedCopyIds] : [];
         }
         return node;
     }
