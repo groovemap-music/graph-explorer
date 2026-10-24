@@ -247,6 +247,34 @@
     color: var(--text-high);
 }
 
+/* The Fit landing point: the candidate's section of the panel, first while it is drawn. */
+.atlas-landing {
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.atlas-landing-list {
+    margin: 4px 0 8px;
+    padding: 0;
+    list-style: none;
+}
+
+.atlas-landing-list li {
+    margin: 0 0 4px;
+}
+
+.atlas-landing-component {
+    font-weight: 600;
+    color: var(--text-high);
+}
+
+/* A drawn component's swatch is the diamond the renderer draws around its nodes. */
+.atlas-chip[class*="atlas-fit--"]::before {
+    border-radius: 1px;
+    transform: rotate(45deg) scale(0.85);
+}
+
 .atlas-chip {
     display: inline-flex;
     align-items: center;
@@ -360,7 +388,8 @@
 }
 
 #genreAtlasMount[hidden],
-#genreTreeContainer[hidden] {
+#genreTreeContainer[hidden],
+#fitAtlasMount[hidden] {
     display: none;
 }
 
@@ -381,6 +410,14 @@
 .dark .atlas-stage--established { --atlas-chip: var(--groovemap-state-lifecycle-established-dark); }
 .dark .atlas-stage--reviving { --atlas-chip: var(--groovemap-state-lifecycle-reviving-dark); }
 .dark .atlas-stage--declining { --atlas-chip: var(--groovemap-state-lifecycle-declining-dark); }
+.atlas-fit--affinity { --atlas-chip: var(--groovemap-state-fit-affinity-light); }
+.atlas-fit--novelty { --atlas-chip: var(--groovemap-state-fit-novelty-light); }
+.atlas-fit--bridge { --atlas-chip: var(--groovemap-state-fit-bridge-light); }
+.atlas-fit--redundancy { --atlas-chip: var(--groovemap-state-fit-redundancy-light); }
+.dark .atlas-fit--affinity { --atlas-chip: var(--groovemap-state-fit-affinity-dark); }
+.dark .atlas-fit--novelty { --atlas-chip: var(--groovemap-state-fit-novelty-dark); }
+.dark .atlas-fit--bridge { --atlas-chip: var(--groovemap-state-fit-bridge-dark); }
+.dark .atlas-fit--redundancy { --atlas-chip: var(--groovemap-state-fit-redundancy-dark); }
 
 @media (max-width: 760px) {
     .atlas-body {

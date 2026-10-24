@@ -12,10 +12,12 @@ import { ATLAS_KEY_HELP, GenreAtlas, atlasErrorMessage, atlasKeyCommand, initGen
 import { COTAGS_FAILED, EMPTY_MESSAGE, NO_COTAGS, NO_MASTERS, adaptAtlasPayload, layoutAtlas } from '../static/js/strata-atlas-layout.js';
 import { emptyAtlasPayload } from './strata-atlas-fixtures.js';
 import { TASTE_AS_OF_NOTE, TASTE_EMPTY, TASTE_FAILED, TASTE_SIGN_IN } from '../static/js/strata-taste.js';
+import { LANDING_FALLBACK, LANDING_NO_ATLAS, LANDING_NO_SLOT, LANDING_NOT_ON_ATLAS } from '../static/js/strata-fit.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BODY = JSON.parse(readFileSync(resolve(HERE, '..', '..', 'tests', 'fixtures', 'style-atlas.json'), 'utf8')).body;
 const INDEX = readFileSync(resolve(HERE, '..', 'static', 'index.html'), 'utf8');
+const FIT_PROFILE = JSON.parse(readFileSync(resolve(HERE, '..', '..', 'tests', 'fixtures', 'fit-profile.json'), 'utf8')).body;
 
 class StandInRenderer extends EventTarget {
     constructor() {
@@ -531,6 +533,34 @@ describe('the Genres and Insights panes', () => {
         expect(atlas.active).toBe(true);
     });
 
+    it('opens in the Fit pane only once its mount is shown, and draws the landing point there alone', async () => {
+        const atlas = new GenreAtlas({ doc: document, api: answer(BODY), createRenderer: () => new StandInRenderer(), observeTheme: false });
+        const show = vi.spyOn(atlas, 'show');
+        initGenreAtlas({ doc: document, atlas });
+        const mount = document.getElementById('fitAtlasMount');
+        expect(mount.hidden).toBe(true);
+        activate('fit');
+        await flush();
+        expect(show).not.toHaveBeenCalled();
+        atlas.setLanding(FIT_PROFILE);
+        mount.hidden = false;
+        await flush();
+        expect(mount.contains(atlas.root)).toBe(true);
+        await atlas.loading;
+        expect(atlas.landingShown).toBe(true);
+        expect(atlas.ui.landing.hidden).toBe(false);
+        expect(atlas.layout.nodes.some((node) => node.landing)).toBe(true);
+        activate('genres');
+        await flush();
+        expect(document.getElementById('genreAtlasMount').contains(atlas.root)).toBe(true);
+        expect(atlas.landingShown).toBe(false);
+        expect(atlas.ui.landing.hidden).toBe(true);
+        expect(atlas.layout.nodes.some((node) => node.landing)).toBe(false);
+        activate('fit');
+        await flush();
+        expect(atlas.layout.nodes.some((node) => node.landing)).toBe(true);
+    });
+
     it('does nothing on a page without the panes', () => {
         document.body.textContent = '';
         expect(initGenreAtlas({ doc: document })).toBeNull();
@@ -596,7 +626,7 @@ function standInAuth(token = 'tok') {
 function tasteAtlas({ auth = standInAuth(), taste = async () => ({ ok: true, status: 200, body: TASTE }) } = {}) {
     let renderer = null;
     const api = { getStyleAtlas: vi.fn(async () => ({ ok: true, status: 200, body: WITH_MASTERS })), getTasteProjection: vi.fn(taste) };
-    const atlas = new GenreAtlas({ doc: document, api, auth, createRenderer: () => (renderer = Object.assign(new StandInRenderer(), { refreshTaste: vi.fn() })), observeTheme: false });
+    const atlas = new GenreAtlas({ doc: document, api, auth, createRenderer: () => (renderer = Object.assign(new StandInRenderer(), { refreshTaste: vi.fn(), refreshLanding: vi.fn() })), observeTheme: false });
     document.body.append(atlas.root);
     return { atlas, api, auth, renderer: () => renderer };
 }
@@ -730,6 +760,134 @@ describe('Taste Strata', () => {
         const url = window.location.href;
         const { atlas } = tasteAtlas();
         await atlas.show();
+        expect(window.location.href).toBe(url);
+        expect(Object.keys(localStorage)).toEqual([]);
+        expect(Object.keys(sessionStorage)).toEqual([]);
+    });
+});
+
+// ---------------------------------------------------------------------------------------------
+// The Fit landing point (strata-fit.js).
+// ---------------------------------------------------------------------------------------------
+
+describe('the Fit landing point', () => {
+    const capped = () => {
+        const body = structuredClone(FIT_PROFILE);
+        for (const component of Object.values(body.components)) delete component.evidence_entries;
+        return body;
+    };
+    const items = (atlas, list) => [...atlas.ui.landing.querySelectorAll(`.atlas-landing-list--${list} li`)].map((li) => li.textContent);
+
+    async function landed({ profile = FIT_PROFILE, ...options } = {}) {
+        const made = tasteAtlas(options);
+        await made.atlas.show();
+        made.atlas.setLandingShown(true);
+        made.atlas.setLanding(profile);
+        return made;
+    }
+
+    it('draws the candidate over the collector\'s layer and lists what has no place on the map', async () => {
+        const { atlas, renderer } = await landed();
+        const byId = new Map(renderer().layout.nodes.map((node) => [node.id, node]));
+        expect(renderer().refreshLanding).toHaveBeenCalled();
+        expect(byId.get('s:Amber Bop')).toMatchObject({ landing: 'affinity', held: { state: 'wanted-owned' } });
+        expect(byId.get('s:Glass Drift').landing).toBe('novelty');
+        expect(byId.get('m:910001@Amber Bop').landing).toBe('redundancy');
+        expect(renderer().layout.landingEdges.map((edge) => edge.genres)).toEqual([['Electronic', 'Rock']]);
+        const box = atlas.ui.landing;
+        expect(box.hidden).toBe(false);
+        expect(box.textContent).toContain('Never Gonna Give You Up · Rick Astley');
+        expect(items(atlas, 'drawn')).toEqual([
+            'Affinity shares genre Electronic with 3 releases you hold',
+            'Affinity shares style Amber Bop with 2 releases you hold',
+            'Novelty Glass Drift is a style your collection has never held',
+            'Bridge bridges Electronic and Rock, which share no artist or label in your collection',
+            'Redundancy you hold Never Gonna Give You Up, the same record on cd',
+        ]);
+        expect(items(atlas, 'listed')).toEqual([
+            'Affinity shares artist Rick Astley with 2 releases you hold',
+            'Affinity shares label RCA with 1 release you hold',
+            'Novelty Stock Aitken Waterman is a label your collection has never held',
+            'Novelty Pete Waterman is an artist your collection has never held',
+            'Novelty PWL is a label your collection has never held',
+            `Novelty Hi NRG is a style your collection has never held (${LANDING_NOT_ON_ATLAS})`,
+            'Bridge region boundaries are the v0 genre heuristic, not a computed community',
+            'Depth deepens artist Rick Astley (2 held)',
+            'Depth deepens label RCA (1 held)',
+        ]);
+        const chips = [...box.querySelectorAll('.atlas-landing-list--drawn .atlas-chip')].map((chip) => chip.className);
+        expect(chips).toContain('atlas-chip atlas-fit--novelty');
+    });
+
+    it('says in the panel what the landing means for a selected node', async () => {
+        const { atlas, renderer } = await landed();
+        renderer().select('s:Glass Drift');
+        expect(atlas.ui.selection.querySelector('.atlas-landing-mark').textContent).toBe('Novelty Never Gonna Give You Up: new to you');
+        renderer().select('s:Copper Swing');
+        expect(atlas.ui.selection.querySelector('.atlas-landing-mark')).toBeNull();
+    });
+
+    it('works for a visitor without the personal layer: drawn on the landmarks, and the rest listed', async () => {
+        const { atlas, api, renderer } = await landed({ auth: standInAuth(null) });
+        expect(api.getTasteProjection).not.toHaveBeenCalled();
+        expect(atlas.ui.taste.textContent).toBe(TASTE_SIGN_IN);
+        const { layout } = renderer();
+        expect(layout.nodes.some((node) => node.held)).toBe(false);
+        expect(layout.nodes.filter((node) => node.landing === 'redundancy').map((node) => node.id)).toEqual(['m:910001@Amber Bop', 'm:910001@Amber Chant']);
+        expect(layout.nodes.find((node) => node.id === 'g:Electronic').landing).toBe('affinity');
+    });
+
+    it('lists a duplicate whose master has no slot without the collector\'s layer, and draws it with it', async () => {
+        const profile = structuredClone(FIT_PROFILE);
+        profile.components.redundancy.evidence_entries[0].master_id = '7100001';
+        const anonymous = await landed({ profile, auth: standInAuth(null) });
+        expect(items(anonymous.atlas, 'listed')).toContain(`Redundancy you hold Never Gonna Give You Up, the same record on cd (${LANDING_NO_SLOT})`);
+        const signedIn = await landed({ profile });
+        expect(signedIn.renderer().layout.nodes.filter((node) => node.landing === 'redundancy').map((node) => node.id)).toEqual(['m:7100001@Copper Drift']);
+    });
+
+    it('falls back to the listing for a body without evidence_entries, and draws nothing', async () => {
+        const { atlas, renderer } = await landed({ profile: capped() });
+        expect(atlas.ui.landing.querySelector('.atlas-landing-fallback').textContent).toBe(LANDING_FALLBACK);
+        expect(renderer().layout.nodes.some((node) => node.landing)).toBe(false);
+        expect(renderer().layout.landingEdges).toEqual([]);
+        expect(atlas.ui.landing.querySelector('.atlas-landing-list--drawn')).toBeNull();
+        expect(items(atlas, 'listed')).toEqual(Object.entries(capped().components).flatMap(([name, c]) => c.evidence.map((line) => `${name[0].toUpperCase()}${name.slice(1)} ${line}`)));
+    });
+
+    it('lists the drawable components until the atlas has a layout, then draws them', async () => {
+        const { atlas } = tasteAtlas();
+        atlas.setLandingShown(true);
+        atlas.setLanding(FIT_PROFILE);
+        expect(items(atlas, 'listed')).toContain(`Novelty Glass Drift is a style your collection has never held (${LANDING_NO_ATLAS})`);
+        await atlas.show();
+        expect(items(atlas, 'drawn')).toContain('Novelty Glass Drift is a style your collection has never held');
+    });
+
+    it('keeps the landing off the atlas outside the Fit pane, and clears it with null', async () => {
+        const { atlas, renderer } = await landed();
+        atlas.setLandingShown(false);
+        expect(atlas.ui.landing.hidden).toBe(true);
+        expect(renderer().layout.nodes.some((node) => node.landing)).toBe(false);
+        atlas.setLandingShown(true);
+        expect(renderer().layout.nodes.some((node) => node.landing)).toBe(true);
+        atlas.setLanding(null);
+        expect(atlas.ui.landing.hidden).toBe(true);
+        expect(renderer().layout.nodes.some((node) => node.landing)).toBe(false);
+        expect(renderer().layout.landingEdges).toEqual([]);
+    });
+
+    it('drops the landing point with the collector\'s layer on sign-out', async () => {
+        const { atlas, auth, renderer } = await landed();
+        auth.set(null);
+        expect(atlas.landing).toBeNull();
+        expect(atlas.ui.landing.hidden).toBe(true);
+        expect(renderer().layout.nodes.some((node) => node.landing)).toBe(false);
+    });
+
+    it('keeps the landing point out of the URL and the browser\'s storage', async () => {
+        const url = window.location.href;
+        await landed();
         expect(window.location.href).toBe(url);
         expect(Object.keys(localStorage)).toEqual([]);
         expect(Object.keys(sessionStorage)).toEqual([]);

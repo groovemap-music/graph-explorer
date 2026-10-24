@@ -1,8 +1,8 @@
 /**
  * The Genre Atlas: concept B of ADR 0016, genres, styles, and landmark masters on the Strata
  * planes, colored by lifecycle stage over valid time. It opens in the Genres pane (beside the flat
- * genre tree) and in the Insights pane. One view serves both: it moves to whichever of the two is
- * on screen, so there is one renderer and one WebGL context.
+ * genre tree), in the Insights pane, and under a "Will it fit?" profile. One view serves all three:
+ * it moves to whichever is on screen, so there is one renderer and one WebGL context.
  *
  * This module is the integration. It fetches `GET /api/insights/style-atlas`, adapts and lays it
  * out without moving a node (strata-atlas-layout.js), hands the layout to the atlas renderer
@@ -22,7 +22,11 @@
  *     marked on the genres and styles they carry, their masters in collector slots on the master
  *     plane, the counts that are not drawn, and a "recorded as of" control over transaction time.
  *     An anonymous visitor gets the atlas without it and a hint to sign in. The projection is held
- *     here, in memory, and nowhere else: not in the URL, storage, or any shareable snapshot.
+ *     here, in memory, and nowhere else: not in the URL, storage, or any shareable snapshot;
+ *   - the Fit landing point (concept C′, strata-fit.js), while the view is in the "Will it fit?"
+ *     pane: the candidate's drawable evidence marked on the nodes and hulls the atlas already
+ *     draws, over the Taste Strata layer, and everything else listed in the panel, never placed.
+ *     Like the projection, it is held in memory only.
  *
  * The DOM is built with createElement and textContent only, and styled through classes in
  * strata-atlas.css, so a `style-src 'self'` policy holds.
@@ -62,9 +66,13 @@ import {
     withCollectorMasters,
 } from './strata-taste.js';
 import { COLLECTOR_STATES, stateLabel } from './strata-collector.js';
+import { FIT_COMPONENTS, FIT_LABELS, FIT_MARK_WORDS, LANDING_FALLBACK, paintLanding, placeLanding, planLanding } from './strata-fit.js';
 
 /** The panes the atlas opens in, and the element in each that holds it. */
-export const ATLAS_MOUNTS = Object.freeze({ genres: 'genreAtlasMount', insights: 'insightsAtlasMount' });
+export const ATLAS_MOUNTS = Object.freeze({ genres: 'genreAtlasMount', insights: 'insightsAtlasMount', fit: 'fitAtlasMount' });
+/** The pane the Fit landing point is drawn in. Elsewhere the atlas is the atlas alone. */
+export const LANDING_PANE = 'fit';
+export const LANDING_KEY = 'A diamond in a component\'s color marks a node the candidate lands on, and its label says why. The Bridge is a ribbon between the hulls of the genres it joins.';
 /** Milliseconds per year while the timeline plays. */
 export const PLAY_STEP_MS = 400;
 export const ATLAS_KEY_HELP = 'Arrow keys orbit and tilt, plus and minus zoom, 0 resets the camera. 1, 2, and 3 show one plane, and the same key again shows all. [ and ] move along a plane, PageUp moves to the genre a style is drawn under and PageDown to a genre\'s first style, and Escape clears the selection. The year slider scrubs valid time.';
@@ -201,6 +209,11 @@ export class GenreAtlas {
         this.tastePlaced = null;
         this.tasteMarked = null;
         this.tasteRequest = 0;
+        // The Fit landing point (strata-fit.js planLanding), or null; `landingShown` is whether the
+        // view is in the pane that draws it; `landingPlaced` is what placeLanding drew and did not.
+        this.landing = null;
+        this.landingShown = false;
+        this.landingPlaced = null;
         // Co-tagged styles for the selected style: `async (style) => [{other, release_count, rank}]`,
         // `GET /api/insights/style-atlas/cotags?style=<name>` by default. It rejects when the read
         // fails. With no source (an api that has none, or null), the panel says none are served.
@@ -362,12 +375,15 @@ export class GenreAtlas {
         selection.setAttribute('aria-live', 'polite');
         const taste = el(doc, 'section', 'atlas-taste');
         taste.setAttribute('aria-label', 'Your collection');
-        panel.append(selection, taste, legend, rule);
+        const landing = el(doc, 'section', 'atlas-landing');
+        landing.setAttribute('aria-label', 'Fit landing point');
+        landing.hidden = true;
+        panel.append(landing, selection, taste, legend, rule);
         body.append(stageWrap, panel);
         root.append(head, toolbar, body);
 
         this.root = root;
-        this.ui = { summary, range, output, note, strip, play, planeButtons, reset, stage, help, message, rule, legend, selection, taste, recorded, recordedRange, recordedOutput, viewButtons, tableWrap, table, tableStatus, tableNote, stageOnly: [planes, reset] };
+        this.ui = { summary, range, output, note, strip, play, planeButtons, reset, stage, help, message, rule, legend, selection, taste, landing, recorded, recordedRange, recordedOutput, viewButtons, tableWrap, table, tableStatus, tableNote, stageOnly: [planes, reset] };
         recordedRange.addEventListener('input', () => this.setTasteYear(Number(recordedRange.value)));
         range.addEventListener('input', () => this.setYear(Number(range.value)));
         play.addEventListener('click', () => (this.playHandle === null ? this.play() : this.pause()));
@@ -440,6 +456,7 @@ export class GenreAtlas {
             this.renderLegend();
             this.renderSelection();
             this.renderTable();
+            this.renderLanding();
             return;
         }
         this.year = atlas.timeline.lastYear;
@@ -452,6 +469,7 @@ export class GenreAtlas {
         this.renderLegend();
         this.renderSelection();
         this.renderTable();
+        this.renderLanding();
     }
 
     /**
@@ -466,6 +484,8 @@ export class GenreAtlas {
         this.byId = new Map(this.layout.nodes.map((node) => [node.id, node]));
         paintAtlas(this.layout, this.year);
         this.tasteMarked = paintTaste(this.layout, this.taste, this.tasteYear);
+        this.landingPlaced = this.landing && this.landingShown ? placeLanding(this.layout, this.landing) : null;
+        paintLanding(this.layout, this.landingPlaced);
         if (this.selected && !this.byId.has(this.selected)) this.selected = null;
     }
 
@@ -511,7 +531,11 @@ export class GenreAtlas {
     onAuthChange(signedIn) {
         if (signedIn && this.signedIn()) {
             if (this.atlas && !this.atlas.empty && !this.taste && this.tasteStatus !== 'loading') this.loadTaste();
-        } else this.setTaste(null, 'anonymous');
+        } else {
+            this.setTaste(null, 'anonymous');
+            // A landing point is a statement about the collector's shelves, so it goes with them.
+            this.setLanding(null);
+        }
     }
 
     /** Fetch the caller's projection and lay it on the atlas. A later sign-out drops a late answer. */
@@ -557,6 +581,7 @@ export class GenreAtlas {
         }
         this.renderRecorded();
         this.renderTaste();
+        this.renderLanding();
     }
 
     /** Scrub transaction time: the marks follow when each item was first recorded. Nothing moves. */
@@ -649,6 +674,91 @@ export class GenreAtlas {
         if (node.entity === 'genre') return this.taste.genres.get(node.genre) ?? null;
         if (node.entity === 'master') return this.taste.byMaster.get(node.master.masterId) ?? null;
         return this.taste.styles.get(node.style) ?? null;
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // The Fit landing point.
+    // -----------------------------------------------------------------------------------------
+
+    /**
+     * Put a "Will it fit?" profile's landing point on the atlas, or take it off with null. It is
+     * drawn while the view is in the Fit pane (setLandingShown) and kept, not drawn, elsewhere.
+     *
+     * @param {object | null} profile - a `GET /api/fit/release/{id}` body
+     */
+    setLanding(profile) {
+        this.landing = planLanding(profile);
+        this.refreshLanding();
+    }
+
+    /** Draw the landing point (the view is in the Fit pane) or keep it off the atlas. */
+    setLandingShown(shown) {
+        if (this.landingShown === !!shown) return;
+        this.landingShown = !!shown;
+        this.refreshLanding();
+    }
+
+    /** Mark the landing on the layout and redraw what shows it. Nothing moves. */
+    refreshLanding() {
+        if (this.layout) {
+            this.landingPlaced = this.landing && this.landingShown ? placeLanding(this.layout, this.landing) : null;
+            paintLanding(this.layout, this.landingPlaced);
+            this.renderer?.refreshLanding?.();
+            this.renderSelection();
+        } else this.landingPlaced = null;
+        this.renderLanding();
+    }
+
+    /**
+     * The panel's landing section: the candidate, what is drawn and how, and everything listed
+     * beside the map instead (Depth, artists and labels, and whatever this atlas cannot place),
+     * each with its component.
+     */
+    renderLanding() {
+        const { doc } = this;
+        const box = this.ui.landing;
+        box.textContent = '';
+        const plan = this.landingShown ? this.landing : null;
+        box.hidden = !plan;
+        if (!plan) return;
+        const placed = this.landingPlaced || placeLanding(null, plan);
+        box.append(el(doc, 'h4', 'atlas-taste-title', 'Landing point'));
+        box.append(el(doc, 'p', 'strata-selection-facts atlas-landing-release', [plan.release.title || plan.release.id, plan.release.artist].filter(Boolean).join(' · ')));
+        if (!plan.structured) box.append(el(doc, 'p', 'strata-hint atlas-landing-fallback', LANDING_FALLBACK));
+        if (placed.drawn.length) {
+            box.append(el(doc, 'p', 'atlas-parents-title', 'Drawn on the atlas'));
+            const list = el(doc, 'ul', 'atlas-landing-list atlas-landing-list--drawn');
+            for (const { component, text } of placed.drawn) {
+                const item = el(doc, 'li');
+                item.dataset.component = component;
+                item.append(el(doc, 'span', `atlas-chip atlas-fit--${component}`, FIT_LABELS[component]), doc.createTextNode(` ${text}`));
+                list.append(item);
+            }
+            box.append(list, el(doc, 'p', 'atlas-rule-note', LANDING_KEY));
+        }
+        const order = (entry) => FIT_COMPONENTS.indexOf(entry.component);
+        const listed = [...plan.listed, ...placed.notDrawn].sort((a, b) => order(a) - order(b));
+        if (listed.length) {
+            box.append(el(doc, 'p', 'atlas-parents-title', 'Listed, not on the map'));
+            const list = el(doc, 'ul', 'atlas-landing-list atlas-landing-list--listed');
+            for (const { component, text, reason } of listed) {
+                const item = el(doc, 'li');
+                item.dataset.component = component;
+                item.append(el(doc, 'span', 'atlas-landing-component', FIT_LABELS[component]), doc.createTextNode(` ${text}${reason ? ` (${reason})` : ''}`));
+                list.append(item);
+            }
+            box.append(list);
+        }
+        if (!placed.drawn.length && !listed.length) box.append(el(doc, 'p', 'strata-hint', 'The profile names nothing to draw or list.'));
+    }
+
+    /** The selected node's line about the landing point, when the candidate lands on it. */
+    renderLandingMark(box, node) {
+        if (!node.landing || !this.landing) return;
+        const title = this.landing.release.title || this.landing.release.id;
+        const line = el(this.doc, 'p', 'strata-selection-facts atlas-landing-mark');
+        line.append(el(this.doc, 'span', `atlas-chip atlas-fit--${node.landing}`, FIT_LABELS[node.landing]), this.doc.createTextNode(` ${title}: ${FIT_MARK_WORDS[node.landing]}`));
+        box.append(line);
     }
 
     // -----------------------------------------------------------------------------------------
@@ -907,6 +1017,7 @@ export class GenreAtlas {
         box.append(el(doc, 'p', 'strata-selection-facts', node.emergenceYear === null ? 'Has not reached 25 releases.' : `Emerged in ${node.emergenceYear} (25 cumulative releases).`));
         box.append(el(doc, 'p', 'strata-selection-facts', `Its hull holds ${styles} ${styles === 1 ? 'style' : 'styles'} drawn here and ${ghosts} ${ghosts === 1 ? 'ghost copy' : 'ghost copies'} of styles whose dominant parent is another genre.`));
         this.renderHeld(box, node);
+        this.renderLandingMark(box, node);
     }
 
     renderMaster(box, node) {
@@ -917,6 +1028,7 @@ export class GenreAtlas {
         const facts = [master.year === null ? 'No year' : String(master.year), master.releaseCount === null ? null : `${master.releaseCount} releases`, master.rank === null ? null : `rank ${master.rank} in ${master.style}`].filter(Boolean);
         box.append(el(doc, 'p', 'strata-selection-facts', facts.join(' · ')));
         this.renderHeld(box, node);
+        this.renderLandingMark(box, node);
     }
 
     renderStyle(box, node) {
@@ -942,6 +1054,7 @@ export class GenreAtlas {
 
         box.append(el(doc, 'p', 'strata-selection-facts', style.emergenceYear === null ? 'Has not reached 25 releases, so it has not emerged.' : `Emerged in ${style.emergenceYear} (25 cumulative releases).`));
         this.renderHeld(box, node);
+        this.renderLandingMark(box, node);
 
         box.append(el(doc, 'p', 'atlas-parents-title', 'Parent genres (share of its releases)'));
         const parents = el(doc, 'ul', 'atlas-parents');
@@ -989,7 +1102,7 @@ export class GenreAtlas {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Wiring: one view, moved to the Genres or Insights pane when either is on screen.
+// Wiring: one view, moved to the Genres, Insights, or Fit pane when one is on screen.
 // ---------------------------------------------------------------------------------------------
 
 function bindGenresToggle(doc, atlas) {
@@ -1009,29 +1122,34 @@ function bindGenresToggle(doc, atlas) {
         } else if (view === 'tree') atlas.hide();
     };
     for (const button of buttons) button.addEventListener('click', () => choose(button.dataset.genresView));
-    return () => (views.atlas ? !views.atlas.hidden : false);
 }
 
 /**
- * Wire the atlas into the Genres and Insights panes. It follows the panes' `active` class, so the
- * pane switcher in app.js needs no hook: the view mounts in the pane that opens and stops its
- * frame loop when neither is on screen.
+ * Wire the atlas into the Genres, Insights, and Fit panes. It follows the panes' `active` class
+ * and each mount's `hidden` attribute, so the pane switcher in app.js needs no hook: the view
+ * mounts in the pane that opens, where its mount is shown (the Genres pane's toggle hides it for
+ * the tree, and the Fit pane shows it once a profile has a landing point), and stops its frame
+ * loop when none is on screen. The landing point is drawn in the Fit pane only.
  */
 export function initGenreAtlas({ doc = globalThis.document, atlas = null } = {}) {
     const panes = Object.keys(ATLAS_MOUNTS).map((pane) => ({ pane, el: doc.getElementById(`${pane}Pane`), mount: doc.getElementById(ATLAS_MOUNTS[pane]) }));
     if (!panes.some(({ el: pane, mount }) => pane && mount)) return null;
     const view = atlas || new GenreAtlas({ doc });
-    const atlasChosen = bindGenresToggle(doc, view);
+    bindGenresToggle(doc, view);
     const sync = () => {
-        const open = panes.find(({ pane, el: paneEl, mount }) => paneEl && mount && paneEl.classList.contains('active') && (pane !== 'genres' || atlasChosen()));
+        const open = panes.find(({ el: paneEl, mount }) => paneEl && mount && paneEl.classList.contains('active') && !mount.hidden);
         if (open) {
+            view.setLandingShown(open.pane === LANDING_PANE);
             view.mount(open.mount);
             view.show();
         } else view.hide();
     };
     if (typeof MutationObserver === 'function') {
         const observer = new MutationObserver(sync);
-        for (const { el: paneEl } of panes) if (paneEl) observer.observe(paneEl, { attributes: true, attributeFilter: ['class'] });
+        for (const { el: paneEl, mount } of panes) {
+            if (paneEl) observer.observe(paneEl, { attributes: true, attributeFilter: ['class'] });
+            if (mount) observer.observe(mount, { attributes: true, attributeFilter: ['hidden'] });
+        }
     }
     sync();
     return view;
