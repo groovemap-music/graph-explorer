@@ -101,6 +101,16 @@ function readRecordedAt(value, id) {
     return Object.freeze({ owned: at('owned'), wanted: at('wanted') });
 }
 
+// The caller's physical copies of a release, earliest acquired first: a list (empty when there is
+// none), or null when the route sent no list (an anonymous caller, or a degraded copy-id read).
+function readCopyIds(value, id) {
+    if (value === undefined || value === null) return null;
+    if (!Array.isArray(value)) throw invalid(`${id} has owned_copy_ids that is not a list`);
+    const ids = value.map(readText);
+    if (ids.some((copy) => copy === null)) throw invalid(`${id} has an owned_copy_ids entry that is not an id`);
+    return Object.freeze(ids);
+}
+
 // A release's provider: the route's field, or its id's prefix (r: is Discogs, mb: MusicBrainz).
 function readProvider(raw, id) {
     const fromId = id.startsWith('mb:') ? 'musicbrainz' : id.startsWith('r:') ? 'discogs' : null;
@@ -167,6 +177,7 @@ function readEntry(raw, level, isAggregate) {
         credits: level === 0 ? (isAggregate ? readCount(raw.credits, id, 'credits') : 1) : 0,
         provider,
         releaseId: release ? readText(raw.release_id) : null,
+        ownedCopyIds: release ? readCopyIds(raw.owned_copy_ids, id) : null,
         masterId: level === 1 && !isAggregate ? readText(raw.master_id) : null,
         artists,
         state,
@@ -350,6 +361,7 @@ function fromEntry(entry) {
         credits: entry.credits,
         provider: entry.provider ?? null,
         releaseId: entry.releaseId ?? null,
+        ownedCopyIds: entry.ownedCopyIds ?? null,
         masterId: entry.masterId ?? null,
         artists: entry.artists ?? null,
         state: entry.state,
@@ -819,6 +831,7 @@ function output(node, group) {
         credits: node.credits,
         provider: node.provider,
         releaseId: node.releaseId,
+        ownedCopyIds: node.ownedCopyIds,
         masterId: node.masterId,
         artists: node.artists,
         state: node.state,

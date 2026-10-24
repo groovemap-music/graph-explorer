@@ -49,7 +49,7 @@ closing a context does not give the budget back.
 | Contexts a WebKit process serves before navigation stops working | 64 |
 | Contexts this suite opens per browser process before retiring it | 32 |
 | Browser contexts allowed open at once in one session | 8 |
-| E2E tests in the matrix today | 121 |
+| E2E tests in the matrix today | 124 |
 
 Measured against the WebKit that Playwright 1.62 bundles: the 64th context in a launch is created
 without error, but every `page.goto` from it times out while the server keeps answering `/health`

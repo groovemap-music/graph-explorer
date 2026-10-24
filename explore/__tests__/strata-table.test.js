@@ -255,11 +255,20 @@ describe('rowState and rowBlocked', () => {
         expect(rowState({ ...pressing(), agg: true, state: null, states: { owned: 2, none: 5, wanted: 0 } }, { signedIn: true }).text).toBe('5 none · 2 owned');
     });
 
+    it('keeps decision-record numbers out of the reasons it shows', () => {
+        const texts = [BLOCKED_REASON, rowBlocked({ id: 'ra:m:1', level: 2, agg: true, musicbrainzReleases: 2 }).text, rowBlocked({ id: 'ra:m:1', level: 2, agg: true, musicbrainzReleases: 1 }).text];
+        for (const text of texts) expect(text).not.toMatch(/ADR/);
+        expect(BLOCKED_REASON).toBe('MusicBrainz-only pressing: it exists only in MusicBrainz, so GrooveMap has no collector state for it.');
+    });
+
     it('gives a blocked pressing the full reason and a holder the count', () => {
         expect(rowBlocked(pressing({ provider: 'musicbrainz', id: 'mb:x' }))).toEqual({ text: BLOCKED_REASON, count: 1 });
         expect(rowBlocked(pressing())).toBeNull();
-        expect(rowBlocked({ id: 'ra:m:1', level: 2, agg: true, musicbrainzReleases: 1 }).text).toBe('1 pressing here exist only in MusicBrainz and cannot change state (ADR 0009). Open this row to list them.');
-        expect(rowBlocked({ id: 'c:1', level: 0, agg: false, musicbrainzReleases: 3 })).toMatchObject({ count: 3, text: expect.stringContaining('3 pressings here') });
+        expect(rowBlocked({ id: 'ra:m:1', level: 2, agg: true, musicbrainzReleases: 1 }).text).toBe('1 pressing here exists only in MusicBrainz, so GrooveMap has no collector state for it. Open this row to list them.');
+        expect(rowBlocked({ id: 'c:1', level: 0, agg: false, musicbrainzReleases: 3 })).toMatchObject({
+            count: 3,
+            text: '3 pressings here exist only in MusicBrainz, so GrooveMap has no collector state for them.',
+        });
         expect(rowBlocked({ id: 'c:1', level: 0, agg: false, musicbrainzReleases: 0 })).toBeNull();
     });
 });
