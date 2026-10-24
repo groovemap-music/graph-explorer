@@ -111,7 +111,7 @@ export function isBlocked(node) {
 }
 
 /** What a blocked pressing says about itself, wherever it is listed. */
-export const BLOCKED_REASON = 'MusicBrainz-only pressing: it has no Discogs release, so no wantlist or collection edge can carry a change to it (ADR 0009). It has no collector state.';
+export const BLOCKED_REASON = 'MusicBrainz-only pressing: it exists only in MusicBrainz, so GrooveMap has no collector state for it.';
 
 /** Why a node cannot change state, or null. */
 export function blockedReason(node) {
@@ -239,19 +239,109 @@ export function labelWidth(text, level) {
     return text.length * (level === 0 ? 7.6 : 6.4) + 12;
 }
 
+/** The text of a label that stands for several pressings with the same title. */
+export function countedText(text, count) {
+    return `${text} ×${count}`;
+}
+
+/**
+ * Collapse repeated pressing titles: the pressings of one master that share a title are one label
+ * with a count, anchored over the middle of the pressings it stands for, instead of a stack of
+ * identical labels. The hovered and selected nodes (priority 0) keep their own labels, because
+ * those say which node the panel is describing. Every candidate gains `text`
+ * (what its label says), `count` (how many nodes it stands for), and, when it stands for several,
+ * `at` (the world point to anchor over).
+ *
+ * @param {Array<{node: object, priority: number}>} candidates - `labelCandidates` output
+ * @param {(node: object) => string} textOf - a node's label text
+ */
+export function collapseRepeats(candidates, textOf = displayLabel) {
+    const groups = new Map();
+    const out = [];
+    for (const candidate of candidates) {
+        const { node, priority } = candidate;
+        const text = textOf(node);
+        if (priority === 0 || node.level !== 2 || node.agg || node.lane) {
+            out.push({ ...candidate, text, count: 1 });
+            continue;
+        }
+        const key = `${node.parent}|${text}`;
+        const group = groups.get(key);
+        if (group) {
+            group.members.push(node);
+            continue;
+        }
+        const entry = { ...candidate, text, count: 1, members: [node] };
+        groups.set(key, entry);
+        out.push(entry);
+    }
+    for (const entry of groups.values()) {
+        if (entry.members.length > 1) {
+            const centres = entry.members.map(nodeCentre);
+            const mean = (axis) => centres.reduce((sum, centre) => sum + centre[axis], 0) / centres.length;
+            entry.count = entry.members.length;
+            entry.text = countedText(entry.text, entry.count);
+            entry.at = { x: mean('x'), y: mean('y'), z: mean('z') };
+        }
+        delete entry.members;
+    }
+    return out;
+}
+
+/** The pixel heights of the label kinds, which `labelBoxes` and the stylesheet agree on. */
+export const LABEL_HEIGHT = 16;
+export const CREDIT_LABEL_HEIGHT = 19;
+export const TAG_HEIGHT = 18;
+/** The clear space placement keeps between two boxes, so neighbours never read as one stack. */
+export const LABEL_GAP = 2;
+
+/**
+ * The boxes a frame's labels occupy, in CSS pixels, ready for `placeLabels`: node labels (above
+ * their node, or above the middle of the pressings they count) and the outlined credit chips
+ * (hull tags), all in one list so the chips are boxes in the same greedy grid as the labels.
+ * Node labels beyond `maxNodeLabels` are left out, except priority 0.
+ *
+ * @param {Array<{node: object, priority: number, text: string, at?: object}>} candidates - after `collapseRepeats`
+ * @param {Array<{text: string, level: number, x: number, z: number}>} tags - the chips to place
+ * @param {{project: (x: number, y: number, z: number) => {x: number, y: number, ok: boolean},
+ *          width: number, height: number, maxNodeLabels?: number}} view
+ */
+export function labelBoxes(candidates, tags, { project, width, height, maxNodeLabels = Infinity }) {
+    const items = [];
+    for (const { node, priority, text, at } of candidates) {
+        const c = at || nodeCentre(node);
+        const s = project(c.x, c.y + node.size * 1.25, c.z);
+        if (!s.ok || s.x < -40 || s.x > width + 40 || s.y < -20 || s.y > height + 20) continue;
+        const w = labelWidth(text, node.level);
+        items.push({ node, text, priority, x: s.x - w / 2, y: s.y - 18, w, h: node.level === 0 ? CREDIT_LABEL_HEIGHT : LABEL_HEIGHT });
+    }
+    items.sort((a, b) => a.priority - b.priority);
+    const kept = items.filter((item, i) => item.priority === 0 || i < maxNodeLabels);
+    tags.forEach((tag, index) => {
+        const s = project(tag.x, planeY(tag.level), tag.z);
+        if (!s.ok) return;
+        const w = labelWidth(tag.text, 1) + 6;
+        kept.push({ tag, index, priority: 2.5 + tag.level * 0.01, x: s.x - w / 2, y: s.y - 2, w, h: TAG_HEIGHT });
+    });
+    return kept;
+}
+
 const CELL = 64;
 
 /**
  * Greedy label placement: by priority, drop a label that would overlap one already placed or leave
- * the viewport, except priority 0 (hovered or selected), which always shows. `reserved` boxes
- * (plane labels) are placed first. Boxes are {x, y, w, h} in CSS pixels; items gain `shown`.
- * A uniform grid keeps each overlap test local, so a frame costs about one test per neighbour.
+ * the viewport. No two boxes that come back overlap, and each keeps `LABEL_GAP` from the next.
+ * Priority 0 (hovered or selected) is never dropped for a neighbour: it is nudged up or down to
+ * the nearest free slot instead, and only hidden when the column around it is full. `reserved`
+ * boxes (plane labels) are placed first. Boxes are {x, y, w, h} in CSS pixels; items gain
+ * `shown`, and a nudged item gains its new `y`. A uniform grid keeps each overlap test local, so a
+ * frame costs about one test per neighbour.
  */
 export function placeLabels(items, reserved, width, height) {
     const grid = new Map();
     const cells = (box, visit) => {
-        for (let cx = Math.floor(box.x / CELL); cx <= Math.floor((box.x + box.w) / CELL); cx++) {
-            for (let cy = Math.floor(box.y / CELL); cy <= Math.floor((box.y + box.h) / CELL); cy++) {
+        for (let cx = Math.floor((box.x - LABEL_GAP) / CELL); cx <= Math.floor((box.x + box.w + LABEL_GAP) / CELL); cx++) {
+            for (let cy = Math.floor((box.y - LABEL_GAP) / CELL); cy <= Math.floor((box.y + box.h + LABEL_GAP) / CELL); cy++) {
                 if (visit(`${cx},${cy}`) === false) return false;
             }
         }
@@ -263,15 +353,41 @@ export function placeLabels(items, reserved, width, height) {
             grid.get(key).push(box);
         });
     const free = (box) =>
-        cells(box, (key) => !(grid.get(key) || []).some((q) => box.x < q.x + q.w && box.x + box.w > q.x && box.y < q.y + q.h && box.y + box.h > q.y));
+        cells(
+            box,
+            (key) =>
+                !(grid.get(key) || []).some(
+                    (q) => box.x < q.x + q.w + LABEL_GAP && box.x + box.w + LABEL_GAP > q.x && box.y < q.y + q.h + LABEL_GAP && box.y + box.h + LABEL_GAP > q.y,
+                ),
+        );
     reserved.forEach(add);
     const sorted = items.slice().sort((a, b) => a.priority - b.priority);
     const shown = [];
     for (const item of sorted) {
-        const outside = item.x < -20 || item.x + item.w > width + 20 || item.y < -10 || item.y > height;
-        if (item.priority > 0 && (outside || !free(item))) {
-            item.shown = false;
-            continue;
+        if (item.priority > 0) {
+            const outside = item.x < 0 || item.x + item.w > width || item.y < 0 || item.y + item.h > height;
+            if (outside || !free(item)) {
+                item.shown = false;
+                continue;
+            }
+        } else if (!free(item)) {
+            const home = item.y;
+            const step = item.h + LABEL_GAP;
+            let slot = null;
+            for (let k = 1; k <= 4 && slot === null; k++) {
+                for (const dy of [-k * step, k * step]) {
+                    item.y = home + dy;
+                    if (free(item)) {
+                        slot = dy;
+                        break;
+                    }
+                }
+            }
+            if (slot === null) {
+                item.y = home;
+                item.shown = false;
+                continue;
+            }
         }
         add(item);
         item.shown = true;

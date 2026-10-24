@@ -339,6 +339,24 @@ describe('labels', () => {
         expect(visible.every((el) => renderer.byId.get(el.dataset.node).level === 2)).toBe(true);
     });
 
+    it('draws one label with a count for repeated pressing titles under a master', () => {
+        // A master opened on its pressings: the route draws a page of them under it.
+        const catalog = generateDiscography(rng(3), { maxReleases: 600 });
+        const counts = new Map();
+        for (const release of catalog.releases) if (release.masterId !== null) counts.set(release.masterId, (counts.get(release.masterId) || 0) + 1);
+        const [busiest] = [...counts].sort((x, y) => y[1] - x[1])[0];
+        const layout = layoutStrata(adaptStrataPayload(buildPayload(catalog, [3, 12, 16], { focus: `m:${busiest}`, signedIn: true })));
+        const twins = layout.nodes.filter((n) => n.level === 2 && !n.agg && n.parent === `m:${busiest}`);
+        expect(twins.length).toBeGreaterThanOrEqual(3);
+        const retitled = { ...layout, nodes: layout.nodes.map((n) => (twins.includes(n) ? { ...n, label: 'Willow Orbit' } : n)) };
+        const { renderer, stage } = mount({ layout: retitled, reduce: true });
+        renderer.solo(2);
+        renderer.render();
+        const texts = labels(stage).filter((el) => !el.hidden).map((el) => el.textContent);
+        expect(texts.filter((text) => text.startsWith('Willow Orbit'))).toEqual([`Willow Orbit \u00d7${twins.length}`]);
+        expect(new Set(texts).size).toBe(texts.length);
+    });
+
     it('labels pressings once the camera is close, and the selection’s lineage only', () => {
         const layout = realLayout();
         const { renderer, stage } = mount({ layout, reduce: true });
