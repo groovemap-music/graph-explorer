@@ -248,7 +248,8 @@
     color: var(--text-high);
 }
 
-.atlas-parents {
+.atlas-parents,
+.atlas-cotags {
     margin: 0 0 8px;
     padding-left: 18px;
 }

@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ATLAS_KEY_HELP, GenreAtlas, atlasErrorMessage, atlasKeyCommand, initGenreAtlas, stageWord } from '../static/js/strata-atlas.js';
-import { EMPTY_MESSAGE, NO_COTAGS, NO_MASTERS, adaptAtlasPayload, layoutAtlas } from '../static/js/strata-atlas-layout.js';
+import { COTAGS_FAILED, EMPTY_MESSAGE, NO_COTAGS, NO_MASTERS, adaptAtlasPayload, layoutAtlas } from '../static/js/strata-atlas-layout.js';
 import { emptyAtlasPayload } from './strata-atlas-fixtures.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -270,6 +270,135 @@ describe('the panel', () => {
         renderer.select(`s:${style.style}`);
         await new Promise((r) => setTimeout(r, 0));
         expect(source).toHaveBeenCalledTimes(1);
+    });
+
+    function cotagAtlas(source) {
+        let renderer = null;
+        const atlas = new GenreAtlas({
+            doc: document,
+            api: answer(BODY),
+            createRenderer: () => (renderer = Object.assign(new StandInRenderer(), { refreshLateral: vi.fn() })),
+            observeTheme: false,
+            cotagSource: source,
+        });
+        document.body.append(atlas.root);
+        return { atlas, renderer: () => renderer };
+    }
+    const settle = () => new Promise((r) => setTimeout(r, 0));
+
+    it('uses the api client getStyleCotags as the co-tag source when the api has one', async () => {
+        const entries = [{ other: BODY.styles[1].style, release_count: 11, rank: 1 }];
+        const api = { ...answer(BODY), getStyleCotags: vi.fn(async () => entries) };
+        const { atlas, renderer } = makeAtlas({ api });
+        await atlas.show();
+        renderer().select(`s:${BODY.styles[0].style}`);
+        await settle();
+        expect(api.getStyleCotags).toHaveBeenCalledWith(BODY.styles[0].style);
+        expect(atlas.cotags.get(BODY.styles[0].style)).toEqual(entries);
+        // An explicit null source still means none are served.
+        const none = new GenreAtlas({ doc: document, api, createRenderer: () => new StandInRenderer(), observeTheme: false, cotagSource: null });
+        expect(none.cotagSource).toBeNull();
+    });
+
+    it('lists the co-tags the atlas draws apart from those it does not', async () => {
+        const [a, b] = BODY.styles;
+        const source = vi.fn(async () => [
+            { other: 'Not Drawn Anywhere', release_count: 90, rank: 1 },
+            { other: b.style, release_count: 42, rank: 2 },
+        ]);
+        const { atlas, renderer } = cotagAtlas(source);
+        await atlas.show();
+        renderer().select(`s:${a.style}`);
+        await settle();
+        const drawn = [...atlas.ui.selection.querySelectorAll('.atlas-cotags--drawn li')].map((li) => li.textContent);
+        const listed = [...atlas.ui.selection.querySelectorAll('.atlas-cotags--listed li')].map((li) => li.textContent);
+        expect(drawn).toEqual([`${b.style} · 42 shared releases`]);
+        expect(listed).toEqual(['Not Drawn Anywhere · 90 shared releases']);
+        expect(atlas.ui.selection.textContent).toContain('Co-tagged styles (drawn as edges)');
+        expect(atlas.ui.selection.textContent).toContain('Also co-tagged, not drawn in this atlas');
+    });
+
+    it('shows no listed section when every co-tagged style is drawn, and says so for a style with none', async () => {
+        const [a, b, c] = BODY.styles;
+        const { atlas, renderer } = cotagAtlas(async (style) => (style === a.style ? [{ other: b.style, release_count: 5, rank: 1 }] : []));
+        await atlas.show();
+        renderer().select(`s:${a.style}`);
+        await settle();
+        expect(atlas.ui.selection.querySelectorAll('.atlas-cotags--drawn li')).toHaveLength(1);
+        expect(atlas.ui.selection.querySelector('.atlas-cotags--listed')).toBeNull();
+        renderer().select(`s:${c.style}`);
+        await settle();
+        expect(atlas.ui.selection.textContent).toContain('No co-tagged styles.');
+        expect(atlas.ui.selection.querySelector('.atlas-cotags')).toBeNull();
+    });
+
+    it('clears the co-tag list with the selection and shows it again from the cache', async () => {
+        const [a, b] = BODY.styles;
+        const source = vi.fn(async () => [{ other: b.style, release_count: 5, rank: 1 }]);
+        const { atlas, renderer } = cotagAtlas(source);
+        await atlas.show();
+        renderer().select(`s:${a.style}`);
+        await settle();
+        expect(atlas.ui.selection.querySelector('.atlas-cotags')).not.toBeNull();
+        renderer().select(null);
+        expect(atlas.ui.selection.querySelector('.atlas-cotags')).toBeNull();
+        expect(atlas.ui.selection.textContent).toContain('Select a genre or a style');
+        renderer().select(`s:${a.style}`);
+        expect(atlas.ui.selection.querySelectorAll('.atlas-cotags--drawn li')).toHaveLength(1);
+        expect(source).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not fetch a style twice while its read is in flight, and ignores an answer for a style no longer selected', async () => {
+        const [a, b] = BODY.styles;
+        const releases = [];
+        const source = vi.fn(() => new Promise((resolve) => releases.push(() => resolve([{ other: b.style, rank: 1 }]))));
+        const { atlas, renderer } = cotagAtlas(source);
+        await atlas.show();
+        renderer().select(`s:${a.style}`);
+        renderer().select(null);
+        renderer().select(`s:${a.style}`);
+        expect(source).toHaveBeenCalledTimes(1);
+        renderer().select(`s:${b.style}`);
+        expect(source).toHaveBeenCalledTimes(2);
+        releases[0]();
+        await settle();
+        expect(atlas.cotags.get(a.style)).toHaveLength(1);
+        expect(renderer().refreshLateral).not.toHaveBeenCalled();
+        expect(atlas.ui.selection.querySelector('.strata-selection-title').textContent).toBe(b.style);
+    });
+
+    it('says a failed co-tag read failed, leaves the atlas usable, and retries on the next selection', async () => {
+        const [a, b] = BODY.styles;
+        const source = vi.fn().mockRejectedValueOnce(new Error('Co-tag fetch failed: 503')).mockResolvedValue([{ other: b.style, release_count: 5, rank: 1 }]);
+        const { atlas, renderer } = cotagAtlas(source);
+        await atlas.show();
+        renderer().select(`s:${a.style}`);
+        await settle();
+        expect(atlas.ui.selection.textContent).toContain(COTAGS_FAILED);
+        expect(atlas.ui.selection.textContent).not.toContain('No co-tagged styles');
+        // The rest of the panel and the view are intact.
+        expect(atlas.ui.selection.querySelector('.strata-selection-title').textContent).toBe(a.style);
+        expect(atlas.ui.selection.querySelector('.atlas-parents')).not.toBeNull();
+        expect(atlas.ui.message.hidden).toBe(true);
+        expect(atlas.cotags.has(a.style)).toBe(false);
+        atlas.setYear(BODY.timeline.first_year);
+        expect(atlas.year).toBe(BODY.timeline.first_year);
+        renderer().select(`s:${b.style}`);
+        await settle();
+        expect(atlas.ui.selection.textContent).not.toContain(COTAGS_FAILED);
+        renderer().select(`s:${a.style}`);
+        await settle();
+        expect(source).toHaveBeenCalledTimes(3);
+        expect(atlas.ui.selection.textContent).not.toContain(COTAGS_FAILED);
+        expect(atlas.ui.selection.querySelectorAll('.atlas-cotags--drawn li')).toHaveLength(1);
+    });
+
+    it('treats an answer that is not a list as a failed read', async () => {
+        const { atlas, renderer } = cotagAtlas(async () => ({ items: [] }));
+        await atlas.show();
+        renderer().select(`s:${BODY.styles[0].style}`);
+        await settle();
+        expect(atlas.ui.selection.textContent).toContain(COTAGS_FAILED);
     });
 
     it('draws served landmark masters with the slot rule, and says nothing when their plane is soloed', async () => {

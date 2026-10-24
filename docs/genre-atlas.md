@@ -28,9 +28,15 @@ first monthly run there is nothing to draw, and the view says so. The stage rule
 
 A thin line joins a style to each parent genre it **emerged after**: an *emergence edge*. A style's
 panel lists every parent with its share of the style's releases, which one is dominant, and whether
-that parent's emergence edge is drawn. Lines for **co-tagged styles** (styles often tagged together
-with the one you selected) are planned, and until they are served the panel says "Co-tagged styles
-are not served yet".
+that parent's emergence edge is drawn.
+
+Selecting a style also draws lines to its **co-tagged styles**: the styles most often tagged
+together with it (up to 25, by the number of releases they share). They are fetched when you select
+the style, and cleared when you select something else or clear the selection. A line is drawn only
+when both styles are in the atlas. Any co-tagged style the atlas does not draw is listed in the
+panel under "Also co-tagged, not drawn in this atlas", so nothing is dropped silently. If the
+co-tags cannot be loaded, the panel says so and the rest of the atlas keeps working; select the
+style again to retry.
 
 ## The stages
 

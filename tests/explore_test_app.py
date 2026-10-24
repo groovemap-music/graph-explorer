@@ -313,6 +313,22 @@ def style_atlas_response() -> dict[str, Any]:
     return body
 
 
+# Synthetic GET /api/insights/style-atlas/cotags bodies: a bare list of {other, release_count, rank},
+# best rank first, over the invented style names of the recorded atlas. "Phantom Fizz" is co-tagged
+# but is not a style the atlas draws, so it is listed in the panel and gets no edge. A style with no
+# entry has no co-tags (a 200 with an empty list, as the producer answers), and one style fails, so
+# a journey can see the atlas stay usable when the read does not come back.
+STYLE_COTAGS: dict[str, list[dict[str, Any]]] = {
+    "Copper Drift": [
+        {"other": "Rust Stomp", "release_count": 120, "rank": 1},
+        {"other": "Phantom Fizz", "release_count": 90, "rank": 2},
+        {"other": "Silver Wave", "release_count": 60, "rank": 3},
+        {"other": "Amber Bop", "release_count": 40, "rank": 4},
+    ],
+}
+FAILING_COTAGS_STYLE = "Solar Pulse"
+
+
 def create_test_app() -> FastAPI:
     """Create a test instance of the Explore FastAPI app."""
     app = FastAPI(
@@ -788,6 +804,12 @@ def create_test_app() -> FastAPI:
     @app.get("/api/insights/style-atlas")
     async def insights_style_atlas() -> JSONResponse:
         return JSONResponse(content=style_atlas_response())
+
+    @app.get("/api/insights/style-atlas/cotags")
+    async def insights_style_atlas_cotags(style: str = Query(..., min_length=1)) -> JSONResponse:
+        if style == FAILING_COTAGS_STYLE:
+            return JSONResponse(content={"error": "Insights service unavailable"}, status_code=503)
+        return JSONResponse(content=STYLE_COTAGS.get(style, []))
 
     @app.get("/api/expand")
     async def expand(

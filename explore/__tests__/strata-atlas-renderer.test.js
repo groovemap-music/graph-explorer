@@ -190,6 +190,39 @@ describe('edges', () => {
         expect(renderer.edgeObjects.some((m) => m.userData.kind === 'cotag')).toBe(false);
     });
 
+    it('draws only the co-tag pairs whose two styles are drawn, and clears them with the selection', () => {
+        const layout = layoutAtlas(adaptAtlasPayload(BODY));
+        const [a, b, c] = layout.nodes.filter((n) => n.entity === 'style');
+        const entries = [
+            { other: b.style, release_count: 50, rank: 1 },
+            { other: 'Not Drawn', release_count: 40, rank: 2 },
+            { other: c.style, release_count: 30, rank: 3 },
+        ];
+        const { renderer, stage } = mount({ layout, cotags: (style) => (style === a.style ? entries : []) });
+        const cotagEdges = () => renderer.layout.edges.filter((edge) => edge.kind === 'cotag');
+        expect(stage.dataset.atlasCotagEdges).toBe('0');
+        renderer.select(a.id);
+        expect(cotagEdges().map((edge) => edge.b)).toEqual([b.id, c.id]);
+        expect(stage.dataset.atlasCotagEdges).toBe('2');
+        renderer.select(null);
+        expect(cotagEdges()).toEqual([]);
+        expect(renderer.edgeObjects).toEqual([]);
+        expect(stage.dataset.atlasCotagEdges).toBe('0');
+    });
+
+    it('draws the co-tags that arrive after the selection once the view refreshes the lateral edges', () => {
+        const layout = layoutAtlas(adaptAtlasPayload(BODY));
+        const [a, b] = layout.nodes.filter((n) => n.entity === 'style');
+        const served = new Map();
+        const { renderer, stage } = mount({ layout, cotags: (style) => served.get(style) || [] });
+        renderer.select(a.id);
+        expect(stage.dataset.atlasCotagEdges).toBe('0');
+        served.set(a.style, [{ other: b.style, release_count: 9, rank: 1 }]);
+        renderer.refreshLateral();
+        expect(stage.dataset.atlasCotagEdges).toBe('1');
+        expect(renderer.edgeObjects.some((m) => m.userData.kind === 'cotag')).toBe(true);
+    });
+
     it('lights the selected style, its ghosts, and its parent genres', () => {
         const { renderer, layout } = mount();
         const ghost = layout.nodes.find((n) => n.entity === 'ghost');

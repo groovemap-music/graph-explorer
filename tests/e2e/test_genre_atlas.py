@@ -4,12 +4,14 @@ The Genre Atlas draws genres, styles, and landmark masters on three planes, colo
 stage over valid time, with a table of the same genres and styles (ADR 0016 section 4). It opens in
 the Genres pane. The journey here is the one the feature exists for: open the atlas, read the stage
 rule, scrub to a year the catalogue has not caught up with and see it marked provisional, select a
-style to see its parents and the emergence edges drawn from them, see which data the route does not
-serve yet, then read the same atlas as a table and move through it from the keyboard.
+style to see its parents and the emergence edges drawn from them, see its co-tagged styles drawn as
+edges (and the ones the atlas does not draw listed beside them), see a failed co-tag read worded
+without breaking the atlas, then read the same atlas as a table and move through it from the keyboard.
 
 The mock app serves `GET /api/insights/style-atlas` from tests/fixtures/style-atlas.json, a body
-recorded from analytics-engine's own read path over its seeded synthetic catalogue, so no assertion
-here depends on a live database. The 3D view is driven from the keyboard, which is how it is
+recorded from analytics-engine's own read path over its seeded synthetic catalogue, and synthetic
+`GET /api/insights/style-atlas/cotags` lists for a few styles, so no assertion here depends on a
+live database. A frame is read only once the stage says `data-strata-frame="settled"`. The 3D view is driven from the keyboard, which is how it is
 documented to be used without a pointer. Nothing here reads the GPU, so the journey holds on every
 project in the matrix. The recorded timeline is 1951 to 2025 and its last two years are provisional.
 """
@@ -29,6 +31,13 @@ PROVISIONAL_FROM = 2024
 STYLE = "Copper Drift"
 STYLE_GENRE = "Pop"
 STYLE_OTHER_PARENT = "Blues"
+# The mock app's co-tags for STYLE (tests/explore_test_app.py): three of the four styles are drawn
+# in the atlas, and "Phantom Fizz" is not. A style whose co-tag read fails.
+COTAGS_DRAWN = ["Rust Stomp", "Silver Wave", "Amber Bop"]
+COTAGS_LISTED = ["Phantom Fizz"]
+FAILING_COTAGS_STYLE = "Solar Pulse"
+# The synthetic landmark masters the mock app merges into the recorded body.
+MASTERS = 952
 
 
 def _open_atlas(page: Page, explore_url: str) -> None:
@@ -52,6 +61,23 @@ def _open_atlas(page: Page, explore_url: str) -> None:
 def _scrub(page: Page, year: int) -> None:
     page.locator("#atlasYear").fill(str(year))
     expect(page.locator(".atlas-year-value")).to_have_text(str(year))
+
+
+def _select_style(page: Page) -> None:
+    """From a cleared selection: the second genre round the ring, then its first style."""
+    page.locator("#genreAtlasMount .atlas-stage").focus()
+    page.keyboard.press("]")
+    page.keyboard.press("]")
+    expect(page.locator(".atlas-selection .strata-selection-title")).to_have_text(STYLE_GENRE)
+    page.keyboard.press("PageDown")
+    expect(page.locator(".atlas-selection .strata-selection-title")).to_have_text(STYLE)
+
+
+def _settled_cotag_edges(page: Page, count: int) -> None:
+    """Wait for a frame that has drawn the current selection, with `count` co-tag edges in it."""
+    stage = page.locator("#genreAtlasMount .atlas-stage")
+    expect(stage).to_have_attribute("data-strata-frame", "settled", timeout=15_000)
+    expect(stage).to_have_attribute("data-atlas-cotag-edges", str(count))
 
 
 def _table_row(page: Page, name: str):
@@ -90,13 +116,8 @@ def test_genre_atlas_journey_from_the_rule_to_the_table(page: Page, explore_url:
     _scrub(page, LAST_YEAR)
 
     # Select a style from the keyboard: the second genre round the ring, then its first style.
-    page.locator("#genreAtlasMount .atlas-stage").focus()
-    page.keyboard.press("]")
-    page.keyboard.press("]")
     selection = page.locator(".atlas-selection")
-    expect(selection.locator(".strata-selection-title")).to_have_text(STYLE_GENRE)
-    page.keyboard.press("PageDown")
-    expect(selection.locator(".strata-selection-title")).to_have_text(STYLE)
+    _select_style(page)
 
     # The panel gives the stage in the scrubbed year, the latest stage as provisional with the
     # settled stage beside it, and every parent with its share and its emergence edge.
@@ -112,12 +133,28 @@ def test_genre_atlas_journey_from_the_rule_to_the_table(page: Page, explore_url:
     expect(parents.filter(has_text=STYLE_OTHER_PARENT)).to_contain_text("ghost copy")
     expect(parents.filter(has_text=STYLE_OTHER_PARENT)).to_contain_text(f"emerged after {STYLE_OTHER_PARENT}: emergence edge drawn")
 
-    # What the route does not serve yet is said, not left as a quiet gap. No co-tags are served,
-    # and no landmark masters, so the masters plane is empty and says why.
-    expect(selection).to_contain_text("Co-tagged styles are not served yet")
-    expect(page.locator('#genreAtlasMount .strata-plane-label[data-level="2"]')).to_contain_text("none served")
+    # The route's co-tags arrive on demand: the pairs whose two styles are drawn become edges from
+    # the selected style (counted on the settled frame), and a co-tagged style the atlas does not
+    # draw is listed in the panel instead.
+    _settled_cotag_edges(page, len(COTAGS_DRAWN))
+    expect(selection.locator(".atlas-cotags--drawn li")).to_have_text([re.compile(rf"^{name} · \d+ shared releases$") for name in COTAGS_DRAWN])
+    expect(selection.locator(".atlas-cotags--listed li")).to_have_text([re.compile(rf"^{name} · \d+ shared releases$") for name in COTAGS_LISTED])
+    expect(selection).not_to_contain_text("Co-tagged styles are not served yet")
+
+    # Clearing the selection takes the edges and the list away; selecting it again brings them back.
+    page.keyboard.press("Escape")
+    expect(selection).to_contain_text("Select a genre or a style")
+    _settled_cotag_edges(page, 0)
+    expect(selection.locator(".atlas-cotags")).to_have_count(0)
+    _select_style(page)
+    _settled_cotag_edges(page, len(COTAGS_DRAWN))
+    expect(selection.locator(".atlas-cotags--drawn li")).to_have_count(len(COTAGS_DRAWN))
+
+    # The mock app serves synthetic landmark masters, each in its style's cell, so the masters plane
+    # counts them and soloing it has nothing to explain.
+    expect(page.locator('#genreAtlasMount .strata-plane-label[data-level="2"]')).to_contain_text(str(MASTERS))
     page.keyboard.press("3")
-    expect(page.locator(".atlas-message")).to_have_text(re.compile(r"^Landmark masters are not served by the atlas route yet"))
+    expect(page.locator(".atlas-message")).to_be_hidden()
     page.keyboard.press("3")
     expect(page.locator(".atlas-message")).to_be_hidden()
 
@@ -140,7 +177,18 @@ def test_genre_atlas_journey_from_the_rule_to_the_table(page: Page, explore_url:
     expect(selected.locator(".atlas-cell-dominant")).to_have_text(STYLE_GENRE)
     expect(selected.locator(".atlas-cell-parents")).to_contain_text(f"{STYLE_GENRE} 97%")
     expect(selected.locator(".atlas-cell-edges")).to_have_text(f"{STYLE_OTHER_PARENT}: drawn · {STYLE_GENRE}: drawn")
-    expect(page.locator(".atlas-table-note")).to_contain_text("Masters: none served")
+    expect(page.locator(".atlas-table-note")).to_have_text("")
+
+    # A style whose co-tag read fails says so, and the atlas stays usable: the panel still describes
+    # the style, the table still answers, and the style selected before is still there to select.
+    _table_row(page, FAILING_COTAGS_STYLE).click()
+    expect(selection.locator(".strata-selection-title")).to_have_text(FAILING_COTAGS_STYLE)
+    expect(selection.locator(".atlas-cotag-state")).to_contain_text("Co-tagged styles could not be loaded")
+    expect(selection.locator(".atlas-parents")).to_be_visible()
+    expect(table.locator("tbody tr")).to_have_count(156)
+    _table_row(page, STYLE).click()
+    expect(selection.locator(".strata-selection-title")).to_have_text(STYLE)
+    expect(selection.locator(".atlas-cotags--drawn li")).to_have_count(len(COTAGS_DRAWN))
 
     # The scrubber is shared: a settled year repaints the same rows, and the provisional flag follows.
     _scrub(page, 1990)
