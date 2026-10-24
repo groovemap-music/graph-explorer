@@ -9,14 +9,18 @@
  *   - credit hulls merged per plane and color;
  *   - one instanced blocked-pressing ring per plane, around MusicBrainz-only releases;
  *   - vertical links, rebuilt only when the layout, the soloed plane, or the selection changes;
- *   - DOM labels created only for label candidates and placed greedily each frame.
+ *   - DOM labels created only for label candidates and placed greedily each frame;
+ *   - a readiness signal: the stage's `data-strata-frame` reads `settled` once a frame has drawn
+ *     the current layout with its labels placed and the camera at rest, and `pending` from the
+ *     moment anything that frame showed changes. Each settle is also a `settled` event.
  *
  * Decisions that need no GPU (resolve picking, label candidates, level of detail, camera tweens
  * under reduced motion) live in strata-scene.js. The WebGL context is behind one seam,
  * `createRenderer`, so Vitest builds the whole scene, raycasts, and lays out labels in jsdom.
  *
  * The renderer is display-only. It exposes pick, hover, select, and solo, and reports them as
- * `hover`, `select`, and `solo` events; the Explore integration decides what they open.
+ * `hover`, `select`, and `solo` events; the Explore integration decides what they open. Labels are
+ * placed by the frame loop, not by setLayout, so anything that reads them waits for `settled`.
  *
  * Styles come from strata.css and the promoted tokens: labels are positioned through CSSOM
  * (`element.style.transform`) and shown with the `hidden` attribute, never a style attribute
@@ -176,7 +180,15 @@ export class StrataRenderer extends EventTarget {
         this.overlay.setAttribute('aria-hidden', 'true');
         stage.append(this.canvas, this.overlay);
 
-        this.gl = createRenderer(this.canvas);
+        try {
+            this.gl = createRenderer(this.canvas);
+        } catch (error) {
+            // No WebGL context. Leave the stage as it was, so the caller can say why nothing is drawn.
+            this.canvas.remove();
+            this.overlay.remove();
+            stage.classList.remove('strata-stage');
+            throw error;
+        }
         this.gl.setPixelRatio(Math.min(options.pixelRatio ?? globalThis.devicePixelRatio ?? 1, 2));
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(38, 1, 1, 3000);
@@ -241,6 +253,9 @@ export class StrataRenderer extends EventTarget {
         this.candidatesKey = null;
         this.candidates = [];
         this.dirty = true;
+        this.drawn = false;
+        this.settled = null;
+        this.markSettled(false);
         this.frameHandle = null;
         this.pendingHover = null;
         this.stats = { frames: 0, lastFrameMs: 0, tweenFrames: 0, verticalBuilds: 0, labelCandidates: 0, labelsShown: 0 };
@@ -318,7 +333,7 @@ export class StrataRenderer extends EventTarget {
         if (next === this.hovered) return;
         this.hovered = next;
         this.placeRing(this.hoverRing, next);
-        this.dirty = true;
+        this.invalidate();
         this.emit('hover', next);
     }
 
@@ -344,7 +359,7 @@ export class StrataRenderer extends EventTarget {
         this.placeRing(this.selectRing, this.selected);
         if (next === null) this.animateTo({ fy: CAMERA_HOME.fy, el: CAMERA_HOME.el, r: CAMERA_HOME.r });
         else this.animateTo({ fy: next, el: SOLO_ELEVATION, r: CAMERA_HOME.r * 0.92 });
-        this.dirty = true;
+        this.invalidate();
         this.dispatchEvent(new CustomEvent('solo', { detail: { level: next } }));
     }
 
@@ -373,7 +388,7 @@ export class StrataRenderer extends EventTarget {
         const plan = planCameraMove(this.cam, to, { reduce: this.reduce, now: this.now(), ms });
         this.tween = plan.tween;
         if (!plan.tween) this.setCamera(plan.cam);
-        this.dirty = true;
+        this.invalidate();
     }
 
     /** Re-read the tokens, for a theme change. */
@@ -410,7 +425,7 @@ export class StrataRenderer extends EventTarget {
             const layout = this.layout;
             this.setLayout(layout);
         }
-        this.dirty = true;
+        this.invalidate();
     }
 
     /** Render one frame now: level of detail, links, the scene, and labels. */
@@ -419,7 +434,7 @@ export class StrataRenderer extends EventTarget {
         this.applyLevelOfDetail();
         this.updateLinks();
         this.gl.render(this.scene, this.camera);
-        this.layoutLabels();
+        this.drawn = this.layoutLabels();
         this.dirty = false;
         this.stats.frames++;
         this.stats.lastFrameMs = this.now() - t0;
@@ -439,6 +454,24 @@ export class StrataRenderer extends EventTarget {
             this.hover(this.pick(x, y)?.id ?? null);
         }
         if (this.dirty) this.render();
+        if (this.drawn && !this.dirty && !this.tween) this.markSettled(true);
+    }
+
+    /** Something the next frame draws has changed, so the frame on screen is no longer settled. */
+    invalidate() {
+        this.dirty = true;
+        this.markSettled(false);
+    }
+
+    /**
+     * The readiness signal, for anything that reads what a frame placed: `data-strata-frame` on the
+     * stage, and a `settled` event with the frame count and the number of labels shown.
+     */
+    markSettled(settled) {
+        if (settled === this.settled) return;
+        this.settled = settled;
+        this.stage.dataset.strataFrame = settled ? 'settled' : 'pending';
+        if (settled) this.dispatchEvent(new CustomEvent('settled', { detail: { frame: this.stats.frames, labels: this.stats.labelsShown } }));
     }
 
     start() {
@@ -462,7 +495,7 @@ export class StrataRenderer extends EventTarget {
         this.gl.setSize(width, height, false);
         this.camera.aspect = width / height;
         this.camera.updateProjectionMatrix();
-        this.dirty = true;
+        this.invalidate();
     }
 
     /** A node's projected centre in client coordinates, and whether it is in front of the camera. */
@@ -500,6 +533,7 @@ export class StrataRenderer extends EventTarget {
         this.canvas.remove();
         this.overlay.remove();
         this.stage.classList.remove('strata-stage');
+        delete this.stage.dataset.strataFrame;
         this.layout = null;
     }
 
@@ -535,9 +569,11 @@ export class StrataRenderer extends EventTarget {
         this.instanced = [];
         this.halos = [];
         this.blockedRings = [];
+        // Chips are pooled across layouts, so one the next frame does not reuse must be hidden here:
+        // forgetting it would leave the old page's chip on screen, over the new page's labels.
+        this.hideLabelsExcept(new Set());
         for (const el of this.nodeLabels.values()) el.remove();
         this.nodeLabels.clear();
-        this.shownLabels.clear();
     }
 
     buildPlane(level) {
@@ -703,7 +739,7 @@ export class StrataRenderer extends EventTarget {
         }
         this.placeRing(this.selectRing, this.selected);
         this.candidatesKey = null;
-        this.dirty = true;
+        this.invalidate();
     }
 
     recolor() {
@@ -785,7 +821,7 @@ export class StrataRenderer extends EventTarget {
         this.camera.position.set(position.x, position.y, position.z);
         this.camera.lookAt(target.x, target.y, target.z);
         this.camera.updateMatrixWorld();
-        this.dirty = true;
+        this.invalidate();
     }
 
     // -----------------------------------------------------------------------------------------
@@ -820,13 +856,14 @@ export class StrataRenderer extends EventTarget {
         return el;
     }
 
+    /** Place this frame's labels. Returns whether there was a layout and a stage size to place them in. */
     layoutLabels() {
         const rect = this.measure();
         const { width, height } = rect;
         const shown = new Set();
         if (!this.layout || !width || !height) {
             this.hideLabelsExcept(shown);
-            return;
+            return false;
         }
         const v = new THREE.Vector3();
         const project = (x, y, z) => {
@@ -877,6 +914,7 @@ export class StrataRenderer extends EventTarget {
         }
         this.stats.labelsShown = placed.length;
         this.hideLabelsExcept(shown);
+        return true;
     }
 
     show(el, x, y, shown) {
@@ -905,7 +943,7 @@ export class StrataRenderer extends EventTarget {
             pointermove: (event) => {
                 if (!down) {
                     this.pendingHover = { x: event.clientX, y: event.clientY };
-                    this.dirty = true;
+                    this.invalidate();
                     return;
                 }
                 const dx = event.clientX - down.x;

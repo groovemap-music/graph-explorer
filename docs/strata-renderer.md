@@ -31,7 +31,7 @@ renderer.addEventListener('select', (event) => openPanel(event.detail.node));
 
 | Member | What it does |
 | --- | --- |
-| `new StrataRenderer(stage, options)` | Adds a canvas and a label layer to `stage`. Every option is a seam for tests: `createRenderer(canvas)` (the WebGL context), `readToken`, `theme`, `matchMedia`, `requestFrame`/`cancelFrame`, `now`, `measure` (the stage rectangle), `labelOf(node)` (label text), and `pixelRatio` |
+| `new StrataRenderer(stage, options)` | Adds a canvas and a label layer to `stage`. Every option is a seam for tests: `createRenderer(canvas)` (the WebGL context), `readToken`, `theme`, `matchMedia`, `requestFrame`/`cancelFrame`, `now`, `measure` (the stage rectangle), `labelOf(node)` (label text), and `pixelRatio`. If `createRenderer` throws (the browser gives no WebGL context), it leaves `stage` as it was and rethrows |
 | `setLayout(layout)` | Draws a layout. The selection survives if its node is still drawn |
 | `pick(clientX, clientY)` | The node a pointer means, by resolve picking, or `null` |
 | `hitsAt(clientX, clientY)` | `{ node, candidates }`: every node under the pointer, best first |
@@ -39,6 +39,7 @@ renderer.addEventListener('select', (event) => openPanel(event.detail.node));
 | `orbit(radians)`, `tilt(radians)`, `zoom('in' \| 'out' \| 'reset')`, `resetCamera()` | Camera moves for keyboard bindings. Zoom and reset are tweened unless reduced motion is on |
 | `refreshColors()` | Re-reads the tokens after a theme change |
 | `start()` / `stop()` / `tick(t)` / `render()` | The animation loop. A frame renders only when something changed |
+| `stage.dataset.strataFrame`, `settled` event | The readiness signal. `settled` once a frame has drawn the current layout at a measurable size with its labels placed and no camera tween running; `pending` from the moment anything that frame showed changes (a layout, selection, hover, solo, camera move, or resize). Each change to `settled` dispatches a `settled` event, `detail` `{ frame, labels }` |
 | `screenPosition(node)`, `drawCounts()`, `stats` | Readouts for tests and the performance smoke test |
 | `dispose()` | Releases the GPU objects, listeners, and DOM |
 
@@ -100,7 +101,13 @@ keeps `LABEL_GAP` (2 px) from the next. A label that would leave the stage is dr
 clipped. Priority 0 (hovered or selected) is not dropped for a neighbour: it moves up or down to the
 nearest free slot instead, and is hidden only when the column around it is full. At most
 `MAX_NODE_LABELS` (400) node labels are placed in a frame. Labels are positioned through CSSOM
-transforms and hidden with the `hidden` attribute.
+transforms and hidden with the `hidden` attribute. The chip elements are pooled across layouts, so a
+new layout hides every chip the last frame showed before the next frame places its own.
+
+Labels are placed by the frame loop, not by `setLayout`, so they appear a frame after the DOM the
+Explore view writes for the same page. Anything that reads them, the browser tests included, waits
+for `data-strata-frame="settled"` on the stage (and `aria-busy="false"` on `#strataView`, which the
+Explore view sets while a strata request is in flight) rather than for a fixed time.
 
 `levelOfDetail` takes the camera distance and the drawn node count:
 
