@@ -330,7 +330,8 @@ describe('the stage rule on screen', () => {
     it('words every stage with its thresholds, names every threshold, and carries the version', () => {
         const words = ruleText(RULE);
         expect(words.version).toBe('gm-design-4804/1');
-        expect(words.title).toBe('Stage rule gm-design-4804/1, over release-year counts');
+        expect(words.title).toBe('Stage rule (version 1)');
+        expect(words.notes[0]).toBe('Stages are judged over release-year counts.');
         expect(words.stages.map((s) => s.stage)).toEqual(RULE.stages);
         const condition = Object.fromEntries(words.stages.map((s) => [s.stage, s.condition]));
         expect(condition.absent).toBe('before the year it reaches 25 cumulative releases');
@@ -353,11 +354,13 @@ describe('the stage rule on screen', () => {
 
     it('reads changed thresholds, and still shows a stage or threshold it has no words for', () => {
         const words = ruleText({ ...RULE, active_share: 0.55, rule_version: 'gm-design-4804/2', stages: [...RULE.stages, 'dormant'], dormant_after: 30 });
-        expect(words.title).toContain('gm-design-4804/2');
+        expect(words.title).toBe('Stage rule (version 2)');
+        expect(words.version).toBe('gm-design-4804/2');
         expect(words.stages.find((s) => s.stage === 'emerging').condition).toContain('0.55 × its peak');
         expect(words.stages.find((s) => s.stage === 'dormant').condition).toMatch(/no description/);
         expect(words.thresholds).toContainEqual({ name: 'dormant_after', value: '30' });
         expect(ruleText({ stages: ['absent'] }).version).toBe('unversioned');
+        expect(ruleText({ stages: ['absent'] }).title).toBe('Stage rule');
     });
 });
 

@@ -16,6 +16,8 @@ The always-visible navigation provides these public workflows:
   and resolves a barcode, catalogue number, or matrix inscription straight to the record.
 - **Insights**, **Genres**, and **Credits** show catalog summaries, taxonomy, and contributor
   provenance.
+  **Genres** opens on the **Genre Atlas**, genres and styles colored by lifecycle stage over valid
+  time, with a table of the same rows; see [Genre Atlas](genre-atlas.md).
 - **Will it fit?** scores one candidate release against your own collection. It is reachable
   signed out, where it asks you to log in rather than disappearing from the navigation.
 - The floating **Ask** control streams natural-language answers and applies only allowlisted,
@@ -149,6 +151,8 @@ each action records and what the three settings cards do.
   it. The Ask close and answer-clear controls expose accessible names.
 - Discography Strata and its table are fully operable from the keyboard; the keys are listed in
   [Discography Strata](discography-strata.md#the-3d-view).
+- The Genre Atlas and its table are fully operable from the keyboard; the keys are listed in
+  [Genre Atlas](genre-atlas.md#the-3d-view). Stages are always words as well as colors.
 - Escape closes the account and Discogs connection dialogs and exits graph full-screen mode.
 - The Missing pane's media control is a native multi-select grouped by family. Its accessible name
   is “Media,” and its hint explains that no selection includes all media.

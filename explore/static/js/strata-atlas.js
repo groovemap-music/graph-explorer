@@ -14,6 +14,9 @@
  *   - the panel: a style's stage in the scrubbed year, its latest (provisional) stage with the
  *     settled stage next to it, its parents with their shares and emergence edges, and its ghosts;
  *   - keyboard navigation bound to the renderer's camera, select, and solo;
+ *   - the table, the same genres and styles as sortable rows (strata-atlas-table.js), chosen from
+ *     the view toggle. It shares the scrubber, the selection, and the panel with the 3D view, and
+ *     needs no WebGL;
  *   - the empty month before the first monthly run, and route failures, in words.
  *
  * The DOM is built with createElement and textContent only, and styled through classes in
@@ -21,6 +24,7 @@
  */
 
 import { AtlasRenderer } from './strata-atlas-renderer.js';
+import { ATLAS_TABLE_HELP, AtlasTable, buildAtlasRows } from './strata-atlas-table.js';
 import {
     ATLAS_PLANES,
     EMPTY_MESSAGE,
@@ -44,6 +48,8 @@ export const ATLAS_MOUNTS = Object.freeze({ genres: 'genreAtlasMount', insights:
 /** Milliseconds per year while the timeline plays. */
 export const PLAY_STEP_MS = 400;
 export const ATLAS_KEY_HELP = 'Arrow keys orbit and tilt, plus and minus zoom, 0 resets the camera. 1, 2, and 3 show one plane, and the same key again shows all. [ and ] move along a plane, PageUp moves to the genre a style is drawn under and PageDown to a genre\'s first style, and Escape clears the selection. The year slider scrubs valid time.';
+
+export const NO_WEBGL = 'This browser cannot draw the 3D atlas: WebGL is not available. The table lists the same genres and styles.';
 
 /** What the view says when the route fails. */
 export function atlasErrorMessage(status) {
@@ -165,7 +171,17 @@ export class GenreAtlas {
         this.active = false;
         this.loading = null;
         this.playHandle = null;
+        this.mode = 'strata';
         this.build();
+        this.table = new AtlasTable({
+            doc,
+            host: this.ui.table,
+            helpId: 'atlasTableHelp',
+            onSelect: (id) => this.selectNode(id),
+            onStatus: (text) => {
+                this.ui.tableStatus.textContent = text;
+            },
+        });
         if (observeTheme && typeof MutationObserver === 'function') {
             this.themeObserver = new MutationObserver(() => this.renderer?.refreshColors());
             this.themeObserver.observe(doc.documentElement, { attributes: true, attributeFilter: ['class'] });
@@ -224,7 +240,19 @@ export class GenreAtlas {
         });
         const reset = el(doc, 'button', 'strata-tool-btn', 'Reset view');
         reset.type = 'button';
-        toolbar.append(time, planes, reset);
+        // The 3D view or the table: the same atlas, the same scrubber, selection, and panel.
+        const views = el(doc, 'div', 'strata-planes atlas-views');
+        views.setAttribute('role', 'group');
+        views.setAttribute('aria-label', 'Atlas view');
+        const viewButtons = [['strata', '3D view'], ['table', 'Table']].map(([view, text]) => {
+            const button = el(doc, 'button', 'strata-tool-btn', text);
+            button.type = 'button';
+            button.dataset.atlasView = view;
+            button.setAttribute('aria-pressed', String(view === 'strata'));
+            views.append(button);
+            return button;
+        });
+        toolbar.append(time, views, planes, reset);
 
         const body = el(doc, 'div', 'atlas-body');
         const stageWrap = el(doc, 'div', 'atlas-stage-wrap');
@@ -238,7 +266,18 @@ export class GenreAtlas {
         const message = el(doc, 'p', 'atlas-message');
         message.setAttribute('role', 'alert');
         message.hidden = true;
-        stageWrap.append(stage, help, message);
+        const tableWrap = el(doc, 'div', 'strata-table-wrap atlas-table-wrap');
+        tableWrap.hidden = true;
+        const tableBar = el(doc, 'div', 'strata-table-toolbar');
+        const tableStatus = el(doc, 'p', 'strata-table-status');
+        tableStatus.setAttribute('role', 'status');
+        const tableNote = el(doc, 'p', 'strata-table-status atlas-table-note');
+        tableBar.append(tableStatus, tableNote);
+        const table = el(doc, 'div', 'strata-table-scroll');
+        const tableHelp = el(doc, 'p', 'strata-sr-only', ATLAS_TABLE_HELP);
+        tableHelp.id = 'atlasTableHelp';
+        tableWrap.append(tableBar, table, tableHelp);
+        stageWrap.append(stage, help, message, tableWrap);
 
         const panel = el(doc, 'aside', 'atlas-panel');
         panel.setAttribute('aria-label', 'Genre Atlas details');
@@ -253,11 +292,12 @@ export class GenreAtlas {
         root.append(head, toolbar, body);
 
         this.root = root;
-        this.ui = { summary, range, output, note, strip, play, planeButtons, reset, stage, message, rule, legend, selection };
+        this.ui = { summary, range, output, note, strip, play, planeButtons, reset, stage, help, message, rule, legend, selection, viewButtons, tableWrap, table, tableStatus, tableNote, stageOnly: [planes, reset] };
         range.addEventListener('input', () => this.setYear(Number(range.value)));
         play.addEventListener('click', () => (this.playHandle === null ? this.play() : this.pause()));
         for (const button of planeButtons) button.addEventListener('click', () => this.setSolo(button.dataset.atlasSolo === '' ? null : Number(button.dataset.atlasSolo)));
         reset.addEventListener('click', () => this.renderer?.resetCamera());
+        for (const button of viewButtons) button.addEventListener('click', () => this.setMode(button.dataset.atlasView));
         stage.addEventListener('keydown', (event) => this.handleKey(event));
     }
 
@@ -322,6 +362,7 @@ export class GenreAtlas {
             this.setTimelineEnabled(false);
             this.renderLegend();
             this.renderSelection();
+            this.renderTable();
             return;
         }
         this.layout = layoutAtlas(atlas, { masterSlot: this.masterSlot });
@@ -335,20 +376,25 @@ export class GenreAtlas {
         if (this.active) this.startRenderer();
         this.renderLegend();
         this.renderSelection();
+        this.renderTable();
     }
 
     startRenderer() {
+        // The table builds no renderer, so it opens where WebGL does not.
+        if (this.mode === 'table') return;
         if (!this.renderer) {
             try {
                 this.renderer = this.createRenderer(this.ui.stage);
             } catch {
-                this.showMessage('This browser cannot draw the 3D atlas: WebGL is not available.');
+                this.showMessage(NO_WEBGL);
                 return;
             }
             this.renderer.addEventListener('select', (event) => this.onSelect(event.detail.id));
             this.renderer.addEventListener('solo', (event) => this.onSolo(event.detail.level));
             this.renderer.setYear(this.year);
             this.renderer.setLayout(this.layout);
+            // A selection made in the table before the 3D view was first shown.
+            if (this.selected) this.renderer.select(this.selected);
         }
         this.renderer.start();
         this.renderer.resize?.();
@@ -406,6 +452,7 @@ export class GenreAtlas {
         this.renderYear();
         this.renderLegend();
         this.renderSelection();
+        this.renderTable();
     }
 
     /** Run the timeline a year at a time from its start (or from the scrubbed year) to its end. */
@@ -439,9 +486,49 @@ export class GenreAtlas {
 
     onSelect(id) {
         this.selected = id;
+        this.table.select(this.tableRowId(id));
         this.renderSelection();
         const primary = id ? primaryOf(this.byId, id) : null;
         if (primary) this.loadCotags(primary.style);
+    }
+
+    /** The table row that stands for a node: a ghost's is its style's; a master has none. */
+    tableRowId(id) {
+        const node = id ? this.byId.get(id) : null;
+        if (!node || node.entity === 'master') return null;
+        return node.entity === 'ghost' ? node.ghostOf : node.id;
+    }
+
+    /** Show the atlas as the 3D view or as the table. The table builds no renderer. */
+    setMode(mode) {
+        const next = mode === 'table' ? 'table' : 'strata';
+        const table = next === 'table';
+        const { ui } = this;
+        this.mode = next;
+        for (const button of ui.viewButtons) button.setAttribute('aria-pressed', String(button.dataset.atlasView === next));
+        ui.stage.hidden = table;
+        ui.help.hidden = table;
+        ui.tableWrap.hidden = !table;
+        for (const item of ui.stageOnly) item.hidden = table;
+        if (table) {
+            this.renderer?.stop();
+            // Notes about the 3D view's planes and canvas do not belong over the table.
+            if ([NO_MASTERS, NO_MASTER_SLOTS, NO_WEBGL].includes(ui.message.textContent)) this.showMessage(null);
+            this.renderTable();
+        } else if (this.active && this.layout) {
+            this.startRenderer();
+            this.onSolo(this.solo);
+        }
+        return next;
+    }
+
+    renderTable() {
+        if (this.mode !== 'table') return;
+        const { layout, ui } = this;
+        this.table.setRows(layout ? buildAtlasRows(layout) : [], { year: layout ? this.year : null, selected: this.tableRowId(this.selected) });
+        // The master plane is empty until masters are served; the table has no plane to say so.
+        const plane = layout ? layout.planes[2] : null;
+        ui.tableNote.textContent = plane && plane.note ? `Masters: ${this.atlas.masters?.length ? 'not placed yet' : 'none served'}. ${plane.note}` : '';
     }
 
     /** Fetch a style's co-tags once, then redraw its star and the panel if it is still selected. */
@@ -525,7 +612,10 @@ export class GenreAtlas {
         thresholds.append(el(doc, 'span', 'atlas-rule-label', 'Thresholds: '));
         thresholds.append(doc.createTextNode(words.thresholds.map(({ name, value }) => `${name} ${value}`).join(' · ')));
         box.append(thresholds);
-        box.append(el(doc, 'p', 'atlas-rule-version', `Rule version ${words.version}`));
+        // The full served id is for support, so it is a small line with a tooltip, not a heading.
+        const detail = el(doc, 'p', 'atlas-rule-version', `Rule id ${words.version}`);
+        detail.title = `The full rule version the server reported: ${words.version}`;
+        box.append(detail);
     }
 
     renderLegend() {

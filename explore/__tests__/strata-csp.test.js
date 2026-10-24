@@ -29,6 +29,7 @@ const STRATA_MODULES = [
     'strata-atlas.js',
     'strata-atlas-layout.js',
     'strata-atlas-renderer.js',
+    'strata-atlas-table.js',
 ].map((name) => resolve(ROOT, 'static', 'js', name));
 const THREE_FILES = ['three.module.js', 'three.core.js'].map((name) => resolve(ROOT, 'node_modules', 'three', 'build', name));
 

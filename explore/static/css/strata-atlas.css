@@ -268,6 +268,56 @@
     color: var(--text-mid);
 }
 
+/* The table (static/js/strata-atlas-table.js) reuses the Strata table's classes (strata.css) for
+   the scroll region, headers, sort arrows, focus ring, and selected row, and adds its own cells.
+   Genre rows lead their styles, which are indented under them. */
+.atlas-stage[hidden] {
+    display: none;
+}
+
+.atlas-row--genre th {
+    font-weight: 600;
+}
+
+.atlas-row--style th {
+    padding-left: 22px;
+}
+
+/* The selected row keeps its text readable: a tint of the accent and a bar, where the Strata table's
+   row color (--strata-hover) is the solid hover cyan the 3D rings use. */
+.atlas-row[aria-current="true"] {
+    background: var(--inner-bg);
+    background: color-mix(in srgb, var(--strata-accent) 16%, transparent);
+    box-shadow: inset 3px 0 0 var(--strata-accent);
+}
+
+.atlas-row[aria-current="true"] th {
+    color: var(--text-high);
+    text-decoration: underline;
+    text-decoration-color: var(--strata-accent);
+    text-underline-offset: 3px;
+}
+
+.atlas-cell-name,
+.atlas-cell-stage,
+.atlas-cell-provisional,
+.atlas-cell-year {
+    white-space: nowrap;
+}
+
+.atlas-cell-year {
+    font-variant-numeric: tabular-nums;
+}
+
+.atlas-cell-parents,
+.atlas-cell-edges {
+    min-width: 13rem;
+}
+
+.atlas-table-note:empty {
+    display: none;
+}
+
 /* The Genres pane: the atlas beside the flat tree, chosen by a toggle. */
 .genres-view-toggle {
     display: flex;

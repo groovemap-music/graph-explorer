@@ -18,6 +18,7 @@ harness's `webgl-inst` mode is the source of the port.
 | `explore/static/js/strata-explore.js` | The Explore integration: fetching, drill-down, both clocks, the filter, search-to-focus, keyboard, and the panel (below) |
 | `explore/static/js/strata-table.js` | The strata table: every credit, lane, master, and pressing as a sortable, keyboard-navigable table (below) |
 | `explore/static/js/strata-atlas-renderer.js` | `AtlasRenderer`, the Genre Atlas (concept B) on this engine: a subclass that draws the served atlas layout (below) |
+| `explore/static/js/strata-atlas-table.js` | `AtlasTable`, the Genre Atlas as sortable rows, and the pure functions behind it |
 
 ## API
 
@@ -222,6 +223,15 @@ empty month before the first monthly run. `tests/explore_test_app.py` serves the
 `tests/fixtures/style-atlas.json`. That body was recorded from analytics-engine's own read path
 over its seeded synthetic catalogue.
 
+`strata-atlas-table.js` is the atlas's table, a peer of the 3D view. `buildAtlasRows` reads the same
+painted layout the renderer draws, so its stages and provisional flags are the 3D view's. It has one
+row per genre and per style (ghosts are the same style drawn again, so they are not rows) and sorts
+in the rule's stage order. `AtlasTable` is the DOM half: a native table with a caption, header
+buttons with `aria-sort`, a roving tabindex, and the keys in [Genre Atlas](genre-atlas.md#the-table).
+`GenreAtlas.setMode` switches between the two views. The table builds no renderer and stops the
+frame loop, so it opens where WebGL does not, and it shares the scrubber, the selection, and the
+panel with the 3D view. The user-facing description is [Genre Atlas](genre-atlas.md).
+
 ## Tests
 
 - `explore/__tests__/strata-scene.test.js` covers the GPU-free logic: resolve picking on stacked
@@ -258,7 +268,15 @@ over its seeded synthetic catalogue.
   (`strata-atlas-fixtures.js`) and the recorded body have zero hull intrusions, every ghost inside
   and counted in its host hull, and no overlapping footprints. They also cover the lifecycle colors,
   the provisional treatment, the rule text, the emergence and lateral edges, picking, the empty
-  month, and the pane wiring.
+  month, and the pane wiring. `strata-atlas-table.test.js` covers its table: the rows against the
+  layout (the recorded body and 25 generated atlases), the sorting, the DOM's roving focus and keys,
+  and how the view shares the scrubber and selection with the 3D view.
+- `tests/e2e/test_genre_atlas.py` walks the atlas in a real browser on every project in the E2E
+  matrix, against the mock route above: the rule and its revision, scrubbing into the provisional
+  years, selecting a style to see its parents and emergence edges, the co-tag and master states the
+  route does not serve yet, then the table (sort, shared slider, keyboard) and back. A second
+  journey opens the table where WebGL is unavailable. It drives the 3D view from the keyboard.
+  The user-facing description is [Genre Atlas](genre-atlas.md).
 - `tests/perf/test_strata_renderer_perf.py` is the performance smoke test below. `just test` and the
   E2E matrix skip it (marker `benchmark`).
 
