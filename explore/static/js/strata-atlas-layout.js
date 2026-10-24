@@ -6,9 +6,11 @@
  * coordinates onto the planes by one uniform scale (`ATLAS_RADIUS`), and decides only what the
  * served layout leaves to the client:
  *   - the planes: genres on plane 0, styles and their ghost copies on plane 1, landmark masters on
- *     plane 2 (the route serves none yet, so that plane is drawn empty and says so);
+ *     plane 2, each in a deterministic slot of its style's cell (strata-master-slots.js). When the
+ *     route serves none, that plane is drawn empty and says so;
  *   - the footprint check: each plane's node size is the largest that keeps every node's footprint
- *     clear of its nearest neighbour, since the positions cannot move to make room;
+ *     clear of its nearest neighbour, since the positions cannot move to make room. A master's
+ *     size is its slot's footprint instead, which already clears every other slot;
  *   - genre hulls: one per sector, around the styles and ghost copies it hosts. A ghost is counted
  *     in its host's hull (gm-design-4804 Recommendation for B 2);
  *   - lifecycle stages over valid time, read from each style's `stages` (one index into
@@ -24,6 +26,7 @@
  */
 
 import { PLANE_KINDS, hull, inPoly, roundedHull } from './strata-layout.js';
+import { styleCells } from './strata-master-slots.js';
 
 /** World units per unit of the served disc: the outermost styles (radius 0.95) sit 43.7 units out, inside the plane. */
 export const ATLAS_RADIUS = 46;
@@ -42,7 +45,7 @@ export const MIN_SIZE = 0.12;
 export const HULL_MARGIN = 1.2;
 /** A hull's padding is at most this share of the distance to the nearest node it must not hold. */
 export const HULL_CLEARANCE_SHARE = 0.45;
-/** The plane landmark masters belong on. The style-atlas route serves none yet. */
+/** The plane landmark masters belong on. */
 export const MASTER_PLANE = 2;
 export const NO_MASTERS = 'Landmark masters are not served by the atlas route yet, so this plane is empty.';
 export const NO_MASTER_SLOTS = 'Landmark masters are served, but the rule that places them in their style\'s cell is not built yet, so this plane is empty.';
@@ -152,15 +155,19 @@ export function adaptAtlasPayload(payload) {
     }));
     for (const ghost of ghosts) if (!styleNames.has(ghost.style)) invalid(`the ghost of ${ghost.style} has no style`);
 
-    // Landmark masters: not served yet. When they are, they come with no position; layoutAtlas
-    // places them through a slot rule, never here.
+    // Landmark masters, the top ones per style by release count. They come with no position;
+    // layoutAtlas places them through a slot rule, never here. One master can be a landmark of
+    // several styles, and is drawn in each one's cell.
     const masters = (payload.masters || []).map((raw, i) => ({
         masterId: raw.master_id != null ? String(raw.master_id) : invalid(`masters[${i}].master_id is missing`),
         title: typeof raw.title === 'string' ? raw.title : null,
         year: yearOrNull(raw.year, `masters[${i}].year`),
         style: text(raw.style, `masters[${i}].style`),
         releaseCount: Number.isInteger(raw.release_count) ? raw.release_count : null,
+        rank: Number.isInteger(raw.rank) && raw.rank >= 1 ? raw.rank : null,
     }));
+    const masterKeys = new Set(masters.map((master) => masterId(master.masterId, master.style)));
+    if (masterKeys.size !== masters.length) invalid('a master is listed twice for one style');
 
     return { ...base, empty: false, timeline, genres, styles, ghosts, masters };
 }
@@ -238,6 +245,26 @@ export function atlasFootprint(points, size) {
     return { size: Math.max(MIN_SIZE, Math.min(size, room)), nearest, fit: room >= MIN_SIZE };
 }
 
+/**
+ * The master plane's footprint check. Its slots already clear each other (strata-master-slots.js),
+ * so each master is sized from its own slot, by the same share of the gap as the other planes:
+ * FOOTPRINT_SHARE of the slot spacing, twice the footprint radius. A crowded cell draws smaller
+ * masters; there is no MIN_SIZE floor, since a floor would make them overlap. The result reports
+ * the smallest size and spacing, and `fit` is false when the smallest is under MIN_SIZE. This
+ * stays linear in the number of masters, where the pairwise check would not.
+ */
+export function masterFootprint(masters) {
+    let size = Infinity;
+    let nearest = Infinity;
+    for (const node of masters) {
+        const spacing = 2 * node.slotRadius * ATLAS_RADIUS;
+        node.size = Math.min(ATLAS_SIZES[MASTER_PLANE], FOOTPRINT_SHARE * spacing);
+        size = Math.min(size, node.size);
+        nearest = Math.min(nearest, spacing);
+    }
+    return masters.length ? { size, nearest, fit: size >= MIN_SIZE } : { size: ATLAS_SIZES[MASTER_PLANE], nearest, fit: true };
+}
+
 // ---------------------------------------------------------------------------------------------
 // The layout.
 // ---------------------------------------------------------------------------------------------
@@ -271,22 +298,25 @@ function plainNode(id, level, point, extra) {
     };
 }
 
-export const masterId = (id) => `m:${id}`;
+export const masterId = (id, style) => `m:${id}@${style}`;
 
 /**
  * Lay out an adapted atlas. Every node keeps its served coordinates (`ax`, `ay`) and sits at
  * `x = ax * ATLAS_RADIUS`, `z = -ay * ATLAS_RADIUS` (north is away from the camera's home), the
  * same scale for every node, so the geography is the server's.
  *
- * The master plane is the seam for landmark masters. They will be served with no position, and a
- * deterministic slot rule (a pure function of the master and its style's cell, the rule concept C′
- * uses for collector masters) places them. Until both exist the plane is empty and says why.
+ * The master plane is the seam for landmark masters. They are served with no position, and a
+ * deterministic slot rule (strata-master-slots.js atlasMasterSlot, the rule concept C′ uses for
+ * collector masters too) places each in its style's cell. With no rule, or no masters, the plane
+ * is empty and says why.
  *
  * @param {object} atlas - from adaptAtlasPayload
  * @param {object} [options]
- * @param {((master: object, cell: {style: object, sector: number[]}) => {x: number, y: number}) | null}
- *   [options.masterSlot] - a master's position in the unit disc, from the master and its style's
- *   primary node and host sector
+ * @param {((master: object, context: {style: object, sector: number[], cell: {x: number, y: number,
+ *   radius: number}, masters: object[]}) => {x: number, y: number, radius: number}) | null}
+ *   [options.masterSlot] - a master's slot in the unit disc, and the radius of its footprint, from
+ *   the master, its style's primary node, host sector, and cell (strata-master-slots.js
+ *   styleCells), and all the masters served for that style
  * @returns {{nodes: object[], edges: object[], hulls: object[], emergence: object[], footprint:
  *   object[], planes: object[], atlas: object}}
  */
@@ -342,12 +372,19 @@ export function layoutAtlas(atlas, { masterSlot = null } = {}) {
         nodes.push(node);
     }
     const masters = atlas.masters || [];
-    if (masterSlot) {
+    if (masterSlot && masters.length) {
+        const cells = styleCells(atlas);
+        const perStyle = new Map();
+        for (const master of masters) {
+            if (!perStyle.has(master.style)) perStyle.set(master.style, []);
+            perStyle.get(master.style).push(master);
+        }
         for (const master of masters) {
             const style = primaries.get(master.style);
             if (!style) continue;
-            const point = masterSlot(master, { style: style.data, sector: host(style.genre)?.sector ?? null });
-            const node = plainNode(masterId(master.masterId), MASTER_PLANE, point, {
+            const point = masterSlot(master, { style: style.data, sector: host(style.genre)?.sector ?? null, cell: cells.get(master.style), masters: perStyle.get(master.style) });
+            if (!Number.isFinite(point?.radius)) throw new Error(`the master slot rule gave master ${master.masterId} no footprint radius`);
+            const node = plainNode(masterId(master.masterId, master.style), MASTER_PLANE, point, {
                 entity: 'master',
                 label: master.title || `Master ${master.masterId}`,
                 style: master.style,
@@ -355,6 +392,7 @@ export function layoutAtlas(atlas, { masterSlot = null } = {}) {
                 parent: style.id,
                 group: style.group,
                 master,
+                slotRadius: point.radius,
             });
             style.children.push(node.id);
             nodes.push(node);
@@ -363,8 +401,8 @@ export function layoutAtlas(atlas, { masterSlot = null } = {}) {
 
     const footprint = [0, 1, 2].map((level) => {
         const onPlane = nodes.filter((node) => node.level === level);
-        const check = atlasFootprint(onPlane.map((node) => [node.x, node.z]), ATLAS_SIZES[level]);
-        for (const node of onPlane) node.size = check.size;
+        const check = level === MASTER_PLANE ? masterFootprint(onPlane) : atlasFootprint(onPlane.map((node) => [node.x, node.z]), ATLAS_SIZES[level]);
+        if (level !== MASTER_PLANE) for (const node of onPlane) node.size = check.size;
         return { level, nodes: onPlane.length, ...check };
     });
 

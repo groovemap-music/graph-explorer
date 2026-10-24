@@ -272,6 +272,18 @@ describe('the panel', () => {
         expect(source).toHaveBeenCalledTimes(1);
     });
 
+    it('draws served landmark masters with the slot rule, and says nothing when their plane is soloed', async () => {
+        const { masters } = JSON.parse(readFileSync(resolve(HERE, '..', '..', 'tests', 'fixtures', 'style-atlas-masters.json'), 'utf8'));
+        const { atlas, renderer } = makeAtlas({ body: { ...BODY, masters } });
+        await atlas.show();
+        expect(renderer().layout.nodes.filter((node) => node.entity === 'master')).toHaveLength(masters.length);
+        expect(atlas.layout.planes[2].note).toBe(null);
+        atlas.ui.planeButtons[3].click();
+        expect(atlas.ui.message.hidden).toBe(true);
+        renderer().select(`m:${masters[0].master_id}@${masters[0].style}`);
+        expect(atlas.ui.selection.textContent).toContain(`rank ${masters[0].rank} in ${masters[0].style}`);
+    });
+
     it('says why the master plane is empty when it is soloed', async () => {
         const { atlas } = makeAtlas();
         await atlas.show();

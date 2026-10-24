@@ -84,8 +84,9 @@ describe('positions are the payload', () => {
 });
 
 describe('the master plane seam', () => {
-    // Landmark masters will be served with no position and placed by a slot rule. Neither exists
-    // yet; these hold the seam: no slot rule, no master node.
+    // Landmark masters are served with no position and placed only by a slot rule. These hold the
+    // seam with a stand-in rule: no slot rule, no master node. strata-master-slots.test.js holds
+    // the real rule.
     const withMasters = (payload) => ({
         ...payload,
         masters: payload.styles.slice(0, 12).map((style, i) => ({ master_id: 500 + i, title: `Landmark ${i}`, year: 1960 + i, style: style.style, release_count: 40 - i })),
@@ -93,7 +94,7 @@ describe('the master plane seam', () => {
     // A stand-in slot: just outside the style's own node, along its radius.
     const slot = (master, { style }) => {
         const k = 1 + 0.004 * (Number(master.masterId) % 7);
-        return { x: style.x * k, y: style.y * k };
+        return { x: style.x * k, y: style.y * k, radius: 0.001 };
     };
 
     it('is empty and says the route serves none, with or without a slot rule', () => {
@@ -110,6 +111,19 @@ describe('the master plane seam', () => {
         expect(layout.planes[2].note).toBe(NO_MASTER_SLOTS);
     });
 
+    it('needs a footprint radius from the slot rule, since a master is sized by its slot', () => {
+        const payload = withMasters(RECORDED.body);
+        expect(() => layoutAtlas(adaptAtlasPayload(payload), { masterSlot: (master, { style }) => ({ x: style.x, y: style.y }) })).toThrow(/no footprint radius/);
+    });
+
+    it('refuses a master listed twice for one style, and keeps one listed under two styles', () => {
+        const payload = withMasters(RECORDED.body);
+        const twice = { ...payload, masters: [...payload.masters, payload.masters[0]] };
+        expect(() => adaptAtlasPayload(twice)).toThrow(/listed twice/);
+        const two = { ...payload, masters: [...payload.masters, { ...payload.masters[0], style: payload.masters[1].style }] };
+        expect(adaptAtlasPayload(two).masters).toHaveLength(payload.masters.length + 1);
+    });
+
     it('places served masters only through the slot rule, under their style', () => {
         const payload = withMasters(RECORDED.body);
         const layout = layoutAtlas(adaptAtlasPayload(payload), { masterSlot: slot });
@@ -118,7 +132,7 @@ describe('the master plane seam', () => {
         expect(masters).toHaveLength(12);
         expect(layout.planes[2]).toMatchObject({ count: 12, note: null });
         for (const raw of payload.masters) {
-            const node = byId.get(masterId(raw.master_id));
+            const node = byId.get(masterId(raw.master_id, raw.style));
             const style = byId.get(styleId(raw.style));
             const at = slot({ masterId: String(raw.master_id) }, { style: style.data });
             expect([node.ax, node.ay]).toEqual([at.x, at.y]);
