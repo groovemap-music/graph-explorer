@@ -1,5 +1,6 @@
 """Test application factory for graph-explorer E2E tests."""
 
+import copy
 import json
 from collections.abc import AsyncGenerator  # noqa: TC003  # Required for runtime annotation evaluation.
 from contextlib import asynccontextmanager
@@ -74,6 +75,8 @@ MOCK_USER: dict[str, Any] = {
 }
 
 MOCK_TOKEN = "mock-test-access-token-abc123"  # nosec B105
+# catalog-api's app-token prefix (api/app_tokens.py TOKEN_PREFIX): a delegated caller, not a session.
+MOCK_APP_TOKEN_PREFIX = "dscg_"  # nosec B105
 
 MOCK_COLLECTION: dict[str, Any] = {
     "releases": [
@@ -193,35 +196,27 @@ MOCK_RELEASE_COMPANIES: list[dict[str, Any]] = [
     {"name": "Damont", "discogs_id": 12345, "role": "Pressed By", "role_category": "pressing", "catno": None},
 ]
 
-MOCK_FIT_PROFILE: dict[str, Any] = {
-    "release": {
-        "id": "249504",
-        "gm_id": "gm:release:249504",
-        "title": "Never Gonna Give You Up",
-        "artist": "Rick Astley",
-        "year": 1987,
-        "media_families": ["vinyl"],
-        "rarity": {"score": 0.31, "tier": "common"},
-    },
-    "fit": 0.62,
-    "components": {
-        "affinity": {"score": 0.55, "evidence": ["shares artist Rick Astley with 2 releases you hold"]},
-        "novelty": {"score": 0.4, "evidence": ["Stock Aitken Waterman is a label your collection has never held"]},
-        "bridge": {
-            "score": 1.0,
-            "evidence": [
-                "bridges Electronic and Rock, which share no artist or label in your collection",
-                "region boundaries are the v0 genre heuristic, not a computed community",
-            ],
-        },
-        "depth": {"score": 0.4, "evidence": ["deepens artist Rick Astley (2 held)"]},
-        "redundancy": {"score": 0.0, "evidence": []},
-    },
-    "confidence": "exact",
-    "policy_id": "cratefit_v0",
-    "fit_version": "cratefit_v0",
-    "impression_id": "33333333-3333-3333-3333-333333333333",
-}
+# The fit route's body for a first-party session (tests/fixtures/fit-profile.json): five components,
+# every one with evidence, a native id and an impression, because the browser test walks the whole
+# card and then reports an outcome against the impression it carries. Each component also carries
+# its uncapped `evidence_entries` (catalog-api docs/cratefit.md) over the recorded style atlas and
+# the synthetic taste projection, so the landing point has one of everything to draw and to list.
+FIT_PROFILE_FIXTURE = Path(__file__).parent / "fixtures" / "fit-profile.json"
+MOCK_FIT_PROFILE: dict[str, Any] = json.loads(FIT_PROFILE_FIXTURE.read_text())["body"]
+
+
+def fit_profile_response(authorization: str) -> dict[str, Any]:
+    """The fit profile as the producer serves it to this caller.
+
+    A first-party session gets each component's uncapped `evidence_entries`. An app token
+    (catalog-api's `dscg_` prefix) never does, whatever its scopes: its body is the capped one.
+    """
+    body = copy.deepcopy(MOCK_FIT_PROFILE)
+    if authorization.removeprefix("Bearer ").startswith(MOCK_APP_TOKEN_PREFIX):
+        for component in body["components"].values():
+            component.pop("evidence_entries", None)
+    return body
+
 
 MOCK_COLLECTION_STATS: dict[str, Any] = {
     "total_releases": 42,
@@ -327,6 +322,18 @@ STYLE_COTAGS: dict[str, list[dict[str, Any]]] = {
     ],
 }
 FAILING_COTAGS_STYLE = "Solar Pulse"
+
+
+# A synthetic GET /api/user/taste-projection body (tests/fixtures/taste-projection.json), over the
+# invented style names of the recorded atlas and built with catalog-api's own fold. It is personal
+# data, so the route answers only a signed-in caller and never lets it be cached.
+TASTE_PROJECTION_FIXTURE = Path(__file__).parent / "fixtures" / "taste-projection.json"
+
+
+def taste_projection_response() -> dict[str, Any]:
+    """The synthetic taste-projection body."""
+    body: dict[str, Any] = json.loads(TASTE_PROJECTION_FIXTURE.read_text())["body"]
+    return body
 
 
 def create_test_app() -> FastAPI:
@@ -484,6 +491,13 @@ def create_test_app() -> FastAPI:
             return JSONResponse(content={"detail": "Not authenticated"}, status_code=401)
         return JSONResponse(content=MOCK_COLLECTION_STATS)
 
+    @app.get("/api/user/taste-projection")
+    async def user_taste_projection(authorization: str | None = Header(default=None)) -> JSONResponse:
+        """Return the synthetic taste projection for any authenticated user, never cached."""
+        if not authorization or not authorization.startswith("Bearer "):
+            return JSONResponse(content={"detail": "Not authenticated"}, status_code=401)
+        return JSONResponse(content=taste_projection_response(), headers={"Cache-Control": "no-store", "Vary": "Authorization"})
+
     @app.get("/api/user/status")
     async def user_release_status(
         ids: str = Query(...),
@@ -569,7 +583,7 @@ def create_test_app() -> FastAPI:
             return JSONResponse(content={"detail": "Not authenticated"}, status_code=401)
         if release_id != MOCK_FIT_PROFILE["release"]["id"]:
             return JSONResponse(content={"error": f"Release '{release_id}' not found"}, status_code=404)
-        return JSONResponse(content=MOCK_FIT_PROFILE)
+        return JSONResponse(content=fit_profile_response(authorization))
 
     # ------------------------------------------------------------------ #
     # Activity events

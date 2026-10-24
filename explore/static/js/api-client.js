@@ -870,6 +870,26 @@ class ApiClient {
         if (!Array.isArray(body)) throw new Error('Co-tag fetch answered with something other than a list');
         return body;
     }
+
+    /**
+     * The signed-in collector's taste projection for the Genre Atlas (concept C′): their items
+     * counted on every genre, style, and master they carry, by collector state, with the recorded
+     * times. Personal data: the response is never cached and never enters a snapshot. The status
+     * and body come back so the atlas can word a failure itself; a 401 also signs the stale session
+     * out.
+     *
+     * @param {string} token - JWT auth token
+     * @returns {Promise<{ok: boolean, status: number, body: Object|null}>}
+     */
+    async getTasteProjection(token) {
+        if (!token) return { ok: false, status: 401, body: null };
+        const response = await this._transport.fetch('/api/user/taste-projection', {
+            headers: { 'Authorization': `Bearer ${token}` },
+        });
+        this._checkAuthResponse(response);
+        const body = await this._transport.readJson(response).catch(() => null);
+        return { ok: response.ok, status: response.status, body };
+    }
     // --- NLQ (Natural Language Query) ---
 
     /**

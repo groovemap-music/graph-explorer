@@ -13,7 +13,15 @@
  *     so the cue is never color alone (design brand/README.md);
  *   - genre hulls on the style plane, tagged with the styles and ghosts each one counts;
  *   - vertical links are the emergence edges only, dashed for a ghost;
- *   - lateral edges are the selected style's star only (strata-atlas-layout.js lateralEdges).
+ *   - lateral edges are the selected style's star only (strata-atlas-layout.js lateralEdges);
+ *   - the signed-in collector's layer (strata-taste.js paintTaste), when the view painted one: a
+ *     ring in the collector state's token around each held genre, style, ghost, and landmark master,
+ *     and the collector's own masters on the master plane in their state's color. A node first
+ *     recorded after the "recorded as of" year loses its ring, and a collector master is dimmed;
+ *   - the Fit landing point (strata-fit.js paintLanding), when the view painted one: a diamond in
+ *     the Fit component's token around each node the candidate's evidence names, and the Bridge as
+ *     a ribbon between the bridged genres' hulls on the style plane. The label says what each
+ *     diamond means, so the cue is never color alone.
  *
  * Like the engine, it writes no style attribute and parses no HTML.
  */
@@ -23,11 +31,20 @@ import { StrataRenderer, ribbon } from './strata-renderer.js';
 import { WORLD_DEPTH, WORLD_WIDTH, edgeSegment } from './strata-layout.js';
 import { ATLAS_PLANES, ATLAS_RADIUS, MASTER_PLANE, atlasSelection, lateralEdges, paintAtlas } from './strata-atlas-layout.js';
 import { nodeCentre, nodeShape, planeY, verticalLinksKey } from './strata-scene.js';
+import { FIT_MARK_WORDS } from './strata-fit.js';
 
 const PLANE_MARGIN = 7;
 const HULL_COLORS = 4;
 const DIM = 0.8;
 const DASHES = 10;
+/** A held ring's radius, as a share of its node's size: inside the footprint check's gap. */
+const HELD_RING = 1.2;
+/** How far a collector master not yet recorded in the "recorded as of" year fades to the canvas. */
+const NOT_YET = 0.6;
+/** A landing diamond's radius, as a share of its node's size: outside the held ring, inside the provisional one. */
+const LANDING_RING = 1.55;
+/** The Bridge ribbon's width, in world units. */
+const BRIDGE_WIDTH = 0.7;
 
 /** The lifecycle stages the promoted tokens name, and the provisional treatment's color. */
 export const LIFECYCLE_STAGES = Object.freeze(['absent', 'emerging', 'established', 'reviving', 'declining']);
@@ -37,15 +54,28 @@ export function lifecycleTokenName(stage, theme) {
     return `--groovemap-state-lifecycle-${stage}-${theme}`;
 }
 
+/** The Fit components the atlas can draw, and so the ones with a promoted token. */
+export const FIT_DRAWN = Object.freeze(['affinity', 'novelty', 'bridge', 'redundancy']);
+
+/** The promoted token for a drawn Fit component in a theme. */
+export function fitTokenName(component, theme) {
+    return `--groovemap-state-fit-${component}-${theme}`;
+}
+
 /** Atlas edge styles: ribbon width in world units, dashed, and an arrow head. Both are in the accent color; the dash tells a ghost link from a co-tag. */
 export const ATLAS_EDGE_STYLES = Object.freeze({
     ghost: Object.freeze({ width: 0.5, dash: true, arrow: false }),
     cotag: Object.freeze({ width: 0.45, dash: false, arrow: false }),
 });
 
-/** A node's label: a ghost copy is marked as one. */
+/**
+ * A node's label: a ghost copy is marked as one, a node the collector holds says how many items,
+ * and a node the Fit landing point marks says what the mark means.
+ */
 export function atlasLabel(node) {
-    return node.entity === 'ghost' ? `${node.label} ↗` : node.label || node.id;
+    const label = node.entity === 'ghost' ? `${node.label} ↗` : node.label || node.id;
+    const held = node.held ? `${label} · ${node.held.items} yours` : label;
+    return node.landing ? `${held} · ${FIT_MARK_WORDS[node.landing]}` : held;
 }
 
 function positions(list) {
@@ -68,6 +98,21 @@ function dashedRing() {
     return geometry;
 }
 
+// A flat solid ring in the xz plane, radius 1: the collector's held mark.
+function heldRing() {
+    const geometry = new THREE.RingGeometry(0.78, 1, 32, 1);
+    geometry.rotateX(-Math.PI / 2);
+    return geometry;
+}
+
+// A flat diamond outline in the xz plane, radius 1: the Fit landing mark. Its corners tell it from
+// the round held and provisional rings.
+function landingRing() {
+    const geometry = new THREE.RingGeometry(0.8, 1, 4, 1);
+    geometry.rotateX(-Math.PI / 2);
+    return geometry;
+}
+
 // A sector boundary angle (radians, counter-clockwise from east, y north) as world x, z.
 function polar(angle, radius) {
     return [Math.cos(angle) * radius * ATLAS_RADIUS, -Math.sin(angle) * radius * ATLAS_RADIUS];
@@ -85,6 +130,9 @@ export class AtlasRenderer extends StrataRenderer {
         this.cotags = options.cotags || (() => []);
         this.year = null;
         this.provisionalRings = [];
+        this.heldRings = [];
+        this.landingRings = [];
+        this.landingObjects = [];
         this.ghostLinks = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ transparent: true, opacity: 0.45, dashSize: 1.2, gapSize: 1.2 }));
         this.ghostLinks.material.color.copy(this.colors.link);
         this.scene.add(this.ghostLinks);
@@ -101,8 +149,29 @@ export class AtlasRenderer extends StrataRenderer {
         const ghosts = layout.nodes.filter((node) => node.entity === 'ghost').length;
         this.planeLabels[0].count.textContent = String(layout.nodes.filter((node) => node.level === 0).length);
         this.planeLabels[1].count.textContent = `${styles} + ${ghosts} ghosts`;
-        const masters = layout.nodes.filter((node) => node.level === MASTER_PLANE).length;
-        this.planeLabels[MASTER_PLANE].count.textContent = masters ? String(masters) : layout.atlas.masters?.length ? 'not placed yet' : 'none served';
+        const masters = layout.nodes.filter((node) => node.level === MASTER_PLANE);
+        const collectors = masters.filter((node) => node.master.collector).length;
+        const landmarks = masters.length - collectors;
+        this.planeLabels[MASTER_PLANE].count.textContent = collectors ? `${landmarks} + ${collectors} yours` : landmarks ? String(landmarks) : layout.atlas.masters?.length ? 'not placed yet' : 'none served';
+    }
+
+    /** Redraw the collector's layer after the view repainted it (strata-taste.js paintTaste). Nothing moves. */
+    refreshTaste() {
+        if (!this.layout) return;
+        this.buildHeldRings();
+        this.recolor();
+        this.candidatesKey = null;
+        this.invalidate();
+    }
+
+    /** Redraw the Fit landing point after the view repainted it (strata-fit.js paintLanding). Nothing moves. */
+    refreshLanding() {
+        if (!this.layout) return;
+        this.buildLandingRings();
+        this.buildLanding();
+        this.recolor();
+        this.candidatesKey = null;
+        this.invalidate();
     }
 
     /** Rebuild the selected style's lateral edges, after its co-tags arrive. */
@@ -132,11 +201,13 @@ export class AtlasRenderer extends StrataRenderer {
             stages: new Map(LIFECYCLE_STAGES.map((stage) => [stage, token(lifecycleTokenName(stage, theme))])),
             provisional: token(lifecycleTokenName('provisional', theme)),
         };
+        this.fit = new Map(FIT_DRAWN.map((component) => [component, token(fitTokenName(component, theme))]));
         super.refreshColors();
         this.ghostLinks?.material.color.copy(this.colors.link);
     }
 
     dispose() {
+        this.clearLanding();
         this.ghostLinks.removeFromParent();
         this.ghostLinks.geometry.dispose();
         this.ghostLinks.material.dispose();
@@ -148,17 +219,22 @@ export class AtlasRenderer extends StrataRenderer {
     // -----------------------------------------------------------------------------------------
 
     clearLayout() {
+        this.clearLanding();
         super.clearLayout();
         this.provisionalRings = [];
+        this.heldRings = [];
+        this.landingRings = [];
     }
 
     geometry(shape, detail) {
-        if (shape === 'dashed-ring' && !this.geometries.has('dashed-ring')) {
-            const geometry = dashedRing();
+        const own = { 'dashed-ring': dashedRing, 'held-ring': heldRing, 'landing-ring': landingRing }[shape];
+        if (!own) return super.geometry(shape, detail);
+        if (!this.geometries.has(shape)) {
+            const geometry = own();
             geometry.userData.shared = true;
-            this.geometries.set('dashed-ring', geometry);
+            this.geometries.set(shape, geometry);
         }
-        return shape === 'dashed-ring' ? this.geometries.get('dashed-ring') : super.geometry(shape, detail);
+        return this.geometries.get(shape);
     }
 
     // The engine's plane, with the served ring in place of the year axis: the disc's edge on every
@@ -227,17 +303,105 @@ export class AtlasRenderer extends StrataRenderer {
             ring.userData = { nodes: staged, level, provisional: true };
             this.provisionalRings.push(this.track(level, ring));
         }
+        this.buildHeldRings();
+        this.buildLandingRings();
+        this.buildLanding();
+    }
+
+    // The collector's held mark: a ring in the state's color around every held node but the
+    // collector's own masters, which carry the color themselves. Not pickable. Rebuilt whenever the
+    // "recorded as of" year changes which nodes are held.
+    buildHeldRings() {
+        for (const ring of this.heldRings) {
+            ring.removeFromParent();
+            ring.material.dispose();
+            this.layoutObjects.splice(this.layoutObjects.indexOf(ring), 1);
+        }
+        this.heldRings = [];
+        let marks = 0;
+        const matrix = new THREE.Matrix4();
+        const none = new THREE.Quaternion();
+        const scale = new THREE.Vector3();
+        const at = new THREE.Vector3();
+        for (const level of [0, 1, 2]) {
+            const held = this.layout.nodes.filter((node) => node.level === level && node.held && !node.master?.collector);
+            if (!held.length) continue;
+            const ring = new THREE.InstancedMesh(this.geometry('held-ring'), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.95, depthWrite: false, side: THREE.DoubleSide }), held.length);
+            held.forEach((node, i) => ring.setMatrixAt(i, matrix.compose(at.set(node.x, 0.1, node.z), none, scale.setScalar(node.size * HELD_RING))));
+            ring.userData = { nodes: held, level, held: true };
+            this.heldRings.push(this.track(level, ring));
+            marks += held.length;
+        }
+        // For anything reading the frame once `data-strata-frame` settles: how many held rings it drew.
+        this.stage.dataset.atlasHeldMarks = String(marks);
+    }
+
+    // The Fit landing mark: a diamond in the component's token around every node the landing names.
+    // Not pickable. Rebuilt whenever the view paints another landing.
+    buildLandingRings() {
+        for (const ring of this.landingRings) {
+            ring.removeFromParent();
+            ring.material.dispose();
+            this.layoutObjects.splice(this.layoutObjects.indexOf(ring), 1);
+        }
+        this.landingRings = [];
+        let marks = 0;
+        const matrix = new THREE.Matrix4();
+        const none = new THREE.Quaternion();
+        const scale = new THREE.Vector3();
+        const at = new THREE.Vector3();
+        for (const level of [0, 1, 2]) {
+            const marked = this.layout.nodes.filter((node) => node.level === level && node.landing);
+            if (!marked.length) continue;
+            const ring = new THREE.InstancedMesh(this.geometry('landing-ring'), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.95, depthWrite: false, side: THREE.DoubleSide }), marked.length);
+            marked.forEach((node, i) => ring.setMatrixAt(i, matrix.compose(at.set(node.x, 0.11, node.z), none, scale.setScalar(node.size * LANDING_RING))));
+            ring.userData = { nodes: marked, level, landing: true };
+            this.landingRings.push(this.track(level, ring));
+            marks += marked.length;
+        }
+        // The same for the Fit landing point's marks.
+        this.stage.dataset.atlasLandingMarks = String(marks);
+    }
+
+    // The Bridge: one ribbon per bridged pair of genres, from hull to hull on the style plane, in the
+    // bridge token. It is not an edge between nodes, so it stays out of the selection's edges.
+    buildLanding() {
+        this.clearLanding();
+        const list = [];
+        for (const edge of this.layout.landingEdges || []) ribbon(list, [...edge.from, ...edge.to], { width: BRIDGE_WIDTH, dash: false, arrow: false });
+        if (!list.length) return;
+        const mesh = new THREE.Mesh(positions(list), new THREE.MeshBasicMaterial({ color: this.fit.get('bridge'), transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide }));
+        mesh.position.y = 0.35;
+        mesh.userData = { kind: 'bridge', edges: this.layout.landingEdges.length };
+        this.planes[1].group.add(mesh);
+        this.landingObjects.push(mesh);
+    }
+
+    clearLanding() {
+        for (const object of this.landingObjects || []) {
+            object.removeFromParent();
+            object.geometry.dispose();
+            object.material.dispose();
+        }
+        this.landingObjects = [];
     }
 
     stageColor(stage) {
         return (stage && this.lifecycle.stages.get(stage)) || this.colors.stateless;
     }
 
+    // A node's fill: its lifecycle stage, or for the collector's own master its collector state.
+    nodeColor(node, color) {
+        if (!node.master?.collector) return color.copy(this.stageColor(node.stage));
+        if (node.held) return color.copy(this.colors.state(node.held.state));
+        return color.copy(this.colors.stateless).lerp(this.colors.canvas, NOT_YET);
+    }
+
     recolor() {
         const color = new THREE.Color();
         for (const { mesh, nodes } of this.instanced) {
             nodes.forEach((node, i) => {
-                color.copy(this.stageColor(node.stage));
+                this.nodeColor(node, color);
                 if (this.selection && !this.selection.has(node.id)) color.lerp(this.colors.canvas, DIM);
                 mesh.setColorAt(i, color);
             });
@@ -248,6 +412,22 @@ export class AtlasRenderer extends StrataRenderer {
             ring.material.color.copy(this.lifecycle.provisional);
             ring.userData.nodes.forEach((node, i) => {
                 color.setRGB(1, 1, 1);
+                if (this.selection && !this.selection.has(node.id)) color.lerp(this.colors.canvas, DIM);
+                ring.setColorAt(i, color);
+            });
+            if (ring.instanceColor) ring.instanceColor.needsUpdate = true;
+        }
+        for (const ring of this.heldRings) {
+            ring.userData.nodes.forEach((node, i) => {
+                color.copy(this.colors.state(node.held.state));
+                if (this.selection && !this.selection.has(node.id)) color.lerp(this.colors.canvas, DIM);
+                ring.setColorAt(i, color);
+            });
+            if (ring.instanceColor) ring.instanceColor.needsUpdate = true;
+        }
+        for (const ring of this.landingRings) {
+            ring.userData.nodes.forEach((node, i) => {
+                color.copy(this.fit.get(node.landing));
                 if (this.selection && !this.selection.has(node.id)) color.lerp(this.colors.canvas, DIM);
                 ring.setColorAt(i, color);
             });

@@ -97,6 +97,16 @@ def test_genre_atlas_journeys_are_in_every_matrix_project() -> None:
     assert source.count("@pytest.mark.e2e") == collected["tests/e2e/test_genre_atlas.py"]
 
 
+def test_taste_strata_journeys_are_in_every_matrix_project() -> None:
+    """The Taste Strata and Fit landing point journeys are marked `e2e` too, so none is left out of the matrix."""
+    collected = _collected_e2e_tests_by_file()
+    assert collected.get("tests/e2e/test_taste_strata.py", 0) >= 4
+
+    source = (ROOT / "tests/e2e/test_taste_strata.py").read_text()
+    assert source.count("@pytest.mark.e2e") == len(re.findall(r"^def test_", source, flags=re.MULTILINE))
+    assert source.count("@pytest.mark.e2e") == collected["tests/e2e/test_taste_strata.py"]
+
+
 def test_documented_matrix_size_matches_the_collected_tests() -> None:
     """The budget doc and the context-budget comment quote the matrix size; they must not drift."""
     total = sum(_collected_e2e_tests_by_file().values())

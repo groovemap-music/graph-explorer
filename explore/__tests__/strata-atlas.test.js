@@ -11,10 +11,13 @@ import { fileURLToPath } from 'node:url';
 import { ATLAS_KEY_HELP, GenreAtlas, atlasErrorMessage, atlasKeyCommand, initGenreAtlas, stageWord } from '../static/js/strata-atlas.js';
 import { COTAGS_FAILED, EMPTY_MESSAGE, NO_COTAGS, NO_MASTERS, adaptAtlasPayload, layoutAtlas } from '../static/js/strata-atlas-layout.js';
 import { emptyAtlasPayload } from './strata-atlas-fixtures.js';
+import { TASTE_AS_OF_NOTE, TASTE_EMPTY, TASTE_FAILED, TASTE_SIGN_IN } from '../static/js/strata-taste.js';
+import { LANDING_FALLBACK, LANDING_NO_ATLAS, LANDING_NO_SLOT, LANDING_NOT_ON_ATLAS } from '../static/js/strata-fit.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BODY = JSON.parse(readFileSync(resolve(HERE, '..', '..', 'tests', 'fixtures', 'style-atlas.json'), 'utf8')).body;
 const INDEX = readFileSync(resolve(HERE, '..', 'static', 'index.html'), 'utf8');
+const FIT_PROFILE = JSON.parse(readFileSync(resolve(HERE, '..', '..', 'tests', 'fixtures', 'fit-profile.json'), 'utf8')).body;
 
 class StandInRenderer extends EventTarget {
     constructor() {
@@ -530,6 +533,34 @@ describe('the Genres and Insights panes', () => {
         expect(atlas.active).toBe(true);
     });
 
+    it('opens in the Fit pane only once its mount is shown, and draws the landing point there alone', async () => {
+        const atlas = new GenreAtlas({ doc: document, api: answer(BODY), createRenderer: () => new StandInRenderer(), observeTheme: false });
+        const show = vi.spyOn(atlas, 'show');
+        initGenreAtlas({ doc: document, atlas });
+        const mount = document.getElementById('fitAtlasMount');
+        expect(mount.hidden).toBe(true);
+        activate('fit');
+        await flush();
+        expect(show).not.toHaveBeenCalled();
+        atlas.setLanding(FIT_PROFILE);
+        mount.hidden = false;
+        await flush();
+        expect(mount.contains(atlas.root)).toBe(true);
+        await atlas.loading;
+        expect(atlas.landingShown).toBe(true);
+        expect(atlas.ui.landing.hidden).toBe(false);
+        expect(atlas.layout.nodes.some((node) => node.landing)).toBe(true);
+        activate('genres');
+        await flush();
+        expect(document.getElementById('genreAtlasMount').contains(atlas.root)).toBe(true);
+        expect(atlas.landingShown).toBe(false);
+        expect(atlas.ui.landing.hidden).toBe(true);
+        expect(atlas.layout.nodes.some((node) => node.landing)).toBe(false);
+        activate('fit');
+        await flush();
+        expect(atlas.layout.nodes.some((node) => node.landing)).toBe(true);
+    });
+
     it('does nothing on a page without the panes', () => {
         document.body.textContent = '';
         expect(initGenreAtlas({ doc: document })).toBeNull();
@@ -563,5 +594,324 @@ describe('CSP', () => {
         expect(innerHTML).not.toHaveBeenCalled();
         expect(text(atlas)).toContain('Genre Atlas');
         vi.restoreAllMocks();
+    });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Taste Strata: the signed-in collector's layer (strata-taste.js).
+// ---------------------------------------------------------------------------------------------
+
+const fixture = (name) => JSON.parse(readFileSync(resolve(HERE, '..', '..', 'tests', 'fixtures', name), 'utf8'));
+const WITH_MASTERS = { ...BODY, masters: fixture('style-atlas-masters.json').masters };
+const TASTE = fixture('taste-projection.json').body;
+
+/** A stand-in for window.authManager: a token, and listeners told about sign-in and sign-out. */
+function standInAuth(token = 'tok') {
+    const listeners = [];
+    return {
+        token,
+        isLoggedIn() { return !!this.token; },
+        getToken() { return this.token; },
+        onChange(fn) {
+            listeners.push(fn);
+            return () => listeners.splice(listeners.indexOf(fn), 1);
+        },
+        set(next) {
+            this.token = next;
+            for (const fn of [...listeners]) fn(!!next);
+        },
+    };
+}
+
+function tasteAtlas({ auth = standInAuth(), taste = async () => ({ ok: true, status: 200, body: TASTE }) } = {}) {
+    let renderer = null;
+    const api = { getStyleAtlas: vi.fn(async () => ({ ok: true, status: 200, body: WITH_MASTERS })), getTasteProjection: vi.fn(taste) };
+    const atlas = new GenreAtlas({ doc: document, api, auth, createRenderer: () => (renderer = Object.assign(new StandInRenderer(), { refreshTaste: vi.fn(), refreshLanding: vi.fn() })), observeTheme: false });
+    document.body.append(atlas.root);
+    return { atlas, api, auth, renderer: () => renderer };
+}
+
+const collectorNodes = (layout) => layout.nodes.filter((node) => node.entity === 'master' && node.master.collector);
+const tasteText = (atlas) => atlas.ui.taste.textContent;
+
+describe('Taste Strata', () => {
+    it('shows an anonymous visitor the atlas without the layer, and a hint to sign in', async () => {
+        const { atlas, api, renderer } = tasteAtlas({ auth: standInAuth(null) });
+        await atlas.show();
+        expect(api.getTasteProjection).not.toHaveBeenCalled();
+        expect(tasteText(atlas)).toBe(TASTE_SIGN_IN);
+        expect(atlas.ui.recorded.hidden).toBe(true);
+        expect(renderer().layout.nodes.some((node) => node.held)).toBe(false);
+        expect(collectorNodes(renderer().layout)).toEqual([]);
+    });
+
+    it('lays a signed-in collector\'s items on the atlas: marks, collector masters, and what is only counted', async () => {
+        const { atlas, api, renderer } = tasteAtlas();
+        await atlas.show();
+        expect(api.getTasteProjection).toHaveBeenCalledWith('tok');
+        const { layout } = renderer();
+        expect(collectorNodes(layout).map((node) => node.master.masterId).sort()).toEqual(['7100001', '7100002', '7100003']);
+        expect(layout.nodes.find((node) => node.id === 's:Copper Drift').held).toMatchObject({ state: 'wanted-owned', items: 1 });
+        const words = tasteText(atlas);
+        expect(words).toContain('Your collection');
+        expect(words).toContain('7 items: 5 owned, 3 wanted, 1 in both.');
+        expect(words).toContain('2 items have no master, so they are counted here and not drawn.');
+        expect(words).toContain('1 item carries a genre and no style, so it marks a genre only.');
+        expect(words).toContain('1 of your styles is not drawn on this atlas.');
+        expect(words).toContain('1 of your masters has no style drawn here, so it is not placed.');
+        expect(words).toContain(TASTE_AS_OF_NOTE);
+        const chips = [...atlas.ui.taste.querySelectorAll('.strata-chip')].map((chip) => chip.className);
+        expect(chips).toEqual(['strata-chip strata-chip--wanted', 'strata-chip strata-chip--owned', 'strata-chip strata-chip--wanted-owned']);
+    });
+
+    it('says in the panel what of a selected node is the collector\'s, and names a collector master as theirs', async () => {
+        const { atlas, renderer } = tasteAtlas();
+        await atlas.show();
+        renderer().select('s:Copper Drift');
+        expect(atlas.ui.selection.querySelector('.atlas-held').textContent).toBe('Yours 1 item · 1 owned · 1 wanted · first recorded in 2014, last in 2015');
+        renderer().select('m:7100001@Copper Drift');
+        expect(atlas.ui.selection.textContent).toContain('Your master, in its dominant style Copper Drift');
+        expect(atlas.ui.selection.textContent).toContain('1988');
+        renderer().select('m:910001@Amber Bop');
+        expect(atlas.ui.selection.textContent).toContain('Landmark master of Amber Bop');
+        expect(atlas.ui.selection.querySelector('.atlas-held').textContent).toContain('Yours 1 item');
+    });
+
+    it('scrubs the recorded-as-of year: marks follow the recorded times, and nothing moves', async () => {
+        const { atlas, renderer } = tasteAtlas();
+        await atlas.show();
+        const { recorded, recordedRange, recordedOutput } = atlas.ui;
+        expect(recorded.hidden).toBe(false);
+        expect([recordedRange.min, recordedRange.max, recordedRange.value]).toEqual(['2014', '2025', '2025']);
+        expect(recordedOutput.textContent).toBe('now');
+        expect(recordedRange.getAttribute('aria-valuetext')).toBe('now, everything you hold');
+        const before = renderer().layout.nodes.map((node) => [node.id, node.x, node.z]);
+        recordedRange.value = '2016';
+        recordedRange.dispatchEvent(new Event('input'));
+        expect(recordedOutput.textContent).toBe('2016');
+        expect(renderer().refreshTaste).toHaveBeenCalled();
+        const byId = new Map(renderer().layout.nodes.map((node) => [node.id, node]));
+        expect(byId.get('s:Amber Bop').held).toBeNull();
+        expect(byId.get('s:Copper Drift').held.state).toBe('wanted-owned');
+        expect(tasteText(atlas)).toContain('Recorded by the end of 2016: 2 genres, 1 style, and 1 master (0 of them landmarks).');
+        renderer().select('s:Amber Bop');
+        expect(atlas.ui.selection.querySelector('.atlas-held').textContent).toBe('Yours, but first recorded after 2016.');
+        expect(renderer().layout.nodes.map((node) => [node.id, node.x, node.z])).toEqual(before);
+        atlas.setTasteYear(9999);
+        expect(atlas.tasteYear).toBeNull();
+        expect(byId.get('s:Amber Bop').held).not.toBeNull();
+    });
+
+    it('adds a Yours column to the table for a signed-in collector, and follows the recorded-as-of year', async () => {
+        const { atlas, auth } = tasteAtlas();
+        await atlas.show();
+        atlas.root.querySelector('[data-atlas-view="table"]').click();
+        const yours = () => [...atlas.ui.table.querySelectorAll('tbody tr')].map((tr) => [tr.dataset.id, tr.querySelector('.atlas-cell-yours')?.textContent]);
+        expect(atlas.ui.table.querySelector('th[data-column="yours"]')).not.toBeNull();
+        expect(Object.fromEntries(yours())['s:Copper Drift']).toBe('wanted + owned 1 item (1 owned, 1 wanted)');
+        expect(Object.fromEntries(yours())['s:Amber Bop']).toBe('wanted + owned 3 items (2 owned, 1 wanted)');
+        atlas.setTasteYear(2016);
+        expect(Object.fromEntries(yours())['s:Amber Bop']).toBe('first recorded after 2016');
+        auth.set(null);
+        expect(atlas.ui.table.querySelector('th[data-column="yours"]')).toBeNull();
+        expect(atlas.ui.table.querySelector('.atlas-cell-yours')).toBeNull();
+    });
+
+    it('gives an anonymous visitor a table with no Yours column', async () => {
+        const { atlas } = tasteAtlas({ auth: standInAuth(null) });
+        await atlas.show();
+        atlas.root.querySelector('[data-atlas-view="table"]').click();
+        expect(atlas.ui.table.querySelector('th[data-column="yours"]')).toBeNull();
+    });
+
+    it.each([
+        [401, TASTE_SIGN_IN],
+        [503, TASTE_FAILED],
+    ])('words a %i from the projection, and keeps the atlas', async (status, words) => {
+        const { atlas, renderer } = tasteAtlas({ taste: async () => ({ ok: false, status, body: null }) });
+        await atlas.show();
+        expect(tasteText(atlas)).toBe(words);
+        expect(renderer().layout.nodes.length).toBeGreaterThan(0);
+        expect(collectorNodes(renderer().layout)).toEqual([]);
+    });
+
+    it('says so for an unreadable projection, a failed request, and an empty collection', async () => {
+        for (const [taste, words] of [
+            [async () => ({ ok: true, status: 200, body: { totals: {} } }), TASTE_FAILED],
+            [async () => { throw new Error('offline'); }, TASTE_FAILED],
+            [async () => ({ ok: true, status: 200, body: { ...TASTE, totals: { ...TASTE.totals, items: 0 }, genres: [], styles: [], masters: [] } }), TASTE_EMPTY],
+        ]) {
+            const { atlas } = tasteAtlas({ taste });
+            await atlas.show();
+            expect(tasteText(atlas)).toBe(words);
+            expect(atlas.ui.recorded.hidden).toBe(true);
+        }
+    });
+
+    it('drops the layer and the projection on sign-out, and loads it again on sign-in', async () => {
+        const { atlas, api, auth, renderer } = tasteAtlas();
+        await atlas.show();
+        renderer().select('m:7100002@Amber Bop');
+        auth.set(null);
+        expect(atlas.taste).toBeNull();
+        expect(tasteText(atlas)).toBe(TASTE_SIGN_IN);
+        expect(renderer().layout.nodes.some((node) => node.held || node.heldLater)).toBe(false);
+        expect(collectorNodes(renderer().layout)).toEqual([]);
+        expect(atlas.selected).toBeNull();
+        expect(atlas.ui.recorded.hidden).toBe(true);
+        auth.set('tok2');
+        await new Promise((r) => setTimeout(r, 0));
+        expect(api.getTasteProjection).toHaveBeenLastCalledWith('tok2');
+        expect(collectorNodes(renderer().layout)).toHaveLength(3);
+    });
+
+    it('drops an answer that arrives after the collector signed out', async () => {
+        let release;
+        const { atlas, auth, renderer } = tasteAtlas({ taste: () => new Promise((done) => (release = () => done({ ok: true, status: 200, body: TASTE }))) });
+        const shown = atlas.show();
+        await new Promise((r) => setTimeout(r, 0));
+        auth.set(null);
+        release();
+        await shown;
+        expect(atlas.taste).toBeNull();
+        expect(collectorNodes(renderer().layout)).toEqual([]);
+        expect(tasteText(atlas)).toBe(TASTE_SIGN_IN);
+    });
+
+    it('keeps the projection out of the URL and the browser\'s storage', async () => {
+        const url = window.location.href;
+        const { atlas } = tasteAtlas();
+        await atlas.show();
+        expect(window.location.href).toBe(url);
+        expect(Object.keys(localStorage)).toEqual([]);
+        expect(Object.keys(sessionStorage)).toEqual([]);
+    });
+});
+
+// ---------------------------------------------------------------------------------------------
+// The Fit landing point (strata-fit.js).
+// ---------------------------------------------------------------------------------------------
+
+describe('the Fit landing point', () => {
+    const capped = () => {
+        const body = structuredClone(FIT_PROFILE);
+        for (const component of Object.values(body.components)) delete component.evidence_entries;
+        return body;
+    };
+    const items = (atlas, list) => [...atlas.ui.landing.querySelectorAll(`.atlas-landing-list--${list} li`)].map((li) => li.textContent);
+
+    async function landed({ profile = FIT_PROFILE, ...options } = {}) {
+        const made = tasteAtlas(options);
+        await made.atlas.show();
+        made.atlas.setLandingShown(true);
+        made.atlas.setLanding(profile);
+        return made;
+    }
+
+    it('draws the candidate over the collector\'s layer and lists what has no place on the map', async () => {
+        const { atlas, renderer } = await landed();
+        const byId = new Map(renderer().layout.nodes.map((node) => [node.id, node]));
+        expect(renderer().refreshLanding).toHaveBeenCalled();
+        expect(byId.get('s:Amber Bop')).toMatchObject({ landing: 'affinity', held: { state: 'wanted-owned' } });
+        expect(byId.get('s:Glass Drift').landing).toBe('novelty');
+        expect(byId.get('m:910001@Amber Bop').landing).toBe('redundancy');
+        expect(renderer().layout.landingEdges.map((edge) => edge.genres)).toEqual([['Electronic', 'Rock']]);
+        const box = atlas.ui.landing;
+        expect(box.hidden).toBe(false);
+        expect(box.textContent).toContain('Never Gonna Give You Up · Rick Astley');
+        expect(items(atlas, 'drawn')).toEqual([
+            'Affinity shares genre Electronic with 3 releases you hold',
+            'Affinity shares style Amber Bop with 2 releases you hold',
+            'Novelty Glass Drift is a style your collection has never held',
+            'Bridge bridges Electronic and Rock, which share no artist or label in your collection',
+            'Redundancy you hold Never Gonna Give You Up, the same record on cd',
+        ]);
+        expect(items(atlas, 'listed')).toEqual([
+            'Affinity shares artist Rick Astley with 2 releases you hold',
+            'Affinity shares label RCA with 1 release you hold',
+            'Novelty Stock Aitken Waterman is a label your collection has never held',
+            'Novelty Pete Waterman is an artist your collection has never held',
+            'Novelty PWL is a label your collection has never held',
+            `Novelty Hi NRG is a style your collection has never held (${LANDING_NOT_ON_ATLAS})`,
+            'Bridge region boundaries are the v0 genre heuristic, not a computed community',
+            'Depth deepens artist Rick Astley (2 held)',
+            'Depth deepens label RCA (1 held)',
+        ]);
+        const chips = [...box.querySelectorAll('.atlas-landing-list--drawn .atlas-chip')].map((chip) => chip.className);
+        expect(chips).toContain('atlas-chip atlas-fit--novelty');
+    });
+
+    it('says in the panel what the landing means for a selected node', async () => {
+        const { atlas, renderer } = await landed();
+        renderer().select('s:Glass Drift');
+        expect(atlas.ui.selection.querySelector('.atlas-landing-mark').textContent).toBe('Novelty Never Gonna Give You Up: new to you');
+        renderer().select('s:Copper Swing');
+        expect(atlas.ui.selection.querySelector('.atlas-landing-mark')).toBeNull();
+    });
+
+    it('works for a visitor without the personal layer: drawn on the landmarks, and the rest listed', async () => {
+        const { atlas, api, renderer } = await landed({ auth: standInAuth(null) });
+        expect(api.getTasteProjection).not.toHaveBeenCalled();
+        expect(atlas.ui.taste.textContent).toBe(TASTE_SIGN_IN);
+        const { layout } = renderer();
+        expect(layout.nodes.some((node) => node.held)).toBe(false);
+        expect(layout.nodes.filter((node) => node.landing === 'redundancy').map((node) => node.id)).toEqual(['m:910001@Amber Bop', 'm:910001@Amber Chant']);
+        expect(layout.nodes.find((node) => node.id === 'g:Electronic').landing).toBe('affinity');
+    });
+
+    it('lists a duplicate whose master has no slot without the collector\'s layer, and draws it with it', async () => {
+        const profile = structuredClone(FIT_PROFILE);
+        profile.components.redundancy.evidence_entries[0].master_id = '7100001';
+        const anonymous = await landed({ profile, auth: standInAuth(null) });
+        expect(items(anonymous.atlas, 'listed')).toContain(`Redundancy you hold Never Gonna Give You Up, the same record on cd (${LANDING_NO_SLOT})`);
+        const signedIn = await landed({ profile });
+        expect(signedIn.renderer().layout.nodes.filter((node) => node.landing === 'redundancy').map((node) => node.id)).toEqual(['m:7100001@Copper Drift']);
+    });
+
+    it('falls back to the listing for a body without evidence_entries, and draws nothing', async () => {
+        const { atlas, renderer } = await landed({ profile: capped() });
+        expect(atlas.ui.landing.querySelector('.atlas-landing-fallback').textContent).toBe(LANDING_FALLBACK);
+        expect(renderer().layout.nodes.some((node) => node.landing)).toBe(false);
+        expect(renderer().layout.landingEdges).toEqual([]);
+        expect(atlas.ui.landing.querySelector('.atlas-landing-list--drawn')).toBeNull();
+        expect(items(atlas, 'listed')).toEqual(Object.entries(capped().components).flatMap(([name, c]) => c.evidence.map((line) => `${name[0].toUpperCase()}${name.slice(1)} ${line}`)));
+    });
+
+    it('lists the drawable components until the atlas has a layout, then draws them', async () => {
+        const { atlas } = tasteAtlas();
+        atlas.setLandingShown(true);
+        atlas.setLanding(FIT_PROFILE);
+        expect(items(atlas, 'listed')).toContain(`Novelty Glass Drift is a style your collection has never held (${LANDING_NO_ATLAS})`);
+        await atlas.show();
+        expect(items(atlas, 'drawn')).toContain('Novelty Glass Drift is a style your collection has never held');
+    });
+
+    it('keeps the landing off the atlas outside the Fit pane, and clears it with null', async () => {
+        const { atlas, renderer } = await landed();
+        atlas.setLandingShown(false);
+        expect(atlas.ui.landing.hidden).toBe(true);
+        expect(renderer().layout.nodes.some((node) => node.landing)).toBe(false);
+        atlas.setLandingShown(true);
+        expect(renderer().layout.nodes.some((node) => node.landing)).toBe(true);
+        atlas.setLanding(null);
+        expect(atlas.ui.landing.hidden).toBe(true);
+        expect(renderer().layout.nodes.some((node) => node.landing)).toBe(false);
+        expect(renderer().layout.landingEdges).toEqual([]);
+    });
+
+    it('drops the landing point with the collector\'s layer on sign-out', async () => {
+        const { atlas, auth, renderer } = await landed();
+        auth.set(null);
+        expect(atlas.landing).toBeNull();
+        expect(atlas.ui.landing.hidden).toBe(true);
+        expect(renderer().layout.nodes.some((node) => node.landing)).toBe(false);
+    });
+
+    it('keeps the landing point out of the URL and the browser\'s storage', async () => {
+        const url = window.location.href;
+        await landed();
+        expect(window.location.href).toBe(url);
+        expect(Object.keys(localStorage)).toEqual([]);
+        expect(Object.keys(sessionStorage)).toEqual([]);
     });
 });

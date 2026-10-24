@@ -910,18 +910,23 @@ class TestExploreFitPane:
         expect(card).to_have_attribute("data-impression-id", _FIT_IMPRESSION, timeout=5000)
         expect(card).to_have_attribute("data-gm-id", _FIT_GM_ID)
 
-    def test_the_landing_point_centres_on_the_candidate(self, page: Page, test_server: str) -> None:
-        """The snapshot puts the release in the middle and its evidence around it."""
+    def test_the_landing_point_is_drawn_on_the_genre_atlas(self, page: Page, test_server: str) -> None:
+        """The atlas opens under the card with the drawable evidence on it and the rest listed beside it."""
         _pick_and_score(page, test_server)
 
-        centre = page.evaluate("() => window.exploreApp.graph.centerName")
-        assert centre == _FIT_TITLE
-        assert page.evaluate("() => window.exploreApp.graph.centerType") == "release"
-        satellites = page.evaluate("() => window.exploreApp.graph.nodes.filter(n => !n.isCenter).map(n => n.name)")
-        assert "Rick Astley" in satellites
+        mount = page.locator("#fitAtlasMount")
+        expect(mount).to_be_visible(timeout=5000)
+        expect(mount.locator(".atlas-stage")).to_have_attribute("data-strata-frame", "settled", timeout=15_000)
+        landing = mount.locator(".atlas-landing")
+        expect(landing).to_contain_text(_FIT_TITLE)
+        expect(landing.locator(".atlas-landing-list--drawn li")).to_have_count(5, timeout=10_000)
+        expect(landing.locator('.atlas-landing-list--listed li[data-component="depth"]')).to_have_count(2)
+        marked = page.evaluate("() => window.genreAtlas.layout.nodes.filter((n) => n.landing).map((n) => [n.id, n.landing])")
+        assert ["s:Glass Drift", "novelty"] in marked
+        assert ["m:910001@Amber Bop", "redundancy"] in marked
 
         page.locator("#fitLandingBtn").click()
-        expect(page.locator("#explorePane")).to_have_class(re.compile(r"\bactive\b"), timeout=5000)
+        expect(page.locator("#fitPane")).to_have_class(re.compile(r"\bactive\b"))
 
     def test_saving_the_profile_records_the_outcome(self, page: Page, test_server: str) -> None:
         """Save emits fit.saved against the profile's own impression."""

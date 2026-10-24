@@ -53,6 +53,15 @@
     gap: 8px;
 }
 
+/* The collector's "recorded as of" control (Taste Strata), shown only with a signed-in projection. */
+.atlas-recorded {
+    flex: 1 1 20rem;
+}
+
+.atlas-recorded[hidden] {
+    display: none;
+}
+
 .atlas-track {
     display: flex;
     flex: 1;
@@ -61,7 +70,8 @@
     min-width: 10rem;
 }
 
-.atlas-year {
+.atlas-year,
+.atlas-recorded-year {
     width: 100%;
     margin: 0;
     accent-color: var(--strata-accent);
@@ -85,7 +95,8 @@
     background: repeating-linear-gradient(135deg, var(--atlas-provisional) 0 2px, transparent 2px 4px);
 }
 
-.atlas-year-value {
+.atlas-year-value,
+.atlas-recorded-value {
     min-width: 3rem;
     font-variant-numeric: tabular-nums;
     color: var(--text-high);
@@ -214,6 +225,56 @@
     margin-top: 12px;
 }
 
+/* Taste Strata: the signed-in collector's section of the panel. */
+.atlas-taste {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-color);
+}
+
+.atlas-taste-title {
+    margin: 0 0 6px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-high);
+}
+
+.atlas-taste-legend {
+    margin: 6px 0 8px;
+}
+
+.atlas-held .strata-chip {
+    color: var(--text-high);
+}
+
+/* The Fit landing point: the candidate's section of the panel, first while it is drawn. */
+.atlas-landing {
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.atlas-landing-list {
+    margin: 4px 0 8px;
+    padding: 0;
+    list-style: none;
+}
+
+.atlas-landing-list li {
+    margin: 0 0 4px;
+}
+
+.atlas-landing-component {
+    font-weight: 600;
+    color: var(--text-high);
+}
+
+/* A drawn component's swatch is the diamond the renderer draws around its nodes. */
+.atlas-chip[class*="atlas-fit--"]::before {
+    border-radius: 1px;
+    transform: rotate(45deg) scale(0.85);
+}
+
 .atlas-chip {
     display: inline-flex;
     align-items: center;
@@ -302,6 +363,7 @@
 .atlas-cell-name,
 .atlas-cell-stage,
 .atlas-cell-provisional,
+.atlas-cell-yours,
 .atlas-cell-year {
     white-space: nowrap;
 }
@@ -327,7 +389,8 @@
 }
 
 #genreAtlasMount[hidden],
-#genreTreeContainer[hidden] {
+#genreTreeContainer[hidden],
+#fitAtlasMount[hidden] {
     display: none;
 }
 
@@ -348,6 +411,14 @@
 .dark .atlas-stage--established { --atlas-chip: var(--groovemap-state-lifecycle-established-dark); }
 .dark .atlas-stage--reviving { --atlas-chip: var(--groovemap-state-lifecycle-reviving-dark); }
 .dark .atlas-stage--declining { --atlas-chip: var(--groovemap-state-lifecycle-declining-dark); }
+.atlas-fit--affinity { --atlas-chip: var(--groovemap-state-fit-affinity-light); }
+.atlas-fit--novelty { --atlas-chip: var(--groovemap-state-fit-novelty-light); }
+.atlas-fit--bridge { --atlas-chip: var(--groovemap-state-fit-bridge-light); }
+.atlas-fit--redundancy { --atlas-chip: var(--groovemap-state-fit-redundancy-light); }
+.dark .atlas-fit--affinity { --atlas-chip: var(--groovemap-state-fit-affinity-dark); }
+.dark .atlas-fit--novelty { --atlas-chip: var(--groovemap-state-fit-novelty-dark); }
+.dark .atlas-fit--bridge { --atlas-chip: var(--groovemap-state-fit-bridge-dark); }
+.dark .atlas-fit--redundancy { --atlas-chip: var(--groovemap-state-fit-redundancy-dark); }
 
 @media (max-width: 760px) {
     .atlas-body {

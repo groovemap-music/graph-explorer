@@ -1,0 +1,267 @@
+{
+  "description": "A synthetic GET /api/fit/release/249504 body for a first-party session, in catalog-api's shape at the promoted producer commit (api/fit.py: evidence and evidence_items are the first three of each component's uncapped evidence_entries). Its genres, styles, and master are those of the recorded style-atlas body (style-atlas.json) and the synthetic taste projection (taste-projection.json): Affinity shares the genre Electronic and the style Amber Bop, both held; Novelty's unheld style Glass Drift is drawable but hidden by the three-entry cap behind an artist and two labels, and Hi NRG is drawable but not a node of the atlas; Bridge joins Electronic and Rock; Depth is artist and label threads only; and Redundancy's held sibling hangs under master 910001, Amber Bop's top landmark, which the collector owns. An app token receives the same body without evidence_entries.",
+  "body": {
+    "release": {
+      "id": "249504",
+      "gm_id": "gm:release:249504",
+      "title": "Never Gonna Give You Up",
+      "artist": "Rick Astley",
+      "year": 1987,
+      "media_families": [
+        "vinyl"
+      ],
+      "rarity": {
+        "score": 0.31,
+        "tier": "common"
+      }
+    },
+    "fit": 0.62,
+    "components": {
+      "affinity": {
+        "score": 0.55,
+        "evidence": [
+          "shares artist Rick Astley with 2 releases you hold",
+          "shares genre Electronic with 3 releases you hold",
+          "shares style Amber Bop with 2 releases you hold"
+        ],
+        "evidence_items": [
+          {
+            "dimension": "artist",
+            "entity": "Rick Astley",
+            "kind": "shared",
+            "count": 2
+          },
+          {
+            "dimension": "genre",
+            "entity": "Electronic",
+            "kind": "shared",
+            "count": 3
+          },
+          {
+            "dimension": "style",
+            "entity": "Amber Bop",
+            "kind": "shared",
+            "count": 2
+          }
+        ],
+        "evidence_entries": [
+          {
+            "dimension": "artist",
+            "entity": "Rick Astley",
+            "kind": "shared",
+            "count": 2,
+            "entity_type": "artist",
+            "entity_id": "72872",
+            "drawable": false
+          },
+          {
+            "dimension": "genre",
+            "entity": "Electronic",
+            "kind": "shared",
+            "count": 3,
+            "entity_type": "genre",
+            "entity_id": "Electronic",
+            "drawable": true
+          },
+          {
+            "dimension": "style",
+            "entity": "Amber Bop",
+            "kind": "shared",
+            "count": 2,
+            "entity_type": "style",
+            "entity_id": "Amber Bop",
+            "drawable": true
+          },
+          {
+            "dimension": "label",
+            "entity": "RCA",
+            "kind": "shared",
+            "count": 1,
+            "entity_type": "label",
+            "entity_id": "895",
+            "drawable": false
+          }
+        ]
+      },
+      "novelty": {
+        "score": 0.4,
+        "evidence": [
+          "Stock Aitken Waterman is a label your collection has never held",
+          "Pete Waterman is an artist your collection has never held",
+          "PWL is a label your collection has never held"
+        ],
+        "evidence_items": [
+          {
+            "dimension": "label",
+            "entity": "Stock Aitken Waterman",
+            "kind": "unheld"
+          },
+          {
+            "dimension": "artist",
+            "entity": "Pete Waterman",
+            "kind": "unheld"
+          },
+          {
+            "dimension": "label",
+            "entity": "PWL",
+            "kind": "unheld"
+          }
+        ],
+        "evidence_entries": [
+          {
+            "dimension": "label",
+            "entity": "Stock Aitken Waterman",
+            "kind": "unheld",
+            "entity_type": "label",
+            "entity_id": "11208",
+            "drawable": false
+          },
+          {
+            "dimension": "artist",
+            "entity": "Pete Waterman",
+            "kind": "unheld",
+            "entity_type": "artist",
+            "entity_id": "31529",
+            "drawable": false
+          },
+          {
+            "dimension": "label",
+            "entity": "PWL",
+            "kind": "unheld",
+            "entity_type": "label",
+            "entity_id": "2345",
+            "drawable": false
+          },
+          {
+            "dimension": "style",
+            "entity": "Glass Drift",
+            "kind": "unheld",
+            "entity_type": "style",
+            "entity_id": "Glass Drift",
+            "drawable": true
+          },
+          {
+            "dimension": "style",
+            "entity": "Hi NRG",
+            "kind": "unheld",
+            "entity_type": "style",
+            "entity_id": "Hi NRG",
+            "drawable": true
+          }
+        ]
+      },
+      "bridge": {
+        "score": 1.0,
+        "evidence": [
+          "bridges Electronic and Rock, which share no artist or label in your collection",
+          "region boundaries are the v0 genre heuristic, not a computed community"
+        ],
+        "evidence_items": [
+          {
+            "dimension": "genre",
+            "entity": "Electronic and Rock",
+            "kind": "bridge",
+            "count": 2
+          },
+          {
+            "dimension": "bridge",
+            "entity": "v0 heuristic",
+            "kind": "heuristic"
+          }
+        ],
+        "evidence_entries": [
+          {
+            "dimension": "genre",
+            "entity": "Electronic and Rock",
+            "kind": "bridge",
+            "count": 2,
+            "genres": [
+              "Electronic",
+              "Rock"
+            ],
+            "drawable": true
+          },
+          {
+            "dimension": "bridge",
+            "entity": "v0 heuristic",
+            "kind": "heuristic",
+            "drawable": false
+          }
+        ]
+      },
+      "depth": {
+        "score": 0.4,
+        "evidence": [
+          "deepens artist Rick Astley (2 held)",
+          "deepens label RCA (1 held)"
+        ],
+        "evidence_items": [
+          {
+            "dimension": "artist",
+            "entity": "Rick Astley",
+            "kind": "thread",
+            "count": 2
+          },
+          {
+            "dimension": "label",
+            "entity": "RCA",
+            "kind": "thread",
+            "count": 1
+          }
+        ],
+        "evidence_entries": [
+          {
+            "dimension": "artist",
+            "entity": "Rick Astley",
+            "kind": "thread",
+            "count": 2,
+            "entity_type": "artist",
+            "entity_id": "72872",
+            "drawable": false
+          },
+          {
+            "dimension": "label",
+            "entity": "RCA",
+            "kind": "thread",
+            "count": 1,
+            "entity_type": "label",
+            "entity_id": "895",
+            "drawable": false
+          }
+        ]
+      },
+      "redundancy": {
+        "score": 0.6,
+        "evidence": [
+          "you hold Never Gonna Give You Up, the same record on cd"
+        ],
+        "evidence_items": [
+          {
+            "dimension": "release",
+            "entity": "Never Gonna Give You Up",
+            "kind": "duplicate",
+            "release_id": "249510",
+            "detail": "cd"
+          }
+        ],
+        "evidence_entries": [
+          {
+            "dimension": "release",
+            "entity": "Never Gonna Give You Up",
+            "kind": "duplicate",
+            "release_id": "249510",
+            "detail": "cd",
+            "entity_type": "release",
+            "entity_id": "249510",
+            "master_id": "910001",
+            "drawable": true
+          }
+        ]
+      }
+    },
+    "confidence": "exact",
+    "policy_id": "cratefit_v0",
+    "fit_version": "cratefit_v0",
+    "impression_id": "33333333-3333-3333-3333-333333333333"
+  }
+}
