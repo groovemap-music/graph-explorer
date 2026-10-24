@@ -36,6 +36,7 @@
     </script>
     <link rel="stylesheet" href="/brand/tokens.css">
     <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/strata.css">
     <link rel="stylesheet" href="css/nlq-pill.css">
     <style>[x-cloak] { display: none !important; }</style>
     <style>
@@ -630,6 +631,21 @@ body {
 
         <!-- Explore pane -->
         <div class="pane active" id="explorePane">
+            <!-- View toggle: the graph, Discography Strata (an artist's credits, masters, and
+                 releases on three planes), and the strata table, which arrives in the next release -->
+            <div class="explore-view-toggle" role="group" aria-label="Explore view" id="exploreViewToggle">
+                <button type="button" class="explore-view-btn active" data-explore-view="graph" aria-pressed="true">
+                    <span class="material-symbols-outlined" aria-hidden="true">hub</span>Graph
+                </button>
+                <button type="button" class="explore-view-btn" data-explore-view="strata" aria-pressed="false" disabled
+                        title="Search for an artist to open Discography Strata">
+                    <span class="material-symbols-outlined" aria-hidden="true">layers</span>Strata
+                </button>
+                <button type="button" class="explore-view-btn" data-explore-view="table" aria-pressed="false" disabled
+                        title="The strata table arrives in the next release">
+                    <span class="material-symbols-outlined" aria-hidden="true">table_rows</span>Table
+                </button>
+            </div>
             <!-- Timeline Scrubber — slides down above the graph -->
             <div class="timeline-scrubber hidden" id="timelineScrubber">
                 <div class="timeline-controls" id="timelineExploreControls">
@@ -721,6 +737,58 @@ body {
                 </div>
                 <div class="compare-same-year-hint hidden" id="compareSameYearHint">
                     Select different years to compare
+                </div>
+            </div>
+            <!-- Discography Strata (strata-explore.js). The renderer adds its canvas and labels
+                 to #strataStage. -->
+            <div class="strata-view hidden" id="strataView">
+                <div class="strata-toolbar">
+                    <form class="strata-search" id="strataSearchForm" role="search">
+                        <label for="strataSearchInput" class="strata-sr-only">Find a master or pressing</label>
+                        <input type="search" class="form-input-dark" id="strataSearchInput" autocomplete="off"
+                               placeholder="Find a master or pressing…">
+                        <button type="submit" class="btn-primary btn-sm">Focus</button>
+                    </form>
+                    <label class="strata-check">
+                        <input type="checkbox" id="strataOnlyCollected" disabled>
+                        Only what I collect
+                    </label>
+                    <button type="button" class="strata-tool-btn" id="strataValidTimeBtn" aria-controls="timelineScrubber"
+                            title="Release year: show the discography as it stood in a year">
+                        <span class="material-symbols-outlined" aria-hidden="true">timeline</span>Released <span id="strataValidTimeLabel">All</span>
+                    </button>
+                    <div class="strata-recorded">
+                        <label for="strataRecordedAsOf">Recorded as of</label>
+                        <input type="range" id="strataRecordedAsOf" min="0" max="0" value="0" disabled
+                               aria-describedby="strataRecordedAsOfHelp">
+                        <output id="strataRecordedAsOfLabel" for="strataRecordedAsOf">now</output>
+                        <span class="strata-sr-only" id="strataRecordedAsOfHelp">Your wantlist and collection as Discogs recorded them on a date</span>
+                    </div>
+                    <div class="strata-planes" role="group" aria-label="Planes">
+                        <button type="button" class="strata-tool-btn" data-strata-solo="" aria-pressed="true">All planes</button>
+                        <button type="button" class="strata-tool-btn" data-strata-solo="0" aria-pressed="false">Credits</button>
+                        <button type="button" class="strata-tool-btn" data-strata-solo="1" aria-pressed="false">Masters</button>
+                        <button type="button" class="strata-tool-btn" data-strata-solo="2" aria-pressed="false">Releases</button>
+                    </div>
+                    <button type="button" class="strata-tool-btn" id="strataResetCameraBtn">Reset view</button>
+                </div>
+                <div class="strata-body">
+                    <div class="strata-stage-wrap">
+                        <div id="strataStage" tabindex="0" role="application"
+                             aria-label="Discography strata: credits, masters, and releases on three planes"
+                             aria-describedby="strataKeyHelp"></div>
+                        <p class="strata-sr-only" id="strataKeyHelp">Arrow keys orbit and tilt, plus and minus zoom, 0 resets the camera. 1, 2, and 3 show one plane, and the same key again shows all. PageUp and PageDown move to the parent or first child, [ and ] move along a plane, Enter opens a count node, and Escape clears the selection.</p>
+                        <p class="strata-message" id="strataMessage" role="alert" hidden></p>
+                        <div class="loading-overlay" id="strataLoading">
+                            <div class="spinner" role="status"></div>
+                            <p class="mt-2 text-text-mid">Loading strata...</p>
+                        </div>
+                    </div>
+                    <aside class="strata-panel" aria-label="Strata details">
+                        <div id="strataSummary" aria-live="polite"></div>
+                        <nav class="strata-trail" id="strataTrail" aria-label="Drill-down" hidden></nav>
+                        <div id="strataSelection" aria-live="polite"></div>
+                    </aside>
                 </div>
             </div>
             <!-- Info panel -->
@@ -1333,6 +1401,7 @@ body {
     <script src="js/credits.js"></script>
     <script src="js/theme.js"></script>
     <script type="module" src="js/nlq.js"></script>
+    <script type="module" src="js/strata-explore.js"></script>
     <script src="js/settings-state.js"></script>
     <script src="js/settings.js"></script>
     <script src="js/application-lifecycle.js"></script>

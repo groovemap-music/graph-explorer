@@ -6,12 +6,10 @@ import { describe, it, expect } from 'vitest';
 import {
     GROUP_GUTTER,
     HULL_PAD,
-    MAX_MASTERS_PAGE,
-    MAX_PRESSINGS_PAGE,
-    PAGE_SIZE,
     PLANE_SIZES,
     UNDATED_X,
     adaptStrataPayload,
+    decadeOf,
     edgeSegment,
     hull,
     hullIntrusions,
@@ -23,16 +21,23 @@ import {
     segmentsCross,
     yearToX,
 } from '../static/js/strata-layout.js';
-import { buildPayload, deepFreeze, generateDiscography, generateEdges, rng } from './strata-fixtures.js';
+import { ROUTE_PAGE_SIZE, buildPayload, cursorsOf, deepFreeze, generateDiscography, generateEdges, rng, validBudget } from './strata-fixtures.js';
 
-const SOURCE = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'static', 'js', 'strata-layout.js');
+const HERE = dirname(fileURLToPath(import.meta.url));
+const SOURCE = resolve(HERE, '..', 'static', 'js', 'strata-layout.js');
+const RECORDED = JSON.parse(readFileSync(resolve(HERE, '..', '..', 'tests', 'fixtures', 'strata-route.json'), 'utf8'));
+const recorded = (focus, page = 0, signedIn = true) =>
+    RECORDED.responses.find((entry) => entry.query.focus === focus && entry.query.page === page && entry.query.signed_in === signedIn).body;
 
-// Budgets as `credits/masters/releases`. 3/12/16 is the route's default, so it is drawn most often.
-const BUDGETS = [[3, 12, 16], [3, 12, 16], [3, 12, 16], [6, 12, 16], [6, 12, 25], [12, 24, 32], [4, 8, 12], [2, 5, 8], [3, 4, 4], [1, 1, 1], null];
+// Budgets as `credits/masters/releases`, all of which the route accepts. 3/12/16 is the route's
+// default, so it is drawn most often; 12/500/500 is past what the plane can draw, so the footprint
+// check folds it.
+const BUDGETS = [[3, 12, 16], [3, 12, 16], [3, 12, 16], [6, 12, 16], [6, 12, 25], [12, 24, 32], [4, 8, 12], [3, 6, 4], [12, 500, 500]];
 // Discography sizes in releases, log-uniform from 1 to the cap.
 const SIZES = [20, 200, 2000];
-// Unbudgeted payloads (every entry a node) are drawn only up to this many releases.
-const UNBUDGETED_MAX = 400;
+// The properties fold and lay out thousands of route payloads; alone they take a few seconds, and
+// beside the rest of the suite they need more than Vitest's default 5.
+const PROPERTY_TIMEOUT_MS = 60_000;
 
 /** Run `property` over `runs` seeds; a failure names its seed so it can be replayed. */
 function forAll(runs, firstSeed, property) {
@@ -47,12 +52,12 @@ function forAll(runs, firstSeed, property) {
 }
 
 function generateCase(r) {
-    const discography = generateDiscography(r, { maxReleases: r.pick(SIZES) });
-    let budget = r.pick(BUDGETS);
-    if (!budget && discography.releases.length > UNBUDGETED_MAX) budget = [3, 12, 16];
-    const payload = deepFreeze(buildPayload(discography, budget, { signedIn: r.chance(0.5) }));
-    const edges = deepFreeze(generateEdges(r, payload));
-    return { discography, budget, payload, edges, graph: adaptStrataPayload(payload) };
+    const catalog = generateDiscography(r, { maxReleases: r.pick(SIZES) });
+    const budget = r.pick(BUDGETS);
+    const signedIn = r.chance(0.5);
+    const payload = deepFreeze(buildPayload(catalog, budget, { signedIn, r }));
+    const edges = deepFreeze([...adaptStrataPayload(payload).edges, ...generateEdges(r, payload)]);
+    return { catalog, budget, signedIn, payload, edges, graph: adaptStrataPayload(payload) };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -133,6 +138,27 @@ function expectConserved(graph, layout) {
     }
 }
 
+/**
+ * The route's conservation, end to end: every release of the root is drawn, held by a release-plane
+ * aggregate, held by a master bucket (whose releases are not drawn below), or held by `c:other`;
+ * every master is drawn or held by a master aggregate or `c:other`; every credit is drawn or held
+ * by `c:other`.
+ */
+function expectRouteConserved(graph) {
+    const { totals } = graph;
+    const on = (level) => graph.entries.filter((entry) => entry.level === level);
+    const sum = (list, field) => list.reduce((total, item) => total + item[field], 0);
+    const other = on(0).filter((entry) => entry.agg);
+    const buckets = on(1).filter((entry) => entry.aggKind === 'masters');
+    expect(sum(on(0), 'releases'), 'credit plane holds every release').toBe(totals.releases);
+    expect(sum(on(2), 'releases') + sum(buckets, 'releases') + sum(other, 'releases'), 'every release placed once').toBe(totals.releases);
+    expect(sum(on(1), 'masters') + sum(other, 'masters'), 'every master placed once').toBe(totals.masters);
+    expect(sum(on(0), 'masters'), 'credit plane holds every master').toBe(totals.masters);
+    expect(sum(on(0), 'credits')).toBe(totals.credits);
+    expect(sum(on(0), 'undatedReleases')).toBe(totals.undatedReleases);
+    expect(sum(on(0), 'musicbrainzReleases')).toBe(totals.musicbrainzReleases);
+}
+
 /** The no-master lane and the undated strip keep their entries. */
 function expectLanes(graph, layout) {
     const holder = new Map();
@@ -166,70 +192,77 @@ function expectInvariants(graph, layout) {
     expect(crossings(layout), 'same-plane crossings').toBe(0);
     expect(samePlaneCrossings(layout)).toBe(0);
     expectConserved(graph, layout);
+    expectRouteConserved(graph);
     expectLanes(graph, layout);
 }
 
 // ---------------------------------------------------------------------------------------------
 
-describe('strata layout properties over generated discographies', () => {
+describe('strata layout properties over route-shaped payloads', () => {
+    it('only draws budgets the route accepts', () => {
+        for (const budget of BUDGETS) expect(validBudget(budget), budget.join('/')).toBe(true);
+    });
+
     it('holds every invariant on the default view (1,000 discographies)', () => {
-        const seen = { lanes: 0, undated: 0, folded: 0, edges: 0, unbudgeted: 0, wholeBands: 0, otherCredits: 0 };
+        const seen = { lanes: 0, undated: 0, folded: 0, edges: 0, musicbrainz: 0, otherCredits: 0, foldCredits: 0, signedIn: 0 };
         forAll(1000, 1, (r) => {
-            const { budget, payload, graph, edges } = generateCase(r);
+            const { payload, graph, edges, signedIn } = generateCase(r);
             const releases = graph.entries.filter((entry) => entry.level === 2);
             const selected = releases.length && r.chance(0.5) ? r.pick(releases).id : null;
             const layout = layoutStrata(graph, { edges, selected });
             expectInvariants(graph, layout);
+            expect(layout.page).toBeNull();
             seen.lanes += layout.nodes.some((node) => node.lane) ? 1 : 0;
             seen.undated += layout.nodes.some((node) => node.undated) ? 1 : 0;
             seen.folded += layout.nodes.some((node) => node.origin === 'fold') ? 1 : 0;
             seen.edges += layout.edges.length;
-            seen.unbudgeted += budget ? 0 : 1;
-            seen.wholeBands += payload.planes[1].aggregates.some((agg) => agg.kind === 'band') ? 1 : 0;
-            seen.otherCredits += layout.nodes.some((node) => node.id === 'fold:credits') ? 1 : 0;
+            seen.musicbrainz += layout.nodes.some((node) => node.provider === 'musicbrainz') ? 1 : 0;
+            seen.otherCredits += payload.planes[0].aggregates.length ? 1 : 0;
+            seen.foldCredits += layout.nodes.some((node) => node.id === 'fold:credits') ? 1 : 0;
+            seen.signedIn += signedIn ? 1 : 0;
         });
         // The properties are not vacuous: the generator reaches every shape they speak about.
         for (const [shape, count] of Object.entries(seen)) expect(count, shape).toBeGreaterThan(0);
-    });
+    }, PROPERTY_TIMEOUT_MS);
 
-    it('conserves every entry across every page of a drill-down (300 discographies)', () => {
+    it("conserves every entry across every server page of a cursor, and the pages partition its members (300 discographies)", () => {
         let paged = 0;
+        const levels = new Set();
         forAll(300, 10_001, (r) => {
-            const { graph, edges } = generateCase(r);
-            const counts = new Map();
-            for (const entry of graph.entries) if (entry.parent) counts.set(entry.parent, (counts.get(entry.parent) || 0) + 1);
-            const targets = graph.entries.filter((entry) => entry.level < 2 && (counts.get(entry.id) || 0) > 1);
-            for (const target of [...new Set([r.pick(targets), r.pick(targets), r.pick(targets)])].filter(Boolean)) {
-                const max = target.level === 0 ? MAX_MASTERS_PAGE : MAX_PRESSINGS_PAGE;
-                for (const per of [undefined, max, r.int(1, 20)]) {
-                    const first = layoutStrata(graph, { edges, focus: { id: target.id, per } });
-                    if (!first.page) continue;
-                    expect(first.page.per).toBe(Math.min(max, Math.max(1, per ?? PAGE_SIZE)));
-                    const shownOnce = new Map();
-                    for (let page = 0; page < first.page.pages; page++) {
-                        const layout = layoutStrata(graph, { edges, focus: { id: target.id, page, per } });
-                        expect(layout.page.index).toBe(page);
-                        expect(layout.page.shown.length).toBeLessThanOrEqual(layout.page.per);
-                        expectInvariants(graph, layout);
-                        const byId = new Map(layout.nodes.map((node) => [node.id, node]));
-                        for (const id of layout.page.shown) {
-                            expect(byId.get(id).members, `${id} drawn on its page`).toEqual([id]);
-                            shownOnce.set(id, (shownOnce.get(id) || 0) + 1);
-                        }
-                        paged++;
+            const { catalog, budget, signedIn, payload } = generateCase(r);
+            const cursors = cursorsOf(payload);
+            for (const cursor of [...new Set([r.pick(cursors), r.pick(cursors), r.pick(cursors)])].filter(Boolean)) {
+                const first = adaptStrataPayload(buildPayload(catalog, budget, { focus: cursor, signedIn }));
+                const { pages, members, level, id } = first.focus;
+                const shownOnce = new Map();
+                for (let page = 0; page < pages; page++) {
+                    const graph = adaptStrataPayload(deepFreeze(buildPayload(catalog, budget, { focus: cursor, page, signedIn })));
+                    const layout = layoutStrata(graph);
+                    expectInvariants(graph, layout);
+                    expect(layout.page).toMatchObject({ cursor: id, level, index: page, pages, size: members });
+                    expect(layout.page.per).toBeLessThanOrEqual(ROUTE_PAGE_SIZE);
+                    const byId = new Map(layout.nodes.map((node) => [node.id, node]));
+                    for (const shownId of layout.page.shown) {
+                        expect(byId.get(shownId).members, `${shownId} drawn on its page`).toEqual([shownId]);
+                        shownOnce.set(shownId, (shownOnce.get(shownId) || 0) + 1);
                     }
-                    // The pages partition the focused entries: each is shown on exactly one page.
-                    expect(shownOnce.size).toBe(first.page.size);
+                    // The rest of the cursor's members stay in one aggregate under the cursor's id.
+                    const remainder = graph.entries.find((entry) => entry.id === id);
+                    if (pages > 1) expect(remainder, `${id} holds the rest`).toBeTruthy();
+                    paged++;
+                }
+                levels.add(level);
+                // A page of credits may fold when the credit plane cannot hold it whole; a page of
+                // masters or releases is always drawn. Either way nothing is lost (expectConserved).
+                if (level > 0) {
+                    expect(shownOnce.size, `${id}: every member shown once`).toBe(members);
                     for (const count of shownOnce.values()) expect(count).toBe(1);
-                    const wrapped = layoutStrata(graph, { edges, focus: { id: target.id, page: first.page.pages, per } });
-                    expect(wrapped.page.shown).toEqual(first.page.shown);
-                    const back = layoutStrata(graph, { edges, focus: { id: target.id, page: -1, per } });
-                    expect(back.page.index).toBe(first.page.pages - 1);
                 }
             }
         });
         expect(paged).toBeGreaterThan(1000);
-    });
+        expect([...levels].sort()).toEqual([0, 1, 2]);
+    }, PROPERTY_TIMEOUT_MS);
 
     it('is deterministic and never writes to its input (100 discographies)', () => {
         forAll(100, 20_001, (r) => {
@@ -243,18 +276,91 @@ describe('strata layout properties over generated discographies', () => {
 
 // ---------------------------------------------------------------------------------------------
 
-// gm-design-1h2l's example payload, with the masters it trims restored.
+describe('adaptStrataPayload over recorded route bodies', () => {
+    it('reads the signed-in default view', () => {
+        const body = recorded(null);
+        const graph = adaptStrataPayload(body);
+        const byId = new Map(graph.entries.map((entry) => [entry.id, entry]));
+        expect(graph).toMatchObject({ rootCredit: 'c:9001', signedIn: true, focus: null, budget: { credits: 3, masters: 12, releases: 16 } });
+        expect(graph.totals).toEqual({ credits: 6, masters: 40, releases: 169, masterlessReleases: 26, undatedReleases: 9, musicbrainzReleases: 13 });
+        expect(byId.get('c:9001+9004+9005')).toMatchObject({ level: 0, label: 'The Placeholder Band, Remixer One, Remixer Two', state: 'owned' });
+        expect(byId.get('c:9001+9004+9005').artists.map((artist) => artist.id)).toEqual(['9001', '9004', '9005']);
+        expect(byId.get('c:other')).toMatchObject({ agg: true, aggKind: 'credits', credits: 4, releases: 30 });
+        // The wire's wanted_owned is strata-collector.js's wanted-owned, in states as in state.
+        expect(byId.get('c:9001').states).toMatchObject({ 'wanted-owned': 5, owned: 10, wanted: 4 });
+        expect(graph.entries.some((entry) => entry.state === 'wanted_owned' || Object.hasOwn(entry.states || {}, 'wanted_owned'))).toBe(false);
+        expect(byId.get('nm:c:9001')).toMatchObject({ aggKind: 'no_master', lane: 'nomaster', decade: null, undatedReleases: 5 });
+        expect(byId.get('ma:c:9001:1990s')).toMatchObject({ aggKind: 'masters', decade: '1990s', masters: 8 });
+        const master = graph.entries.find((entry) => entry.level === 1 && !entry.agg);
+        expect(master).toMatchObject({ masterId: master.id.slice(2), masters: 1 });
+        const release = byId.get('r:300101');
+        expect(release).toMatchObject({ provider: 'discogs', releaseId: '300101', yearSource: 'release', state: 'owned', recordedAt: { owned: '2026-05-26T12:00:00Z', wanted: null } });
+        for (const edge of graph.edges) expect(edge).toMatchObject({ kind: 'personnel', categories: expect.any(Array) });
+        expect(graph.edges.length).toBe(body.planes[1].edges.length);
+    });
+
+    it('carries MusicBrainz-only releases as state-less, with their provider', () => {
+        const bodies = RECORDED.responses.map((entry) => entry.body);
+        const musicbrainz = bodies.flatMap((body) => adaptStrataPayload(body).entries.filter((entry) => entry.provider === 'musicbrainz'));
+        expect(musicbrainz.length).toBeGreaterThan(0);
+        for (const entry of musicbrainz) {
+            expect(entry.id.startsWith('mb:')).toBe(true);
+            expect(entry.state).toBeNull();
+            expect(entry.musicbrainzReleases).toBe(1);
+        }
+        const layout = layoutStrata(adaptStrataPayload(bodies.find((body) => body.planes[2].nodes.some((node) => node.provider === 'musicbrainz'))));
+        const drawn = layout.nodes.filter((node) => node.provider === 'musicbrainz');
+        expect(drawn.length).toBeGreaterThan(0);
+        for (const node of drawn) expect(node).toMatchObject({ state: null, states: null });
+    });
+
+    it('reads an anonymous view with no collector field', () => {
+        const graph = adaptStrataPayload(recorded(null, 0, false));
+        expect(graph.signedIn).toBe(false);
+        for (const entry of graph.entries) expect([entry.state, entry.states, entry.recordedAt]).toEqual([null, null, null]);
+    });
+
+    it('reads a focused page, and lays out every recorded response within its invariants', () => {
+        const graph = adaptStrataPayload(recorded('ra:m:70030', 1));
+        expect(graph.focus).toEqual({ id: 'ra:m:70030', level: 2, page: 1, pages: 2, pageSize: 8, members: 15 });
+        const layout = layoutStrata(graph);
+        expect(layout.page).toMatchObject({ cursor: 'ra:m:70030', index: 1, pages: 2, per: 8, size: 15, parent: 'm:70030' });
+        expect(layout.page.shown).toHaveLength(7);
+        for (const { body } of RECORDED.responses) {
+            const recordedGraph = adaptStrataPayload(body);
+            expectInvariants(recordedGraph, layoutStrata(recordedGraph));
+        }
+    });
+
+    it('finds each kind of page: masters by decade, a lane by decade, and other credits', () => {
+        const decadePage = layoutStrata(adaptStrataPayload(recorded('ma:c:9001:1990s', 1)));
+        const byId = new Map(decadePage.nodes.map((node) => [node.id, node]));
+        expect(decadePage.page.shown).toHaveLength(1);
+        for (const id of decadePage.page.shown) expect(decadeOf(byId.get(id).year)).toBe('1990s');
+        const lane = layoutStrata(adaptStrataPayload(recorded('ra:nm:c:9001', 0)));
+        expect(lane.page).toMatchObject({ parent: 'nm:c:9001', per: 8 });
+        expect(lane.page.shown).toHaveLength(8);
+        const credits = layoutStrata(adaptStrataPayload(recorded('c:other', 2)));
+        expect(credits.page).toMatchObject({ level: 0, index: 2, size: 5, parent: null });
+        expect(credits.page.shown).toHaveLength(1);
+        expect(credits.nodes.filter((node) => node.level === 0).map((node) => node.id)).toContain('c:other');
+    });
+});
+
+// A small route-shaped payload, written out by hand.
 const EXAMPLE = {
-    root: { type: 'artist', id: 1, name: 'xxxxxxxxxx' },
-    budget: { credits: 5, masters: 5, releases: 5 },
-    totals: { credits: 2, masters: 4, releases: 8, masterless_releases: 1, releases_only_in_master_aggregates: 0 },
+    root: { type: 'artist', id: '1', name: 'xxxxxxxxxx' },
+    budget: { credits: 3, masters: 12, releases: 16 },
+    focus: null,
+    signed_in: true,
+    totals: { credits: 2, masters: 4, releases: 9, masterless_releases: 1, undated_releases: 2, musicbrainz_releases: 1 },
     planes: [
         {
             level: 0,
             kind: 'credit',
             nodes: [
-                { id: 'c:1', artists: [{ id: 1, name: 'xxxxxxxxxx' }], releases: 7 },
-                { id: 'c:1+2', artists: [{ id: 1, name: 'xxxxxxxxxx' }, { id: 2, name: 'xxxxxxxxxxxxx' }], releases: 1 },
+                { id: 'c:1', artists: [{ id: '1', name: 'xxxxxxxxxx' }], masters: 3, masterless: 1, releases: 5, undated_releases: 2, musicbrainz_releases: 0, y0: 1982, y1: 1989, states: { none: 5 }, state: 'none' },
+                { id: 'c:1+2', artists: [{ id: '1', name: 'xxxxxxxxxx' }, { id: '2', name: 'xxxxxxxxxxxxx' }], masters: 1, masterless: 0, releases: 4, undated_releases: 0, musicbrainz_releases: 1, y0: 1971, y1: 2016, states: { owned: 1, wanted_owned: 1, none: 1 }, state: 'owned' },
             ],
             aggregates: [],
         },
@@ -262,51 +368,63 @@ const EXAMPLE = {
             level: 1,
             kind: 'master',
             nodes: [
-                { id: 'm:501', parent: 'c:1+2', title: 'xxxxxxxxxxx', year: 1971, releases: 4, y0: 1971, y1: 2016, state: 'owned' },
-                { id: 'm:502', parent: 'c:1', title: 'xxxxx', year: null, releases: 1, y0: null, y1: null, state: 'none' },
+                { id: 'm:501', parent: 'c:1+2', master_id: '501', title: 'xxxxxxxxxxx', year: 1971, year_source: 'master', undated: false, releases: 4, undated_releases: 0, musicbrainz_releases: 1, y0: 1971, y1: 2016, states: { owned: 1, wanted_owned: 1, none: 1 }, state: 'owned' },
+                { id: 'm:502', parent: 'c:1', master_id: '502', title: 'xxxxx', year: null, year_source: null, undated: true, releases: 1, undated_releases: 1, musicbrainz_releases: 0, y0: null, y1: null, states: { none: 1 }, state: 'none' },
             ],
             aggregates: [
-                { id: 'nm:c:1', parent: 'c:1', kind: 'no_master', masters: 0, releases: 1, y0: null, y1: null, states: { none: 1 } },
-                { id: 'ma:c:1:1980s', parent: 'c:1', kind: 'masters', masters: 2, releases: 2, y0: 1982, y1: 1989, decade: '1980s', states: { none: 2 } },
+                { id: 'nm:c:1', parent: 'c:1', kind: 'no_master', decade: null, masters: 0, releases: 1, undated_releases: 1, musicbrainz_releases: 0, y0: null, y1: null, states: { none: 1 } },
+                { id: 'ma:c:1:1980s', parent: 'c:1', kind: 'masters', decade: '1980s', masters: 2, releases: 3, undated_releases: 0, musicbrainz_releases: 0, y0: 1982, y1: 1989, states: { none: 3 } },
             ],
+            edges: [{ source: 'm:501', target: 'm:502', kind: 'shared_personnel', categories: ['Production'], people: 1 }],
         },
         {
             level: 2,
             kind: 'release',
-            nodes: [{ id: 'r:9', parent: 'm:502', title: 'xxxx', year: null, state: 'none', recorded_at: null }],
+            nodes: [
+                { id: 'r:9', parent: 'm:502', provider: 'discogs', release_id: '9', title: 'xxxx', year: null, year_source: null, undated: true, state: 'none', recorded_at: { owned: null, wanted: null } },
+                { id: 'r:10', parent: 'm:501', provider: 'discogs', release_id: '10', title: 'xxxx', year: 1971, year_source: 'release', undated: false, state: 'wanted_owned', recorded_at: { owned: '2019-04-01T00:00:00Z', wanted: '2015-01-01T00:00:00Z' } },
+                { id: 'mb:0f9e', parent: 'm:501', provider: 'musicbrainz', release_id: '0f9e', title: 'xxxx', year: 1972, year_source: 'release', undated: false, state: null, recorded_at: null },
+            ],
             aggregates: [
-                { id: 'ra:m:501', parent: 'm:501', releases: 4, y0: 1971, y1: 2016, states: { owned: 1, wanted: 1, none: 2 } },
-                { id: 'ra:nm:c:1:unknown', parent: 'nm:c:1', releases: 1, y0: null, y1: null, states: { none: 1 } },
+                { id: 'ra:m:501', parent: 'm:501', releases: 2, undated_releases: 0, musicbrainz_releases: 0, y0: 1980, y1: 2016, states: { owned: 1, none: 1 } },
+                { id: 'ra:nm:c:1:undated', parent: 'nm:c:1', decade: 'undated', releases: 1, undated_releases: 1, musicbrainz_releases: 0, y0: null, y1: null, states: { none: 1 } },
             ],
         },
     ],
 };
 
 describe('adaptStrataPayload', () => {
-    it("reads gm-design-1h2l's example payload", () => {
+    it('reads a hand-written route payload', () => {
         const graph = adaptStrataPayload(EXAMPLE);
         expect(graph.rootCredit).toBe('c:1');
-        expect(graph.totals.releases).toBe(8);
+        expect(graph.totals.releases).toBe(9);
+        expect(graph.edges).toEqual([{ a: 'm:501', b: 'm:502', kind: 'personnel', categories: ['Production'], people: 1 }]);
         const byId = new Map(graph.entries.map((entry) => [entry.id, entry]));
         expect(byId.get('c:1+2')).toMatchObject({ level: 0, kind: 'credit', parent: null, label: 'xxxxxxxxxx, xxxxxxxxxxxxx', credits: 1 });
-        expect(byId.get('m:501')).toMatchObject({ year: 1971, releases: 4, masters: 1, state: 'owned', undated: false });
+        expect(byId.get('m:501')).toMatchObject({ year: 1971, yearSource: 'master', releases: 4, masters: 1, state: 'owned', undated: false, masterId: '501' });
         expect(byId.get('m:502')).toMatchObject({ undated: true });
         expect(byId.get('nm:c:1')).toMatchObject({ agg: true, aggKind: 'no_master', lane: 'nomaster', undated: false, masters: 0 });
-        expect(byId.get('ma:c:1:1980s')).toMatchObject({ aggKind: 'masters', masters: 2, y0: 1982, y1: 1989 });
-        expect(byId.get('r:9')).toMatchObject({ releases: 1, undated: true, y0: null });
-        expect(byId.get('ra:m:501')).toMatchObject({ aggKind: 'releases', states: { owned: 1, wanted: 1, none: 2 } });
+        expect(byId.get('ma:c:1:1980s')).toMatchObject({ aggKind: 'masters', masters: 2, y0: 1982, y1: 1989, decade: '1980s' });
+        expect(byId.get('r:9')).toMatchObject({ releases: 1, undated: true, y0: null, undatedReleases: 1 });
+        expect(byId.get('r:10')).toMatchObject({ state: 'wanted-owned', recordedAt: { owned: '2019-04-01T00:00:00Z', wanted: '2015-01-01T00:00:00Z' } });
+        expect(byId.get('mb:0f9e')).toMatchObject({ provider: 'musicbrainz', state: null, recordedAt: null, releaseId: '0f9e' });
+        expect(byId.get('ra:m:501')).toMatchObject({ aggKind: 'releases', states: { owned: 1, none: 1 } });
+        expect(byId.get('ra:nm:c:1:undated')).toMatchObject({ decade: 'undated', undated: true });
         expect(Object.isFrozen(byId.get('r:9'))).toBe(true);
     });
 
-    it('lays the example out with both lanes and the payload cursors', () => {
+    it('lays the example out with both lanes, the payload cursors, and the route edges', () => {
         const layout = layoutStrata(adaptStrataPayload(EXAMPLE));
         const byId = new Map(layout.nodes.map((node) => [node.id, node]));
-        expect(layout.nodes.map((node) => node.level)).toEqual([0, 0, 1, 1, 1, 1, 2, 2, 2]);
-        expect(byId.get('nm:c:1')).toMatchObject({ lane: 'nomaster', undated: true, x: UNDATED_X });
-        expect(byId.get('m:502')).toMatchObject({ undated: true, x: UNDATED_X });
+        expect(layout.nodes.map((node) => node.level)).toEqual([0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 2]);
+        expect(byId.get('nm:c:1')).toMatchObject({ lane: 'nomaster', undated: true, x: UNDATED_X, cursor: 'nm:c:1' });
+        expect(byId.get('m:502')).toMatchObject({ undated: true, x: UNDATED_X, cursor: 'm:502' });
         expect(byId.get('m:501').x).toBeCloseTo(yearToX(layout.axis, 1971));
-        expect(byId.get('ra:m:501')).toMatchObject({ cursor: 'ra:m:501', origin: 'payload', states: { owned: 1, wanted: 1, none: 2 } });
+        expect(byId.get('ra:m:501')).toMatchObject({ cursor: 'ra:m:501', origin: 'payload', states: { owned: 1, none: 1 } });
+        expect(byId.get('mb:0f9e')).toMatchObject({ provider: 'musicbrainz', cursor: null, state: null });
         expect(byId.get('c:1+2').x).toBeCloseTo(yearToX(layout.axis, 1971));
+        // Shared personnel across credits stays in the panel: the planar rule draws none.
+        expect(layout.edges).toEqual([]);
         expect(layout.depth.fit).toBeGreaterThan(1);
         expect(layout.page).toBeNull();
         expectInvariants(adaptStrataPayload(EXAMPLE), layout);
@@ -314,7 +432,7 @@ describe('adaptStrataPayload', () => {
 
     it('accepts an anonymous payload with empty planes and no aggregate lists', () => {
         const graph = adaptStrataPayload({ planes: [{ level: 2 }, { level: 1, nodes: [] }, { level: 0, nodes: [{ id: 'c:1' }] }] });
-        expect(graph).toMatchObject({ root: null, budget: null, totals: null, rootCredit: 'c:1' });
+        expect(graph).toMatchObject({ root: null, budget: null, totals: null, focus: null, signedIn: false, rootCredit: 'c:1', edges: [] });
         const layout = layoutStrata(graph);
         expect(layout.nodes).toHaveLength(1);
         expect(layout.nodes[0]).toMatchObject({ x: UNDATED_X, label: null, states: null });
@@ -325,11 +443,12 @@ describe('adaptStrataPayload', () => {
         const graph = adaptStrataPayload({
             planes: [
                 { level: 0, nodes: [{ id: 'c:1' }] },
-                { level: 1, aggregates: [{ id: 'nm:c:1', parent: 'c:1', kind: 'no_master', releases: 3, y0: 1990, states: { none: 3, owned: 'x' } }] },
+                { level: 1, aggregates: [{ id: 'nm:c:1', parent: 'c:1', kind: 'no_master', releases: 3, y0: 1990, states: { none: 3, owned: 'x' } }], edges: [null, { kind: 'other', source: 'a', target: 'b' }] },
                 { level: 2 },
             ],
         });
         expect(graph.entries[1]).toMatchObject({ y0: 1990, y1: 1990, states: { none: 3 } });
+        expect(graph.edges).toEqual([]);
         const layout = layoutStrata(graph, { edges: null });
         expect(layout.nodes[1]).toMatchObject({ lane: 'nomaster', undated: false });
         expect(layout.nodes[1].x).toBeCloseTo(yearToX(layout.axis, 1990));
@@ -341,6 +460,7 @@ describe('adaptStrataPayload', () => {
         planes: [plane(0, credits), plane(1, masters, masterAggs), plane(2, releases)],
     });
     const credit = { id: 'c:1' };
+    const master = { id: 'm:1', parent: 'c:1', year: 1990 };
     it.each([
         ['a missing payload', null, /planes array/],
         ['a missing plane', { planes: [plane(0, []), plane(1, [])] }, /plane 2 is missing/],
@@ -354,9 +474,20 @@ describe('adaptStrataPayload', () => {
         ['a duplicate id', payloadWith([credit, credit]), /duplicate id c:1/],
         ['an unknown parent', payloadWith([credit], [{ id: 'm:1', parent: 'c:9' }]), /not on the plane above/],
         ['a parent two planes up', payloadWith([credit], [], [{ id: 'r:1', parent: 'c:1' }]), /not on the plane above/],
-        ['an unknown aggregate kind', payloadWith([credit], [], [], [{ id: 'x:1', parent: 'c:1', kind: 'decade' }]), /unknown aggregate kind/],
+        ['an unknown aggregate kind', payloadWith([credit], [], [], [{ id: 'x:1', parent: 'c:1', kind: 'band' }]), /unknown aggregate kind/],
         ['a non-numeric year', payloadWith([credit], [{ id: 'm:1', parent: 'c:1', year: '1990' }]), /non-numeric year/],
         ['a negative count', payloadWith([credit], [{ id: 'm:1', parent: 'c:1', releases: -1 }]), /invalid releases count/],
+        ['an undated flag that contradicts the year', payloadWith([credit], [{ ...master, undated: true }]), /says undated/],
+        ['an unknown collector state', payloadWith([credit], [{ ...master, state: 'collected' }]), /unknown collector state/],
+        ['an unknown state count', payloadWith([{ id: 'c:1', states: { owned_wanted: 1 } }]), /unknown collector state/],
+        ['a MusicBrainz release with a state', payloadWith([credit], [master], [{ id: 'mb:x', parent: 'm:1', provider: 'musicbrainz', state: 'owned' }]), /MusicBrainz-only/],
+        ['an unknown provider', payloadWith([credit], [master], [{ id: 'x:1', parent: 'm:1', provider: 'spotify' }]), /unknown provider/],
+        ['a provider its id contradicts', payloadWith([credit], [master], [{ id: 'r:1', parent: 'm:1', provider: 'musicbrainz' }]), /is a discogs id/],
+        ['a recorded_at that is not an object', payloadWith([credit], [master], [{ id: 'r:1', parent: 'm:1', recorded_at: '2020-01-01' }]), /recorded_at/],
+        ['a focus with no cursor', { ...payloadWith([credit]), focus: { plane: 'master' } }, /focus has no cursor/],
+        ['a focus on an unknown plane', { ...payloadWith([credit]), focus: { id: 'c:other', plane: 'credits' } }, /unknown plane/],
+        ['a focus past its last page', { ...payloadWith([credit]), focus: { id: 'c:other', plane: 'credit', page: 2, pages: 2, page_size: 1, members: 2 } }, /page 2 of 2/],
+        ['a focus with a bad page size', { ...payloadWith([credit]), focus: { id: 'c:other', plane: 'credit', page: 0, pages: 1, page_size: 0, members: 2 } }, /invalid page_size/],
     ])('rejects %s', (_, payload, message) => {
         expect(() => adaptStrataPayload(payload)).toThrow(message);
     });
@@ -378,26 +509,31 @@ describe('layoutStrata', () => {
         expect(layout.axis.fromX - UNDATED_X).toBeGreaterThan(2 * PLANE_SIZES[1]);
     });
 
-    // One credit holding 30 masters of 30 pressings each, every entry a node: far past what the
-    // plane can draw, so the footprint check folds it.
-    function largeDiscography({ credits = 1, signedIn = false } = {}) {
+    // Credits holding 30 masters of 30 pressings each, at the route's largest budget: far past what
+    // the plane can draw, so the footprint check folds it.
+    function largeDiscography({ credits = 1, signedIn = false, focus = null, page = 0 } = {}) {
         const releases = [];
-        const masters = new Map();
+        const masterYears = new Map();
+        const marks = new Map();
         let id = 1;
         for (let c = 0; c < credits; c++) {
+            const credit = c ? `1+${c + 1}` : '1';
             for (let m = 0; m < 30; m++) {
-                const mid = 1000 * (c + 1) + m;
-                masters.set(mid, { id: mid, year: m % 7 === 0 ? null : 1960 + m });
+                const masterId = String(1000 * (c + 1) + m);
+                masterYears.set(masterId, m % 7 === 0 ? null : 1960 + m);
                 for (let k = 0; k < 30; k++) {
-                    releases.push({ id: id++, masterId: mid, isMain: k === 0, year: k % 5 === 0 ? null : 1960 + m + k, credit: c ? [1, c + 1] : [1], state: k === 3 ? 'owned' : 'none' });
+                    const releaseId = String(id++);
+                    releases.push({ id: releaseId, masterId, year: k % 5 === 0 ? null : 1960 + m + k, credit, provider: 'discogs', title: null });
+                    if (k === 3) marks.set(releaseId, { owned: true, wanted: false, ownedAt: '2020-01-01T00:00:00Z', wantedAt: null });
                 }
-                releases.push({ id: id++, masterId: null, isMain: false, year: m % 2 ? null : 1990, credit: c ? [1, c + 1] : [1], state: 'none' });
+                releases.push({ id: String(id++), masterId: null, year: m % 2 ? null : 1990, credit, provider: 'discogs', title: null });
             }
         }
-        return adaptStrataPayload(buildPayload({ rootId: 1, releases, masters }, null, { signedIn }));
+        const catalog = { rootId: '1', releases, masterYears, marks };
+        return adaptStrataPayload(buildPayload(catalog, [Math.max(3, credits), 500, 500], { signedIn, focus, page }));
     }
 
-    it('folds an unbudgeted discography until it fits, pressings without state first', () => {
+    it('folds a large budget until it fits, pressings without state first', () => {
         const graph = largeDiscography({ signedIn: true });
         const layout = layoutStrata(graph);
         expectInvariants(graph, layout);
@@ -425,59 +561,59 @@ describe('layoutStrata', () => {
         expect(byId.get('fold:credits:nm').members).toHaveLength(8);
     });
 
-    it('pages a master and pins the page while folding everything else', () => {
-        const graph = largeDiscography({ credits: 3 });
-        const target = 'm:2000';
-        const layout = layoutStrata(graph, { focus: { id: target, page: 1 } });
+    it("pins the route's page of pressings while folding everything else", () => {
+        const graph = largeDiscography({ credits: 3, focus: 'm:2000', page: 1 });
+        const layout = layoutStrata(graph);
         expectInvariants(graph, layout);
-        expect(layout.page).toMatchObject({ parent: target, index: 1, pages: 4, per: PAGE_SIZE, size: 30 });
+        expect(layout.page).toMatchObject({ cursor: 'ra:m:2000', level: 2, index: 1, pages: 4, per: ROUTE_PAGE_SIZE, size: 30, parent: 'm:2000' });
+        expect(layout.page.shown).toHaveLength(ROUTE_PAGE_SIZE);
         const byId = new Map(layout.nodes.map((node) => [node.id, node]));
-        for (const id of layout.page.shown) expect(byId.get(id).parent).toBe(target);
-        const more = layout.nodes.filter((node) => node.origin === 'page');
-        expect(more.map((node) => node.id).sort()).toEqual([`page:${target}:d`, `page:${target}:u`]);
-        expect(more.reduce((sum, node) => sum + node.releases, 0)).toBe(30 - PAGE_SIZE);
-        expect(byId.get(`page:${target}:u`)).toMatchObject({ undated: true, x: UNDATED_X, pageOf: target });
+        for (const id of layout.page.shown) expect(byId.get(id)).toMatchObject({ parent: 'm:2000', members: [id] });
+        expect(byId.get('ra:m:2000')).toMatchObject({ releases: 30 - ROUTE_PAGE_SIZE, cursor: 'ra:m:2000' });
         expect(layout.nodes.some((node) => node.id === 'fold:credits')).toBe(false);
     });
 
-    it('pages a credit eight masters at a time, leaving its lane in place', () => {
-        const graph = largeDiscography({ credits: 2 });
-        const layout = layoutStrata(graph, { focus: { id: 'c:1+2', per: 50 } });
+    it("pins the route's page of masters, leaving the credit's lane in place", () => {
+        const graph = largeDiscography({ credits: 2, focus: 'ma:c:1+2:all' });
+        const layout = layoutStrata(graph);
         expectInvariants(graph, layout);
-        expect(layout.page).toMatchObject({ parent: 'c:1+2', per: MAX_MASTERS_PAGE, size: 30, pages: 4 });
+        expect(layout.page).toMatchObject({ cursor: 'ma:c:1+2:all', level: 1, per: ROUTE_PAGE_SIZE, size: 30, pages: 4, parent: 'c:1+2' });
+        expect(layout.page.shown).toHaveLength(ROUTE_PAGE_SIZE);
         const credit = layout.nodes.find((node) => node.id === 'c:1+2');
         expect(credit.children).toContain('nm:c:1+2');
+        expect(credit.children).toContain('ma:c:1+2:all');
     });
 
-    it('ignores a focus it cannot page', () => {
-        const graph = adaptStrataPayload(EXAMPLE);
-        const plain = layoutStrata(graph);
-        expect(layoutStrata(graph, { focus: { id: 'nope' } })).toEqual(plain);
-        expect(layoutStrata(graph, { focus: { id: 'r:9' } }).page).toBeNull();
-        expect(layoutStrata(graph, { focus: { id: 'ma:c:1:1980s' } }).page).toBeNull();
-        const onlyLane = layoutStrata(adaptStrataPayload({
-            planes: [
-                { level: 0, nodes: [{ id: 'c:1' }] },
-                { level: 1, aggregates: [{ id: 'nm:c:1', parent: 'c:1', kind: 'no_master', releases: 0 }] },
-                { level: 2 },
-            ],
-        }), { focus: { id: 'c:1' } });
-        expect(onlyLane.page).toBeNull();
-        expect(onlyLane.nodes[1]).toMatchObject({ lane: 'nomaster', x: UNDATED_X });
-        const odd = layoutStrata(graph, { focus: { id: 'c:1', page: Number.NaN, per: 0 } });
-        expect(odd.page).toMatchObject({ index: 0, per: 1 });
+    it('folds a page of credits only when the credit plane cannot hold it', () => {
+        const graph = largeDiscography({ credits: 12, focus: 'c:other' });
+        expect(graph.focus).toMatchObject({ level: 0, pageSize: 8 });
+        const layout = layoutStrata(graph);
+        expectInvariants(graph, layout);
+        expect(layout.page.shown.length).toBeLessThan(ROUTE_PAGE_SIZE);
+        const small = adaptStrataPayload(recorded('c:other', 0));
+        expect(layoutStrata(small).page.shown).toHaveLength(small.focus.pageSize);
+    });
+
+    it('draws no page for a focus whose members it cannot find', () => {
+        const graph = adaptStrataPayload({ ...EXAMPLE, focus: { id: 'ra:m:999', plane: 'release', page: 0, pages: 1, page_size: 1, members: 1 } });
+        expect(layoutStrata(graph).page).toMatchObject({ cursor: 'ra:m:999', shown: [], parent: null });
+        const unknown = adaptStrataPayload({ ...EXAMPLE, focus: { id: 'zz:1', plane: 'master', page: 0, pages: 1, page_size: 1, members: 1 } });
+        expect(layoutStrata(unknown).page.shown).toEqual([]);
+        const plain = layoutStrata(adaptStrataPayload(EXAMPLE));
+        expect(layoutStrata(unknown).nodes).toEqual(plain.nodes);
     });
 
     it('draws only the planar subset of lateral edges', () => {
         const masters = Array.from({ length: 5 }, (_, i) => ({ id: `m:${i}`, parent: 'c:1', year: 1970 + i, releases: 1 }));
-        const releases = masters.map((master, i) => ({ id: `r:${i}`, parent: master.id, year: 1970 + i }));
+        const releases = masters.map((m, i) => ({ id: `r:${i}`, parent: m.id, year: 1970 + i }));
         const graph = adaptStrataPayload({
             planes: [
                 { level: 0, nodes: [{ id: 'c:1' }, { id: 'c:1+2' }, { id: 'c:1+3' }] },
-                { level: 1, nodes: masters },
+                { level: 1, nodes: masters, edges: [{ source: 'm:2', target: 'm:3', kind: 'shared_personnel', categories: [], people: 1 }] },
                 { level: 2, nodes: releases, aggregates: [{ id: 'ra:x', parent: 'm:0', releases: 0 }] },
             ],
         });
+        expect(layoutStrata(graph).edges).toEqual([{ a: 'm:2', b: 'm:3', kind: 'personnel' }]);
         const edges = [
             { a: 'c:1', b: 'c:1+2', kind: 'member' },
             { a: 'c:1+3', b: 'c:1', kind: 'collab' },

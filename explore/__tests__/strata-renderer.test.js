@@ -11,7 +11,7 @@ const RECT = { left: 0, top: 0, width: 800, height: 600 };
 
 // Every token the renderer reads, as hex, so jsdom needs no stylesheet.
 const TOKENS = new Map([
-    ...[STRATA_TOKENS.canvas, STRATA_TOKENS.planeFill, STRATA_TOKENS.planeLine, STRATA_TOKENS.link, STRATA_TOKENS.accent, STRATA_TOKENS.hover, STRATA_TOKENS.stateless].map((name, i) => [name, `#10203${i}`]),
+    ...[STRATA_TOKENS.canvas, STRATA_TOKENS.planeFill, STRATA_TOKENS.planeLine, STRATA_TOKENS.link, STRATA_TOKENS.accent, STRATA_TOKENS.hover, STRATA_TOKENS.stateless, STRATA_TOKENS.blocked].map((name, i) => [name, `#10203${i}`]),
     ...STRATA_TOKENS.hull.map((name, i) => [name, `#4040${i}0`]),
     ...Object.values(STRATA_TOKENS.edge).map((name, i) => [name, `#5050${i}0`]),
     ...COLLECTOR_STATES.flatMap((state, i) => ['light', 'dark'].map((theme) => [stateTokenName(state, theme), `#a0${i}0${theme === 'dark' ? 'f' : '0'}0`])),
@@ -164,6 +164,32 @@ describe('scene', () => {
         renderer.select('m');
         expect(colorOf('r')).toBe(owned);
         expect(colorOf('r2')).not.toBe(TOKENS.get(STRATA_TOKENS.stateless));
+    });
+
+    it('draws a MusicBrainz-only release state-less inside the blocked-pressing ring, which is not pickable', () => {
+        const layout = stackedLayout(CAMERA_HOME);
+        layout.nodes[4] = { ...layout.nodes[4], provider: 'musicbrainz' };
+        const { renderer } = mount({ layout });
+        expect(renderer.blockedRings).toHaveLength(1);
+        const [ring] = renderer.blockedRings;
+        expect(ring.isInstancedMesh).toBe(true);
+        expect(ring.userData.nodes.map((n) => n.id)).toEqual(['r2']);
+        expect(renderer.instanced.some((entry) => entry.mesh === ring)).toBe(false);
+        const matrix = new THREE.Matrix4();
+        ring.getMatrixAt(0, matrix);
+        const at = new THREE.Vector3().setFromMatrixPosition(matrix);
+        expect([at.x, at.z]).toEqual([layout.nodes[4].x, layout.nodes[4].z]);
+        const color = new THREE.Color();
+        ring.getColorAt(0, color);
+        expect(`#${color.getHexString()}`).toBe(TOKENS.get(STRATA_TOKENS.blocked));
+        const node = renderer.instanced.find((entry) => entry.nodes.some((n) => n.id === 'r2'));
+        node.mesh.getColorAt(node.nodes.findIndex((n) => n.id === 'r2'), color);
+        expect(`#${color.getHexString()}`).toBe(TOKENS.get(STRATA_TOKENS.stateless));
+        renderer.select('m');
+        ring.getColorAt(0, color);
+        expect(`#${color.getHexString()}`).not.toBe(TOKENS.get(STRATA_TOKENS.blocked));
+        renderer.setLayout(stackedLayout(CAMERA_HOME));
+        expect(renderer.blockedRings).toEqual([]);
     });
 });
 

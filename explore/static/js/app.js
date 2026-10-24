@@ -375,6 +375,11 @@ class ExploreApp {
         this.searchType = 'artist';
         this.currentQuery = '';
         this.activePane = 'explore';
+        // The Explore pane's view: 'graph', or 'strata' (Discography Strata, strata-explore.js,
+        // which StrataInit attaches as this.strata). Strata opens on the artist Explore centers.
+        this.exploreView = 'graph';
+        this.currentArtist = null;
+        this.strata = null;
 
         // Trends comparison state
         this.compareMode = false;
@@ -539,6 +544,11 @@ class ExploreApp {
 
         // Timeline toggle
         document.getElementById('timelineToggleBtn')?.addEventListener('click', () => this.timeline.toggle());
+
+        // Explore view toggle: graph, strata, and the strata table (a later release)
+        document.querySelectorAll('[data-explore-view]').forEach(button => {
+            button.addEventListener('click', () => this._setExploreView(button.dataset.exploreView));
+        });
 
         // Login form
         document.getElementById('loginSubmitBtn')?.addEventListener('click', () => this._handleLogin());
@@ -948,6 +958,9 @@ class ExploreApp {
         if (this._prevPane === 'explore' && pane !== 'explore' && this.timeline) {
             this.timeline.pause();
         }
+        // The strata renderer's frame loop runs only while its pane is on screen.
+        if (pane === 'explore') this.strata?.resume();
+        else this.strata?.pause();
 
         this._prevPane = pane;
 
@@ -1040,6 +1053,7 @@ class ExploreApp {
                 await this._decorateOwnership();
                 if (requestId !== this._exploreRequestId) return;
                 loaded = true;
+                this._setExploreArtist(type === 'artist' ? data.center : null);
             }
         } finally {
             if (requestId === this._exploreRequestId) {
@@ -1073,7 +1087,51 @@ class ExploreApp {
     }
 
     _onTimelineYearChange(year) {
-        this.graph.setBeforeYear(year);
+        // The scrubber is valid time for both views. The hidden graph catches up when it is
+        // shown again (_setExploreView), rather than re-expanding behind the strata view.
+        this.strata?.setBeforeYear(year);
+        if (this.exploreView !== 'strata') this.graph.setBeforeYear(year);
+    }
+
+    /**
+     * Record the artist Explore centers, or null for a genre, label, or style. Discography Strata
+     * draws one artist, so its toggle is enabled only while an artist is centered.
+     */
+    _setExploreArtist(center) {
+        this.currentArtist = center && center.id != null ? { id: String(center.id), name: center.name || null } : null;
+        const button = document.querySelector('[data-explore-view="strata"]');
+        if (button) {
+            button.disabled = !this.currentArtist || !this.strata;
+            button.title = this.currentArtist ? `Discography Strata for ${this.currentArtist.name || 'this artist'}` : 'Search for an artist to open Discography Strata';
+        }
+        this.strata?.setArtist(this.currentArtist);
+        if (!this.currentArtist && this.exploreView === 'strata') this._setExploreView('graph');
+    }
+
+    /** Show the graph or the strata view in the Explore pane. The table is not built yet. */
+    _setExploreView(view) {
+        if (view !== 'graph' && view !== 'strata') return;
+        if (view === 'strata' && (!this.strata || !this.currentArtist)) return;
+        this.exploreView = view;
+        document.querySelectorAll('[data-explore-view]').forEach(button => {
+            const on = button.dataset.exploreView === view;
+            button.classList.toggle('active', on);
+            button.setAttribute('aria-pressed', String(on));
+        });
+        const strata = view === 'strata';
+        document.getElementById('graphContainer')?.classList.toggle('hidden', strata);
+        // The graph's details panel belongs to the graph; strata has its own.
+        document.getElementById('infoPanel')?.classList.toggle('hidden', strata);
+        if (strata) {
+            document.getElementById('infoPanel')?.classList.remove('open');
+            if (this.timeline.comparing) this.timeline.exitCompare();
+            this.strata.setBeforeYear(this.timeline.currentYear);
+            this.strata.show();
+            return;
+        }
+        this.strata?.hide();
+        const year = this.timeline.currentYear ?? null;
+        if ((this.graph.beforeYear ?? null) !== year) this.graph.setBeforeYear(year);
     }
 
     _onGenreEmergence(newGenres) {
@@ -1508,6 +1566,11 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
     }
+
+    // Discography Strata. strata-explore.js is a module (it imports three.js), so it sets
+    // window.StrataInit before DOMContentLoaded, the way nlq.js does.
+    const strataInit = window.StrataInit;
+    if (typeof strataInit === 'function') strataInit({ app: window.exploreApp });
 });
 
 // ============================================================

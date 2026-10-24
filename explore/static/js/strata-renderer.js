@@ -7,6 +7,7 @@
  *     instanced halo per plane;
  *   - lateral edges merged into one ribbon mesh per plane, edge kind, and dimming;
  *   - credit hulls merged per plane and color;
+ *   - one instanced blocked-pressing ring per plane, around MusicBrainz-only releases;
  *   - vertical links, rebuilt only when the layout, the soloed plane, or the selection changes;
  *   - DOM labels created only for label candidates and placed greedily each frame.
  *
@@ -33,6 +34,7 @@ import {
     clampCamera,
     displayLabel,
     indexNodes,
+    isBlocked,
     labelCandidates,
     labelWidth,
     levelOfDetail,
@@ -73,6 +75,7 @@ export const STRATA_TOKENS = Object.freeze({
     accent: '--strata-accent',
     hover: '--strata-hover',
     stateless: '--strata-node-stateless',
+    blocked: '--strata-blocked',
     hull: Object.freeze(['--strata-hull-1', '--strata-hull-2', '--strata-hull-3', '--strata-hull-4']),
     edge: Object.freeze({
         member: '--strata-edge-member',
@@ -219,6 +222,7 @@ export class StrataRenderer extends EventTarget {
         this.byId = new Map();
         this.instanced = [];
         this.halos = [];
+        this.blockedRings = [];
         this.layoutObjects = [];
         this.hullObjects = [];
         this.edgeObjects = [];
@@ -388,6 +392,7 @@ export class StrataRenderer extends EventTarget {
             accent: token(STRATA_TOKENS.accent),
             hover: token(STRATA_TOKENS.hover),
             stateless: token(STRATA_TOKENS.stateless),
+            blocked: token(STRATA_TOKENS.blocked),
             hull: STRATA_TOKENS.hull.map(token),
             edge: Object.fromEntries(Object.entries(STRATA_TOKENS.edge).map(([kind, name]) => [kind, token(name)])),
             state: (key) => {
@@ -528,6 +533,7 @@ export class StrataRenderer extends EventTarget {
         }
         this.instanced = [];
         this.halos = [];
+        this.blockedRings = [];
         for (const el of this.nodeLabels.values()) el.remove();
         this.nodeLabels.clear();
         this.shownLabels.clear();
@@ -560,6 +566,7 @@ export class StrataRenderer extends EventTarget {
     buildNodes() {
         const matrix = new THREE.Matrix4();
         const flat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+        const upright = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
         const none = new THREE.Quaternion();
         const scale = new THREE.Vector3();
         const at = new THREE.Vector3();
@@ -590,6 +597,14 @@ export class StrataRenderer extends EventTarget {
             halo.userData = { nodes: onPlane, level };
             halo.visible = lod.halos;
             this.halos.push(this.track(level, halo));
+            // The spike's blocked-pressing ring: a MusicBrainz-only release has no Discogs alias, so
+            // no wantlist or collection edge can carry a change to it (ADR 0009). It is not pickable.
+            const blocked = onPlane.filter(isBlocked);
+            if (!blocked.length) continue;
+            const ring = new THREE.InstancedMesh(this.geometry('ring', 'high'), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.9, depthWrite: false }), blocked.length);
+            blocked.forEach((node, i) => ring.setMatrixAt(i, matrix.compose(at.set(node.x, 0.15, node.z), upright, scale.setScalar(node.size * 1.75))));
+            ring.userData = { nodes: blocked, level, blocked: true };
+            this.blockedRings.push(this.track(level, ring));
         }
     }
 
@@ -702,6 +717,14 @@ export class StrataRenderer extends EventTarget {
         };
         for (const { mesh, nodes } of this.instanced) paint(mesh, nodes);
         for (const halo of this.halos) paint(halo, halo.userData.nodes);
+        for (const ring of this.blockedRings) {
+            ring.userData.nodes.forEach((node, i) => {
+                color.copy(this.colors.blocked);
+                if (this.selection && !this.selection.has(node.id)) color.lerp(this.colors.canvas, DIM);
+                ring.setColorAt(i, color);
+            });
+            if (ring.instanceColor) ring.instanceColor.needsUpdate = true;
+        }
     }
 
     placeRing(ring, id) {
