@@ -237,7 +237,15 @@ in the rule's stage order. `AtlasTable` is the DOM half: a native table with a c
 buttons with `aria-sort`, a roving tabindex, and the keys in [Genre Atlas](genre-atlas.md#the-table).
 `GenreAtlas.setMode` switches between the two views. The table builds no renderer and stops the
 frame loop, so it opens where WebGL does not, and it shares the scrubber, the selection, and the
-panel with the 3D view. The user-facing description is [Genre Atlas](genre-atlas.md).
+panel with the 3D view. For a signed-in collector the table gains a Yours column (`YOURS_COLUMN`,
+placed after Name by `atlasColumns`): `buildAtlasRows` reads each node's `held` from the layout
+`paintTaste` painted, so the column is the table's equivalent of the 3D held rings and follows the
+"recorded as of" year. It sorts by items held, puts rows that hold nothing last, and its header is
+described to a screen reader. The user-facing description is [Genre Atlas](genre-atlas.md).
+
+For anything that reads a frame, the atlas stage reports what the settled frame drew:
+`data-atlas-cotag-edges`, `data-atlas-held-marks` (held rings), and `data-atlas-landing-marks` (Fit
+landing diamonds), beside `data-strata-frame="settled"`.
 
 ## Tests
 
@@ -284,6 +292,13 @@ panel with the 3D view. The user-facing description is [Genre Atlas](genre-atlas
   co-tagged styles that are listed instead, a co-tag read that fails, then the table (sort, shared slider, keyboard) and back. A second
   journey opens the table where WebGL is unavailable. It drives the 3D view from the keyboard.
   The user-facing description is [Genre Atlas](genre-atlas.md).
+- `tests/e2e/test_taste_strata.py` walks Taste Strata and the Fit landing point as a seeded
+  signed-in collector, on every project in the matrix: held marks, collector masters, and the
+  "recorded as of" control; the table's Yours column; an anonymous visitor with no personal layer
+  and no request for one; and a Fit check landing on the atlas with its drawn components marked, its
+  Depth and artist or label items listed, and its `fit.dismissed` outcome recorded. It waits only on
+  `data-strata-frame="settled"` and the stage's counts, from `tests/fixtures/taste-projection.json`
+  and `fit-profile.json`.
 - `tests/perf/test_strata_renderer_perf.py` is the performance smoke test below. `just test` and the
   E2E matrix skip it (marker `benchmark`).
 

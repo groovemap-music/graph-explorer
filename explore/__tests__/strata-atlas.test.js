@@ -702,6 +702,28 @@ describe('Taste Strata', () => {
         expect(byId.get('s:Amber Bop').held).not.toBeNull();
     });
 
+    it('adds a Yours column to the table for a signed-in collector, and follows the recorded-as-of year', async () => {
+        const { atlas, auth } = tasteAtlas();
+        await atlas.show();
+        atlas.root.querySelector('[data-atlas-view="table"]').click();
+        const yours = () => [...atlas.ui.table.querySelectorAll('tbody tr')].map((tr) => [tr.dataset.id, tr.querySelector('.atlas-cell-yours')?.textContent]);
+        expect(atlas.ui.table.querySelector('th[data-column="yours"]')).not.toBeNull();
+        expect(Object.fromEntries(yours())['s:Copper Drift']).toBe('wanted + owned 1 item (1 owned, 1 wanted)');
+        expect(Object.fromEntries(yours())['s:Amber Bop']).toBe('wanted + owned 3 items (2 owned, 1 wanted)');
+        atlas.setTasteYear(2016);
+        expect(Object.fromEntries(yours())['s:Amber Bop']).toBe('first recorded after 2016');
+        auth.set(null);
+        expect(atlas.ui.table.querySelector('th[data-column="yours"]')).toBeNull();
+        expect(atlas.ui.table.querySelector('.atlas-cell-yours')).toBeNull();
+    });
+
+    it('gives an anonymous visitor a table with no Yours column', async () => {
+        const { atlas } = tasteAtlas({ auth: standInAuth(null) });
+        await atlas.show();
+        atlas.root.querySelector('[data-atlas-view="table"]').click();
+        expect(atlas.ui.table.querySelector('th[data-column="yours"]')).toBeNull();
+    });
+
     it.each([
         [401, TASTE_SIGN_IN],
         [503, TASTE_FAILED],

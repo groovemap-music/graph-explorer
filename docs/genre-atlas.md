@@ -4,8 +4,9 @@ The Genre Atlas draws the catalogue's genres and styles as a map you can scrub t
 genre has a region, each style sits under its main genre, and every style is colored by where it is
 in its life: not yet started, emerging, established, declining, or reviving. It opens in the
 **Genres** pane, beside the flat genre tree, and below the other summaries in the **Insights** pane.
-It has a **table** that lists the same genres and styles as rows. This page is for the person using
-it. How it is built is in [Strata renderer](strata-renderer.md#the-genre-atlas-on-the-same-engine).
+It has a **table** that lists the same genres and styles as rows. When you are signed in, it also
+shows [your own collection](#your-collection-taste-strata) on the map, and a "Will it fit?" check
+[lands on it](#the-fit-landing-point). This page is for the person using it. How it is built is in [Strata renderer](strata-renderer.md#the-genre-atlas-on-the-same-engine).
 
 ## Opening it
 
@@ -23,8 +24,10 @@ first monthly run there is nothing to draw, and the view says so. The stage rule
   that belongs to several genres also appears as a hollow **ghost copy** under each of the others, so
   a genre's region shows everything that belongs to it. A ghost is the same style: selecting one
   describes the style, and its panel says where the real node is.
-- **Masters** are the bottom plane for landmark masters. None are served yet, so the plane is empty
-  and says "none served". Soloing it, or opening the table, shows why.
+- **Masters** are the bottom plane. A landmark master of a style, one of its most prominent masters,
+  sits in that style's cell, ranked within the cell by a fixed rule, so the same master is always in
+  the same place. The plane's label counts them. In a month where no masters are served at all, the
+  plane is empty and says "none served"; soloing it, or opening the table, says so.
 
 A thin line joins a style to each parent genre it **emerged after**: an *emergence edge*. A style's
 panel lists every parent with its share of the style's releases, which one is dominant, and whether
@@ -37,6 +40,71 @@ when both styles are in the atlas. Any co-tagged style the atlas does not draw i
 panel under "Also co-tagged, not drawn in this atlas", so nothing is dropped silently. If the
 co-tags cannot be loaded, the panel says so and the rest of the atlas keeps working; select the
 style again to retry.
+
+## Your collection (Taste Strata)
+
+Signed in, the atlas lays your own items over the shared map. Signed out, you get the atlas without
+it and a hint to sign in; nothing of anyone's collection is ever asked for.
+
+- **Genres and styles you hold** carry a ring in the color of your *collector state*: wanted, owned,
+  or wanted and owned. An item lands on every genre and every style it carries, so a style drawn
+  with ghost copies is ringed on each copy. Nothing is placed where the atlas has no node.
+- **Masters you hold** are marked in the same way when they are landmarks. Your other masters are
+  drawn in their state's color on the master plane, in the cell of their *dominant style*: the
+  landmark style they belong to, or otherwise the drawn style among theirs that you hold the most
+  items on. They take free slots in that cell next to the landmarks and never move one. The plane's
+  label counts them as "yours".
+- **What is only counted** is said in words in the panel, so nothing disappears: items with no
+  master (the master plane cannot place them), items with a genre and no style (they mark the genre
+  only), items with no genre, your styles the atlas does not draw, and masters none of whose styles
+  is drawn.
+- **Your items recorded as of** is a second slider, for *when Discogs first recorded* each item,
+  separate from the **Music as of** slider, which scrubs the catalogue. Move it back and the marks
+  of items recorded later disappear, and their panel line says "first recorded after" that year.
+  Nothing moves. It shows what you hold now by when it was first recorded: it cannot replay an item
+  you have since removed, and the counts stay today's. The slider is hidden when Discogs recorded no
+  dates for your items.
+- **Select** a marked genre, style, or master, in the 3D view or the table, and the panel adds a
+  "Yours" line: how many items, how many owned, how many wanted, and when they were recorded.
+
+The state is always a word as well as a color: in the legend, in the panel, and in the table.
+
+Your collection is personal. It is held in memory for as long as you are signed in on the page, and
+it is **never part of a shared link**, the address, a snapshot, or the browser's storage. Signing out
+takes it off the map.
+
+## The Fit landing point
+
+A **Will it fit?** check (in the **Fit** pane) scores a release against your collection, and its
+**landing point** is drawn on the atlas under the score card, over your collection's layer. The card
+explains the five scores; the atlas shows *where* the evidence behind them sits. Only what has an
+honest place on the map is drawn, and everything else is listed, so the map never invents a
+position.
+
+Drawn on the map, each mark with its component's name beside it so it is never color alone:
+
+| Component | Drawn as |
+| --- | --- |
+| Affinity | A diamond on each genre and style the release shares with what you hold ("shared") |
+| Novelty | A diamond on each genre and style of the release that your collection has never held ("new to you") |
+| Bridge | A ribbon between the regions of the two genres it bridges |
+| Redundancy | A diamond on the master of a record you already hold ("you hold this record") |
+
+Listed beside the map under "Listed, not on the map", each with its component:
+
+- **Depth.** It is about the artists and labels you keep returning to, which are not places on a
+  genre map.
+- **Artists and labels** from any component, for the same reason.
+- **Anything the atlas cannot place:** a genre or style that is not drawn on this atlas, a master
+  with no slot here, or two bridged genres whose regions touch, each with the reason in brackets.
+
+The key under the drawn list explains each mark. If a profile carries no structured evidence (a
+delegated app token, or an older response), nothing is drawn and the whole evidence is listed
+instead, and the panel says so.
+
+The landing point is drawn only while you are in the Fit pane. It follows the card: dismissing the
+card takes it off the atlas, and it is not kept in the address or in storage. Selecting a marked
+node tells you what the check names on it.
 
 ## The stages
 
@@ -105,6 +173,7 @@ rows; the Parents column says where a style is also drawn. The columns are:
 | --- | --- |
 | Kind | Genre or style |
 | Name | The genre or style |
+| Yours | *Signed in only.* What you hold on it: the collector state, how many items, and how many owned and wanted, or "not held" |
 | Stage in *year* | The stage in the year on the slider. A genre has none |
 | Provisional | Whether that year is provisional |
 | Latest stage | The stage in the last year of the timeline (provisional) |
@@ -114,6 +183,12 @@ rows; the Parents column says where a style is also drawn. The columns are:
 | Parents (share of releases) | Every parent genre with its share |
 | Emergence edges drawn | For each parent, whether its emergence edge is drawn |
 
+- **Yours** is the table's equivalent of the rings on the 3D view, and it appears only for a signed-in
+  collector. Each cell reads, for example, "wanted + owned 3 items (2 owned, 1 wanted)", with the
+  state as a colored chip beside its word. A screen reader hears the header as "Yours (the items you
+  hold on this genre or style, and their collector state)". It follows the **recorded as of**
+  slider, so an item recorded later reads "first recorded after" that year. Sorted, it goes by the
+  number of items held; rows you hold nothing on go last.
 - **Sort** by any column with its header button: ascending, then descending, then the outline order
   again. The result is announced to a screen reader. Rows with nothing in the column go last.
 - **Keyboard**: one row is the tab stop. Up and Down move between rows, Home and End go to the first

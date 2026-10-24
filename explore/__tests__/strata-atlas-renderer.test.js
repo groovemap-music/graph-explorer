@@ -310,9 +310,11 @@ describe('the Taste Strata layer', () => {
     }
 
     it('rings every held genre, style, ghost, and landmark master in its collector state token, and nothing else', () => {
-        const { renderer, layout } = tasteMount();
+        const { renderer, layout, stage } = tasteMount();
         const ringed = renderer.heldRings.flatMap((ring) => ring.userData.nodes.map((n) => n.id)).sort();
         expect(ringed).toEqual(layout.nodes.filter((n) => n.held && !n.master?.collector).map((n) => n.id).sort());
+        // The count a journey reads once the frame settles.
+        expect(stage.dataset.atlasHeldMarks).toBe(String(ringed.length));
         expect(ringColor(renderer, 's:Copper Drift')).toBe(collectorToken('wanted-owned'));
         expect(ringColor(renderer, 'h:Copper Drift@Blues')).toBe(collectorToken('wanted-owned'));
         expect(ringColor(renderer, 'm:910001@Amber Bop')).toBe(collectorToken('owned'));
@@ -329,10 +331,12 @@ describe('the Taste Strata layer', () => {
     });
 
     it('follows the recorded-as-of year: a later node loses its ring and a later master fades, and nothing moves', () => {
-        const { renderer, layout } = tasteMount();
+        const { renderer, layout, stage } = tasteMount();
         const at = layout.nodes.map((n) => [n.id, n.x, n.z]);
+        const before = Number(stage.dataset.atlasHeldMarks);
         paintTaste(layout, TASTE, 2016);
         renderer.refreshTaste();
+        expect(Number(stage.dataset.atlasHeldMarks)).toBeLessThan(before);
         expect(ringColor(renderer, 's:Amber Bop')).toBeNull();
         expect(ringColor(renderer, 's:Copper Drift')).toBe(collectorToken('wanted-owned'));
         expect(colorOf(renderer, 'm:7100002@Amber Bop')).not.toBe(collectorToken('wanted'));
@@ -365,9 +369,10 @@ describe('the Fit landing point', () => {
     }
 
     it('draws a diamond in the component token around every node the landing marks, and nothing else', () => {
-        const { renderer, layout } = landingMount();
+        const { renderer, layout, stage } = landingMount();
         const ringed = renderer.landingRings.flatMap((ring) => ring.userData.nodes.map((n) => n.id)).sort();
         expect(ringed).toEqual(layout.nodes.filter((n) => n.landing).map((n) => n.id).sort());
+        expect(stage.dataset.atlasLandingMarks).toBe(String(ringed.length));
         expect(diamondColor(renderer, 'g:Electronic')).toBe(fitToken('affinity'));
         expect(diamondColor(renderer, 's:Amber Bop')).toBe(fitToken('affinity'));
         expect(diamondColor(renderer, 's:Glass Drift')).toBe(fitToken('novelty'));

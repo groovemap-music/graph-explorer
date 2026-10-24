@@ -117,7 +117,7 @@ own collection's layer. The genres and styles you share with it and the styles n
 marked on their nodes, a bridge is drawn between the genres it joins, and a held copy of the same
 record is marked on its master. Depth and the artists and labels behind the other scores have no
 place on the atlas, so they are listed beside it. **See the landing point** on the card scrolls to
-it.
+it. What is drawn, what is listed, and why is in [Genre Atlas](genre-atlas.md#the-fit-landing-point).
 
 ### What version 0 cannot do yet
 

@@ -9,12 +9,14 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GenreAtlas, NO_WEBGL } from '../static/js/strata-atlas.js';
-import { ATLAS_TABLE_COLUMNS, ATLAS_TABLE_HELP, AtlasTable, atlasRowStatus, buildAtlasRows, columnLabel, edgesText, sortAtlasRows } from '../static/js/strata-atlas-table.js';
+import { ATLAS_TABLE_COLUMNS, ATLAS_TABLE_HELP, AtlasTable, YOURS_COLUMN, atlasColumns, atlasRowStatus, buildAtlasRows, columnLabel, edgesText, sortAtlasRows } from '../static/js/strata-atlas-table.js';
+import { adaptTasteProjection, paintTaste } from '../static/js/strata-taste.js';
 import { NO_COTAGS, NO_MASTERS, adaptAtlasPayload, layoutAtlas, paintAtlas } from '../static/js/strata-atlas-layout.js';
 import { generateAtlasPayload, rng } from './strata-atlas-fixtures.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BODY = JSON.parse(readFileSync(resolve(HERE, '..', '..', 'tests', 'fixtures', 'style-atlas.json'), 'utf8')).body;
+const TASTE = adaptTasteProjection(JSON.parse(readFileSync(resolve(HERE, '..', '..', 'tests', 'fixtures', 'taste-projection.json'), 'utf8')).body);
 
 function painted(body, year) {
     const layout = layoutAtlas(adaptAtlasPayload(body));
@@ -520,5 +522,118 @@ describe('the table in the Genre Atlas', () => {
         expect(setAttribute.mock.calls.filter(([name]) => String(name).toLowerCase() === 'style')).toEqual([]);
         expect(innerHTML).not.toHaveBeenCalled();
         vi.restoreAllMocks();
+    });
+});
+
+describe('the Yours column', () => {
+    function lit(tasteYear = null) {
+        const layout = layoutAtlas(adaptAtlasPayload(BODY));
+        paintAtlas(layout, layout.atlas.timeline.lastYear);
+        paintTaste(layout, TASTE, tasteYear);
+        return layout;
+    }
+    const rowOf = (rows, id) => rows.find((row) => row.id === id);
+
+    it('reads what the collector holds on each genre and style, and "not held" elsewhere', () => {
+        const rows = buildAtlasRows(lit());
+        expect(rowOf(rows, 'g:Electronic')).toMatchObject({ heldItems: 4, held: { state: 'wanted-owned', owned: 2, wanted: 2 }, yoursText: 'wanted + owned 4 items (2 owned, 2 wanted)' });
+        expect(rowOf(rows, 's:Copper Swing')).toMatchObject({ heldItems: 1, held: { state: 'wanted' }, yoursText: 'wanted 1 item (0 owned, 1 wanted)' });
+        const unheld = rows.filter((row) => !row.held);
+        expect(unheld.length).toBeGreaterThan(0);
+        for (const row of unheld) expect(row).toMatchObject({ heldItems: null, yoursText: 'not held' });
+        expect(rows.filter((row) => row.held).length).toBe(lit().nodes.filter((node) => node.held && (node.entity === 'genre' || node.entity === 'style')).length);
+    });
+
+    it('is empty for everyone without a projection', () => {
+        const rows = buildAtlasRows(painted(BODY));
+        for (const row of rows) expect(row).toMatchObject({ held: null, heldItems: null, yoursText: 'not held' });
+    });
+
+    it('follows the recorded-as-of year and says a node is held but recorded later', () => {
+        const rows = buildAtlasRows(lit(2016), { year: 2016 });
+        expect(rowOf(rows, 's:Amber Bop')).toMatchObject({ held: null, heldItems: null, yoursText: 'first recorded after 2016' });
+        expect(rowOf(rows, 's:Copper Drift').held).toMatchObject({ state: 'wanted-owned' });
+    });
+
+    it('sorts by items held with the rows that hold nothing last either way, and ties keep the outline order', () => {
+        const rows = buildAtlasRows(lit());
+        for (const direction of ['ascending', 'descending']) {
+            const sorted = sortAtlasRows(rows, { column: 'yours', direction });
+            const items = sorted.map((row) => row.heldItems);
+            const held = items.filter((n) => n !== null);
+            expect(items.slice(held.length).every((n) => n === null)).toBe(true);
+            expect(held).toEqual([...held].sort((a, b) => (direction === 'ascending' ? a - b : b - a)));
+        }
+        const ascending = sortAtlasRows(rows, { column: 'yours', direction: 'ascending' }).filter((row) => row.heldItems === 1);
+        expect(ascending.map((row) => row.order)).toEqual(ascending.map((row) => row.order).sort((a, b) => a - b));
+    });
+
+    it('puts Yours after Name only when asked for, and words its sort', () => {
+        expect(atlasColumns(false)).toBe(ATLAS_TABLE_COLUMNS);
+        expect(atlasColumns(true).map((column) => column.id).slice(0, 3)).toEqual(['kind', 'name', 'yours']);
+        expect(atlasColumns(true)).toHaveLength(ATLAS_TABLE_COLUMNS.length + 1);
+        expect(atlasRowStatus({ shown: 3, year: 2000, sort: { column: 'yours', direction: 'descending' } })).toBe('3 rows as of 2000, sorted by yours, descending.');
+    });
+
+    describe('in the table', () => {
+        let host;
+        let table;
+        const header = (id) => host.querySelector(`th[data-column="${id}"]`);
+        const cells = (tr) => [...tr.children].map((cell) => cell.textContent);
+
+        beforeEach(() => {
+            host = document.createElement('div');
+            document.body.append(host);
+            table = new AtlasTable({ host });
+        });
+
+        afterEach(() => {
+            document.body.textContent = '';
+        });
+
+        it('has no Yours column without a projection', () => {
+            table.setRows(buildAtlasRows(lit()), { year: 2020 });
+            expect(header('yours')).toBeNull();
+            expect(host.querySelector('.atlas-cell-yours')).toBeNull();
+        });
+
+        it('adds a sortable column header that a screen reader hears described, and a cell on every row', () => {
+            table.setRows(buildAtlasRows(lit()), { year: 2020, yours: true });
+            const heads = [...host.querySelectorAll('thead th')].map((th) => th.dataset.column);
+            expect(heads.slice(0, 3)).toEqual(['kind', 'name', 'yours']);
+            const button = header('yours').querySelector('button');
+            expect(button.firstChild.textContent).toBe(YOURS_COLUMN.label);
+            expect(button.querySelector('.strata-sr-only').textContent).toBe(` (${YOURS_COLUMN.description})`);
+            expect(header('yours').getAttribute('aria-sort')).toBe('none');
+            const rows = [...host.querySelectorAll('tbody tr')];
+            expect(rows.every((tr) => tr.children.length === heads.length)).toBe(true);
+            expect(rows.every((tr) => tr.children[2].classList.contains('atlas-cell-yours'))).toBe(true);
+        });
+
+        it('shows a held row as a state chip with its words and counts, never color alone', () => {
+            table.setRows(buildAtlasRows(lit()), { year: 2020, yours: true });
+            const cell = host.querySelector('tr[data-id="s:Copper Swing"] .atlas-cell-yours');
+            expect(cell.querySelector('.strata-chip--wanted').textContent).toBe('wanted');
+            expect(cell.textContent).toBe('wanted 1 item (0 owned, 1 wanted)');
+            const none = [...host.querySelectorAll('.atlas-cell-yours')].find((td) => !td.querySelector('.strata-chip'));
+            expect(none.textContent).toBe('not held');
+        });
+
+        it('sorts from its header, announces it, and drops the sort when the column goes away', () => {
+            const statuses = [];
+            table.onStatus = (text) => statuses.push(text);
+            table.setRows(buildAtlasRows(lit()), { year: 2020, yours: true });
+            header('yours').querySelector('button').click();
+            expect(header('yours').getAttribute('aria-sort')).toBe('ascending');
+            expect(statuses.at(-1)).toMatch(/sorted by yours, ascending\.$/);
+            const first = host.querySelector('tbody tr .atlas-cell-yours').textContent;
+            expect(first).toMatch(/ 1 item /);
+            header('yours').querySelector('button').click();
+            expect(host.querySelector('tbody tr .atlas-cell-yours').textContent).toMatch(/^wanted \+ owned 4 items/);
+            table.setRows(buildAtlasRows(lit()), { year: 2020, yours: false });
+            expect(table.sort).toBeNull();
+            expect(header('yours')).toBeNull();
+            expect(cells(host.querySelector('tbody tr'))).toHaveLength(ATLAS_TABLE_COLUMNS.length);
+        });
     });
 });
