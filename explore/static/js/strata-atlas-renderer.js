@@ -263,6 +263,8 @@ export class AtlasRenderer extends StrataRenderer {
             this.recolor();
             this.buildEdges();
             this.buildHulls();
+            // For anything reading the frame once `data-strata-frame` settles: how many co-tag edges it drew.
+            this.stage.dataset.atlasCotagEdges = String(this.layout.edges.filter((edge) => edge.kind === 'cotag').length);
         }
         this.placeRing(this.selectRing, this.selected);
         this.candidatesKey = null;

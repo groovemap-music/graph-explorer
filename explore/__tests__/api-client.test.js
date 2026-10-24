@@ -514,6 +514,28 @@ describe('ApiClient', () => {
         });
     });
 
+
+    describe('getStyleCotags', () => {
+        it('reads the list for one style, with the name encoded as a query parameter', async () => {
+            const entries = [{ other: 'Deep House', release_count: 120, rank: 1 }];
+            const mockFetch = vi.fn(createMockFetch({ '/api/insights/style-atlas/cotags?style=Drum+%26+Bass': { data: entries } }));
+            vi.stubGlobal('fetch', mockFetch);
+            expect(await window.apiClient.getStyleCotags('Drum & Bass')).toEqual(entries);
+            expect(mockFetch.mock.calls[0][0]).toContain('/api/insights/style-atlas/cotags?style=Drum+%26+Bass');
+        });
+
+        it('answers an empty list for a style with no co-tags', async () => {
+            vi.stubGlobal('fetch', createMockFetch({ '/api/insights/style-atlas/cotags?style=House': { data: [] } }));
+            expect(await window.apiClient.getStyleCotags('House')).toEqual([]);
+        });
+
+        it('throws on a failed read and on a body that is not a list, so a failure is not an empty style', async () => {
+            vi.stubGlobal('fetch', createMockFetch({ '/api/insights/style-atlas/cotags?style=House': { status: 503, data: { error: 'down' } } }));
+            await expect(window.apiClient.getStyleCotags('House')).rejects.toThrow('503');
+            vi.stubGlobal('fetch', createMockFetch({ '/api/insights/style-atlas/cotags?style=House': { data: { items: [] } } }));
+            await expect(window.apiClient.getStyleCotags('House')).rejects.toThrow('list');
+        });
+    });
     describe('getGenreTree', () => {
         it('should return genre tree data on success', async () => {
             const treeData = {

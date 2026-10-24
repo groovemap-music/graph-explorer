@@ -280,8 +280,8 @@ panel with the 3D view. The user-facing description is [Genre Atlas](genre-atlas
   and how the view shares the scrubber and selection with the 3D view.
 - `tests/e2e/test_genre_atlas.py` walks the atlas in a real browser on every project in the E2E
   matrix, against the mock route above: the rule and its revision, scrubbing into the provisional
-  years, selecting a style to see its parents and emergence edges, the co-tag and master states the
-  route does not serve yet, then the table (sort, shared slider, keyboard) and back. A second
+  years, selecting a style to see its parents and emergence edges, its co-tag edges and the
+  co-tagged styles that are listed instead, a co-tag read that fails, then the table (sort, shared slider, keyboard) and back. A second
   journey opens the table where WebGL is unavailable. It drives the 3D view from the keyboard.
   The user-facing description is [Genre Atlas](genre-atlas.md).
 - `tests/perf/test_strata_renderer_perf.py` is the performance smoke test below. `just test` and the

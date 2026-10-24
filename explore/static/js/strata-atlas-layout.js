@@ -50,6 +50,7 @@ export const MASTER_PLANE = 2;
 export const NO_MASTERS = 'Landmark masters are not served by the atlas route yet, so this plane is empty.';
 export const NO_MASTER_SLOTS = 'Landmark masters are served, but the rule that places them in their style\'s cell is not built yet, so this plane is empty.';
 export const NO_COTAGS = 'Co-tagged styles are not served yet, so no co-tag edges are drawn.';
+export const COTAGS_FAILED = 'Co-tagged styles could not be loaded, so no co-tag edges are drawn. The rest of the atlas is unchanged; select the style again to retry.';
 /** What the view says before the first monthly run. */
 export const EMPTY_MESSAGE = 'The Genre Atlas has no monthly run yet. It appears after the first monthly computation. The stage rule it will use is below.';
 
@@ -540,24 +541,43 @@ export function primaryOf(byId, id) {
 }
 
 /**
+ * Split a style's co-tagged styles by whether the atlas draws them: a pair is an edge only when
+ * both of its styles are nodes here. The rest are not dropped; the panel lists them. Both halves
+ * are best rank first.
+ *
+ * @param {Array<{other: string, release_count?: number, rank?: number}>} entries
+ *   `GET /api/insights/style-atlas/cotags?style=<name>` entries
+ * @returns {{drawn: Array<object>, listed: Array<object>}}
+ */
+export function splitCotags(byId, selected, entries) {
+    const primary = selected == null ? null : primaryOf(byId, selected);
+    const sorted = (entries || []).filter((entry) => entry && typeof entry.other === 'string');
+    sorted.sort((x, y) => (x.rank ?? Infinity) - (y.rank ?? Infinity));
+    const drawn = [];
+    const listed = [];
+    for (const entry of sorted) {
+        const other = byId.get(styleId(entry.other));
+        (primary && other && other.id !== primary.id ? drawn : listed).push(entry);
+    }
+    return { drawn, listed };
+}
+
+/**
  * The lateral edges drawn for a selection: none without a selected style (no layout makes the
  * whole co-tag set crossing-free, gm-design-4804 B2), and for one a star around its primary node:
  * a `ghost` edge to each of its ghost copies, and a `cotag` edge to each co-tagged style the
  * `cotags` source names that is drawn, best rank first. A star has no crossings.
  *
  * @param {(style: string) => Array<{other: string, release_count?: number, rank?: number}>} [cotags]
- *   the selected style's co-tagged styles, in the shape of the planned
- *   `GET /api/insights/style-atlas/cotags?style=<name>` entries. None are served yet.
+ *   the selected style's co-tagged styles, in the shape of
+ *   `GET /api/insights/style-atlas/cotags?style=<name>` entries
  */
 export function lateralEdges(layout, byId, selected, cotags = () => []) {
     const primary = selected == null ? null : primaryOf(byId, selected);
     if (!primary) return [];
     const edges = primary.ghosts.map((id) => ({ a: primary.id, b: id, kind: 'ghost' }));
-    const entries = (cotags(primary.style) || []).filter((entry) => entry && typeof entry.other === 'string');
-    entries.sort((x, y) => (x.rank ?? Infinity) - (y.rank ?? Infinity));
-    for (const entry of entries) {
-        const other = byId.get(styleId(entry.other));
-        if (other && other.id !== primary.id) edges.push({ a: primary.id, b: other.id, kind: 'cotag', rank: entry.rank ?? null, releaseCount: entry.release_count ?? null });
+    for (const entry of splitCotags(byId, selected, cotags(primary.style)).drawn) {
+        edges.push({ a: primary.id, b: styleId(entry.other), kind: 'cotag', rank: entry.rank ?? null, releaseCount: entry.release_count ?? null });
     }
     return edges;
 }

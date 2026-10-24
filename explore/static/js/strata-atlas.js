@@ -27,6 +27,7 @@ import { AtlasRenderer } from './strata-atlas-renderer.js';
 import { ATLAS_TABLE_HELP, AtlasTable, buildAtlasRows } from './strata-atlas-table.js';
 import {
     ATLAS_PLANES,
+    COTAGS_FAILED,
     EMPTY_MESSAGE,
     NO_COTAGS,
     NO_MASTERS,
@@ -39,6 +40,7 @@ import {
     paintAtlas,
     primaryOf,
     ruleText,
+    splitCotags,
     stageAt,
     stageCounts,
 } from './strata-atlas-layout.js';
@@ -148,14 +150,18 @@ export class GenreAtlas {
         clearTimer = (handle) => globalThis.clearInterval(handle),
         observeTheme = true,
         masterSlot = atlasMasterSlot,
-        cotagSource = null,
+        cotagSource,
     } = {}) {
         this.doc = doc;
         // Co-tagged styles for the selected style: `async (style) => [{other, release_count, rank}]`,
-        // the planned `GET /api/insights/style-atlas/cotags?style=<name>`. None is served yet, so
-        // there is no source, and the panel says so.
-        this.cotagSource = cotagSource;
+        // `GET /api/insights/style-atlas/cotags?style=<name>` by default. It rejects when the read
+        // fails. With no source (an api that has none, or null), the panel says none are served.
+        this.cotagSource = cotagSource === undefined ? (typeof api?.getStyleCotags === 'function' ? (style) => this.api.getStyleCotags(style) : null) : cotagSource;
         this.cotags = new Map();
+        // Styles whose last co-tag read failed (not cached, so selecting the style again retries),
+        // and the reads in flight (so a quick reselect does not fetch twice).
+        this.cotagFailures = new Set();
+        this.cotagReads = new Set();
         // The landmark master slot rule (strata-atlas-layout.js layoutAtlas): each master in a
         // deterministic slot of its style's cell (strata-master-slots.js).
         this.masterSlot = masterSlot;
@@ -535,14 +541,18 @@ export class GenreAtlas {
 
     /** Fetch a style's co-tags once, then redraw its star and the panel if it is still selected. */
     async loadCotags(style) {
-        if (!this.cotagSource || this.cotags.has(style)) return;
-        let entries = [];
+        if (!this.cotagSource || this.cotags.has(style) || this.cotagReads.has(style)) return;
+        this.cotagReads.add(style);
+        this.cotagFailures.delete(style);
         try {
-            entries = (await this.cotagSource(style)) || [];
+            const entries = await this.cotagSource(style);
+            if (!Array.isArray(entries)) throw new Error('co-tags are not a list');
+            this.cotags.set(style, entries);
         } catch {
-            entries = [];
+            this.cotagFailures.add(style);
+        } finally {
+            this.cotagReads.delete(style);
         }
-        this.cotags.set(style, entries);
         const primary = this.selected ? primaryOf(this.byId, this.selected) : null;
         if (primary?.style !== style) return;
         this.renderer?.refreshLateral?.();
@@ -708,17 +718,34 @@ export class GenreAtlas {
             parents.append(item);
         }
         box.append(parents);
-        const cotags = this.cotags.get(style.style);
-        if (!this.cotagSource) box.append(el(doc, 'p', 'strata-hint', NO_COTAGS));
-        else if (!cotags) box.append(el(doc, 'p', 'strata-hint', 'Loading co-tagged styles...'));
-        else if (!cotags.length) box.append(el(doc, 'p', 'strata-hint', 'No co-tagged styles.'));
+        this.renderCotags(box, primary);
+    }
+
+    /**
+     * The selected style's co-tagged styles: those the atlas draws as edges, then those it does not
+     * (a pair is drawn only when both styles are nodes here), each best rank first.
+     */
+    renderCotags(box, primary) {
+        const { doc } = this;
+        const style = primary.style;
+        const cotags = this.cotags.get(style);
+        if (!this.cotagSource) box.append(el(doc, 'p', 'strata-hint atlas-cotag-state', NO_COTAGS));
+        else if (this.cotagFailures.has(style)) box.append(el(doc, 'p', 'strata-hint atlas-cotag-state', COTAGS_FAILED));
+        else if (!cotags) box.append(el(doc, 'p', 'strata-hint atlas-cotag-state', 'Loading co-tagged styles...'));
+        else if (!cotags.length) box.append(el(doc, 'p', 'strata-hint atlas-cotag-state', 'No co-tagged styles.'));
         else {
-            box.append(el(doc, 'p', 'atlas-parents-title', 'Co-tagged styles (drawn as edges)'));
-            const list = el(doc, 'ol', 'atlas-parents');
-            for (const entry of [...cotags].sort((x, y) => (x.rank ?? Infinity) - (y.rank ?? Infinity))) {
-                list.append(el(doc, 'li', null, Number.isFinite(entry.release_count) ? `${entry.other} · ${entry.release_count} shared releases` : entry.other));
-            }
-            box.append(list);
+            const { drawn, listed } = splitCotags(this.byId, primary.id, cotags);
+            const section = (title, entries, modifier) => {
+                if (!entries.length) return;
+                box.append(el(doc, 'p', 'atlas-parents-title', title));
+                const list = el(doc, 'ol', `atlas-cotags atlas-cotags--${modifier}`);
+                for (const entry of entries) {
+                    list.append(el(doc, 'li', null, Number.isFinite(entry.release_count) ? `${entry.other} · ${entry.release_count} shared releases` : entry.other));
+                }
+                box.append(list);
+            };
+            section('Co-tagged styles (drawn as edges)', drawn, 'drawn');
+            section('Also co-tagged, not drawn in this atlas', listed, 'listed');
         }
     }
 }
