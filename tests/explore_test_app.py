@@ -329,6 +329,18 @@ STYLE_COTAGS: dict[str, list[dict[str, Any]]] = {
 FAILING_COTAGS_STYLE = "Solar Pulse"
 
 
+# A synthetic GET /api/user/taste-projection body (tests/fixtures/taste-projection.json), over the
+# invented style names of the recorded atlas and built with catalog-api's own fold. It is personal
+# data, so the route answers only a signed-in caller and never lets it be cached.
+TASTE_PROJECTION_FIXTURE = Path(__file__).parent / "fixtures" / "taste-projection.json"
+
+
+def taste_projection_response() -> dict[str, Any]:
+    """The synthetic taste-projection body."""
+    body: dict[str, Any] = json.loads(TASTE_PROJECTION_FIXTURE.read_text())["body"]
+    return body
+
+
 def create_test_app() -> FastAPI:
     """Create a test instance of the Explore FastAPI app."""
     app = FastAPI(
@@ -483,6 +495,13 @@ def create_test_app() -> FastAPI:
         if not authorization or not authorization.startswith("Bearer "):
             return JSONResponse(content={"detail": "Not authenticated"}, status_code=401)
         return JSONResponse(content=MOCK_COLLECTION_STATS)
+
+    @app.get("/api/user/taste-projection")
+    async def user_taste_projection(authorization: str | None = Header(default=None)) -> JSONResponse:
+        """Return the synthetic taste projection for any authenticated user, never cached."""
+        if not authorization or not authorization.startswith("Bearer "):
+            return JSONResponse(content={"detail": "Not authenticated"}, status_code=401)
+        return JSONResponse(content=taste_projection_response(), headers={"Cache-Control": "no-store", "Vary": "Authorization"})
 
     @app.get("/api/user/status")
     async def user_release_status(
