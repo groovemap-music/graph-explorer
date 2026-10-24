@@ -9,7 +9,7 @@ from repository_source import RepositorySourceError, tracked_tree_text
 
 ROOT = Path(__file__).resolve().parents[1]
 AUTOMATION_REVISION = "833cb464507678c38ab78bd4718ce697399463e9"
-CI_AUTOMATION_REVISION = "dbf22ed83d486e9484fc8c6385c7c3e5995700e4"
+CI_AUTOMATION_REVISION = "b80cccb7c514b0e394cbdfc90b386ac0877370fc"
 PYTHON_LIBRARIES_REVISION = "21855671580a446074bb9527b4d3355fee0bfde9"
 DESIGN_REVISION = "109cbd5bddcc699426e2406c8de486e012a30f5a"
 E2E_PROJECTS = {"chromium", "firefox", "webkit", "iphone", "ipad"}
@@ -47,6 +47,7 @@ for required_input in (
     "e2e-instrument-command: just e2e-instrument",
     "e2e-command: just e2e-run",
     "e2e-post-command: just e2e-post",
+    "e2e-matrix: true",
     "upload-codecov: true",
     "image-command: just image",
     "CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}",
@@ -62,7 +63,9 @@ assert coverage_mapping == EXPECTED_BROWSER_COVERAGE
 assert "coverage/e2e/*/lcov.info" not in ci
 assert "coverage/e2e/raw/**/*.json" not in ci
 assert "test-results/**/*" not in ci
-assert "coverage-flags: python,javascript,e2e,explorer" in ci
+assert "coverage-flags: python,javascript,explorer" in ci
+# Each project job saves its own LCOV, so no job produces a merged report for Codecov to receive.
+assert "coverage/e2e/lcov.info" not in ci
 assert not any(f"e2e-{project}" in ci for project in E2E_PROJECTS)
 assert "secrets: inherit" not in ci
 for marker in (
@@ -134,6 +137,7 @@ projects_match = re.search(r"projects=\(([^)]+)\)", matrix)
 assert projects_match is not None
 assert set(projects_match.group(1).split()) == E2E_PROJECTS
 assert '--output="test-results/${project}/playwright"' in matrix
+assert "E2E_PROJECT" in matrix
 instrument = (ROOT / "explore/scripts/instrument-e2e-coverage.mjs").read_text()
 instrument_guard = (ROOT / "scripts/instrument-e2e-coverage.sh").read_text()
 restore = (ROOT / "explore/scripts/e2e-coverage-sources.mjs").read_text()
@@ -144,6 +148,7 @@ assert "restoreSources();" in instrument
 assert "e2e-original" in restore
 assert "Missing Istanbul coverage" in finalize
 assert set(re.findall(r'"(chromium|firefox|webkit|iphone|ipad)"', finalize)) == E2E_PROJECTS
+assert "process.env.E2E_PROJECT" in finalize
 assert "finally" in finalize and "restoreSources();" in finalize
 
 conftest = (ROOT / "tests/conftest.py").read_text()

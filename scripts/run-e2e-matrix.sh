@@ -13,7 +13,21 @@ set -uo pipefail
 # GROOVEMAP_E2E_JOBS bounds how many projects run at once. It defaults to the CPU count, and more
 # than one per project would only sit idle. Longest first, so the project that waits for a free
 # slot is one of the shorter ones.
+#
+# E2E_PROJECT narrows the run to that one project. CI sets it when each browser project has its own
+# runner (e2e-matrix: true in .github/workflows/ci.yml), so no runner shares its CPU-bound software
+# WebGL with another project. Unset, every project runs, as `just e2e` does locally.
 projects=(firefox chromium webkit iphone ipad)
+
+if [[ -n "${E2E_PROJECT:-}" ]]; then
+  case " ${projects[*]} " in
+    *" ${E2E_PROJECT} "*) projects=("${E2E_PROJECT}") ;;
+    *)
+      echo "E2E_PROJECT must be one of ${projects[*]}, got: ${E2E_PROJECT}" >&2
+      exit 2
+      ;;
+  esac
+fi
 
 jobs="${GROOVEMAP_E2E_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)}"
 if ! [[ "${jobs}" =~ ^[1-9][0-9]*$ ]]; then
