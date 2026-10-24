@@ -482,6 +482,22 @@ describe('the table in the Genre Atlas', () => {
         expect(rowIds(broken.atlas)).toHaveLength(BODY.genres.length + BODY.styles.length);
     });
 
+    it('keeps the table to genres and styles when masters are placed, and a selected master marks no row', async () => {
+        const { masters } = JSON.parse(readFileSync(resolve(HERE, '..', '..', 'tests', 'fixtures', 'style-atlas-masters.json'), 'utf8'));
+        const { atlas } = makeAtlas({ body: { ...BODY, masters } });
+        await atlas.show();
+        viewButton(atlas, 'table').click();
+        expect(rowIds(atlas)).toHaveLength(BODY.genres.length + BODY.styles.length);
+        expect(atlas.ui.tableNote.textContent).toBe('');
+        const master = atlas.layout.nodes.find((node) => node.entity === 'master');
+        expect(master).toBeTruthy();
+        atlas.ui.table.querySelector('tbody tr').click();
+        expect(atlas.ui.table.querySelector('[aria-current="true"]')).not.toBeNull();
+        atlas.onSelect(master.id);
+        expect(atlas.ui.table.querySelector('[aria-current]')).toBeNull();
+        expect(atlas.ui.selection.querySelector('.strata-selection-title').textContent).toBe(master.label);
+    });
+
     it('shows an empty table before the first monthly run', async () => {
         const body = { rule: BODY.rule, month: null, computed_at: null, timeline: null, genres: [], styles: [], ghosts: [] };
         const { atlas } = makeAtlas({ body });

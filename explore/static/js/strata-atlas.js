@@ -42,6 +42,7 @@ import {
     stageAt,
     stageCounts,
 } from './strata-atlas-layout.js';
+import { atlasMasterSlot } from './strata-master-slots.js';
 
 /** The panes the atlas opens in, and the element in each that holds it. */
 export const ATLAS_MOUNTS = Object.freeze({ genres: 'genreAtlasMount', insights: 'insightsAtlasMount' });
@@ -146,7 +147,7 @@ export class GenreAtlas {
         setTimer = (fn, ms) => globalThis.setInterval(fn, ms),
         clearTimer = (handle) => globalThis.clearInterval(handle),
         observeTheme = true,
-        masterSlot = null,
+        masterSlot = atlasMasterSlot,
         cotagSource = null,
     } = {}) {
         this.doc = doc;
@@ -155,7 +156,8 @@ export class GenreAtlas {
         // there is no source, and the panel says so.
         this.cotagSource = cotagSource;
         this.cotags = new Map();
-        // The landmark master slot rule (strata-atlas-layout.js layoutAtlas). None exists yet.
+        // The landmark master slot rule (strata-atlas-layout.js layoutAtlas): each master in a
+        // deterministic slot of its style's cell (strata-master-slots.js).
         this.masterSlot = masterSlot;
         this.api = api;
         this.createRenderer = createRenderer || ((stage) => new AtlasRenderer(stage, { cotags: (style) => this.cotags.get(style) || [] }));
@@ -666,7 +668,7 @@ export class GenreAtlas {
         const { master } = node;
         box.append(el(doc, 'h4', 'strata-selection-title', node.label));
         box.append(el(doc, 'p', 'strata-selection-plane', `Landmark master of ${master.style}`));
-        const facts = [master.year === null ? 'No year' : String(master.year), master.releaseCount === null ? null : `${master.releaseCount} releases`].filter(Boolean);
+        const facts = [master.year === null ? 'No year' : String(master.year), master.releaseCount === null ? null : `${master.releaseCount} releases`, master.rank === null ? null : `rank ${master.rank} in ${master.style}`].filter(Boolean);
         box.append(el(doc, 'p', 'strata-selection-facts', facts.join(' · ')));
     }
 

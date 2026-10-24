@@ -300,13 +300,16 @@ def strata_response(artist_id: str, focus: str | None, page: int, signed_in: boo
 
 # A recorded GET /api/insights/style-atlas body (tests/fixtures/style-atlas.json): analytics-engine's
 # read path over its layout and lifecycle rule, on a seeded synthetic catalogue with invented style
-# names. No live database is read.
+# names. No live database is read. The route does not serve landmark masters yet
+# (gm-analytics-engine-k1ky), so synthetic ones (tests/fixtures/style-atlas-masters.json) are merged in.
 STYLE_ATLAS_FIXTURE = Path(__file__).parent / "fixtures" / "style-atlas.json"
+STYLE_ATLAS_MASTERS_FIXTURE = Path(__file__).parent / "fixtures" / "style-atlas-masters.json"
 
 
 def style_atlas_response() -> dict[str, Any]:
-    """The recorded style-atlas body."""
+    """The recorded style-atlas body, with the synthetic landmark masters."""
     body: dict[str, Any] = json.loads(STYLE_ATLAS_FIXTURE.read_text())["body"]
+    body["masters"] = json.loads(STYLE_ATLAS_MASTERS_FIXTURE.read_text())["masters"]
     return body
 
 
