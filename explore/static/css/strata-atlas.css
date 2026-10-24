@@ -363,6 +363,7 @@
 .atlas-cell-name,
 .atlas-cell-stage,
 .atlas-cell-provisional,
+.atlas-cell-yours,
 .atlas-cell-year {
     white-space: nowrap;
 }

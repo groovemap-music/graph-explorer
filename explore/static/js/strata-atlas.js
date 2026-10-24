@@ -16,7 +16,8 @@
  *   - keyboard navigation bound to the renderer's camera, select, and solo;
  *   - the table, the same genres and styles as sortable rows (strata-atlas-table.js), chosen from
  *     the view toggle. It shares the scrubber, the selection, and the panel with the 3D view, and
- *     needs no WebGL;
+ *     needs no WebGL. For a signed-in collector it gains a "Yours" column, the table's version of
+ *     the Taste Strata marks;
  *   - the empty month before the first monthly run, and route failures, in words;
  *   - Taste Strata (concept C′, strata-taste.js), for a signed-in collector only: their items
  *     marked on the genres and styles they carry, their masters in collector slots on the master
@@ -594,6 +595,7 @@ export class GenreAtlas {
         this.renderer?.refreshTaste?.();
         this.renderRecorded();
         this.renderSelection();
+        this.renderTable();
         this.renderTaste();
     }
 
@@ -878,7 +880,7 @@ export class GenreAtlas {
     renderTable() {
         if (this.mode !== 'table') return;
         const { layout, ui } = this;
-        this.table.setRows(layout ? buildAtlasRows(layout) : [], { year: layout ? this.year : null, selected: this.tableRowId(this.selected) });
+        this.table.setRows(layout ? buildAtlasRows(layout, { year: this.tasteYear }) : [], { year: layout ? this.year : null, selected: this.tableRowId(this.selected), yours: !!this.taste });
         // The master plane is empty until masters are served; the table has no plane to say so.
         const plane = layout ? layout.planes[2] : null;
         ui.tableNote.textContent = plane && plane.note ? `Masters: ${this.atlas.masters?.length ? 'not placed yet' : 'none served'}. ${plane.note}` : '';

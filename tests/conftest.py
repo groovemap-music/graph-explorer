@@ -29,7 +29,7 @@ _DEVICE_CONTEXT: dict[str, Any] = {}
 # and closing the context does not give it back. Measured against the WebKit that Playwright 1.62
 # bundles: the 64th context created in one launch is still created, but every navigation from it
 # times out while the server keeps answering. Chromium and Firefox show no such ceiling. The
-# matrix drives 126 E2E tests through one browser per project, so the `webkit`, `iphone` and
+# matrix drives 130 E2E tests through one browser per project, so the `webkit`, `iphone` and
 # `ipad` projects used to die at test 64 and stay dead for the rest of the session.
 #
 # The fix is to retire the browser process before its budget is spent. Half the ceiling leaves

@@ -318,6 +318,7 @@ export class AtlasRenderer extends StrataRenderer {
             this.layoutObjects.splice(this.layoutObjects.indexOf(ring), 1);
         }
         this.heldRings = [];
+        let marks = 0;
         const matrix = new THREE.Matrix4();
         const none = new THREE.Quaternion();
         const scale = new THREE.Vector3();
@@ -329,7 +330,10 @@ export class AtlasRenderer extends StrataRenderer {
             held.forEach((node, i) => ring.setMatrixAt(i, matrix.compose(at.set(node.x, 0.1, node.z), none, scale.setScalar(node.size * HELD_RING))));
             ring.userData = { nodes: held, level, held: true };
             this.heldRings.push(this.track(level, ring));
+            marks += held.length;
         }
+        // For anything reading the frame once `data-strata-frame` settles: how many held rings it drew.
+        this.stage.dataset.atlasHeldMarks = String(marks);
     }
 
     // The Fit landing mark: a diamond in the component's token around every node the landing names.
@@ -341,6 +345,7 @@ export class AtlasRenderer extends StrataRenderer {
             this.layoutObjects.splice(this.layoutObjects.indexOf(ring), 1);
         }
         this.landingRings = [];
+        let marks = 0;
         const matrix = new THREE.Matrix4();
         const none = new THREE.Quaternion();
         const scale = new THREE.Vector3();
@@ -352,7 +357,10 @@ export class AtlasRenderer extends StrataRenderer {
             marked.forEach((node, i) => ring.setMatrixAt(i, matrix.compose(at.set(node.x, 0.11, node.z), none, scale.setScalar(node.size * LANDING_RING))));
             ring.userData = { nodes: marked, level, landing: true };
             this.landingRings.push(this.track(level, ring));
+            marks += marked.length;
         }
+        // The same for the Fit landing point's marks.
+        this.stage.dataset.atlasLandingMarks = String(marks);
     }
 
     // The Bridge: one ribbon per bridged pair of genres, from hull to hull on the style plane, in the
