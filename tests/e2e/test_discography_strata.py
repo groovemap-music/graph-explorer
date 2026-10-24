@@ -13,9 +13,10 @@ The 3D view is driven from the keyboard, which is how it is documented to be use
 pointer: a canvas click would only prove where the camera happened to be. Nothing here reads the
 GPU, so the journey holds on every project in the matrix.
 
-Not covered, on purpose: searching for a pressing that the current page does not draw. The route
-has no cursor for one pressing, so that search reaches it only through its master. That is a known
-follow-up (gm-graph-explorer-sqjq), and the docs say so.
+Searching for a pressing the current page does not draw goes through the route's release cursor
+(`focus=r:<id>` or `mb:<mbid>`): it opens the page that holds the pressing, however deep, and selects
+it. The mock's search offers three such pressings of this artist, two pages deep, and one that
+belongs to another artist, which the route answers with a 404.
 """
 
 from __future__ import annotations
@@ -72,6 +73,13 @@ def _record_strata_requests(page: Page) -> list[tuple[str | None, int]]:
     return asked
 
 
+def _record_requests(page: Page) -> list[tuple[str, str]]:
+    """Every `(method, path)` the page sends, in order, for asserting which routes were not used."""
+    sent: list[tuple[str, str]] = []
+    page.on("request", lambda request: sent.append((request.method, urlparse(request.url).path)))
+    return sent
+
+
 def _step_to(page: Page, key: str, title: str, *, limit: int = 40, state: str | None = None) -> None:
     """Press `key` on the stage until the panel describes the node titled `title`."""
     heading = page.locator(".strata-selection-title")
@@ -112,6 +120,8 @@ def test_strata_journey_from_search_to_a_pressing_nothing_can_change(page: Page,
     page.keyboard.press("Enter")
     trail = page.locator("#strataTrail")
     expect(trail).to_contain_text("masters from the 1990s: page 1 of 2 (9 in all)")
+    # The first button of the trail goes back from the first drill, before any page is turned.
+    expect(trail.get_by_role("button").first).to_have_text("Back")
 
     # Page it. The server pages, so each turn is a request for the next page of the same cursor.
     trail.get_by_role("button", name="Next page").click()
@@ -137,8 +147,10 @@ def test_strata_journey_from_search_to_a_pressing_nothing_can_change(page: Page,
     page.keyboard.press("3")
     _step_to(page, "]", MB_ONLY_PRESSING)
     selection = page.locator("#strataSelection")
-    expect(selection.locator(".strata-blocked")).to_contain_text("MusicBrainz-only pressing")
-    expect(selection.locator(".strata-blocked")).to_contain_text("no wantlist or collection edge can carry a change to it")
+    expect(selection.locator(".strata-blocked")).to_have_text(
+        "MusicBrainz-only pressing: it exists only in MusicBrainz, so GrooveMap has no collector state for it."
+    )
+    expect(selection.locator(".strata-blocked")).not_to_contain_text("ADR")
     expect(selection.locator(".strata-actions > *")).to_have_count(0)
     expect(selection.locator(".strata-state")).to_have_count(0)
 
@@ -152,7 +164,133 @@ def test_strata_journey_from_search_to_a_pressing_nothing_can_change(page: Page,
     actions.get_by_role("button", name="Sync now").click()
     expect(page.locator("#strataActionStatus")).to_contain_text("Sync started. States change only when Discogs reports them", timeout=10_000)
     actions.get_by_role("button", name="Record an observation").click()
-    expect(selection.get_by_role("form", name="Record an observation about your copy")).to_be_visible()
+    form = selection.get_by_role("form", name="Record an observation about your copy")
+    expect(form).to_be_visible()
+
+    # The copy is the one the route named on the pressing, so recording needs no collection scan.
+    sent = _record_requests(page)
+    form.get_by_label("Observed").fill("VG+")
+    form.get_by_role("button", name="Save observation").click()
+    expect(page.locator("#strataActionStatus")).to_have_text("Observation recorded.", timeout=10_000)
+    assert ("POST", "/api/user/copies/copy-300083-a/observations") in sent
+    assert not [path for _, path in sent if path.startswith("/api/user/collection")], sent
+
+
+def _search_strata(page: Page, text: str) -> None:
+    """Type into the strata's own search box and submit it."""
+    box = page.locator("#strataSearchInput")
+    box.fill(text)
+    box.press("Enter")
+
+
+@pytest.mark.e2e
+def test_strata_search_opens_a_pressing_the_page_does_not_draw(page: Page, explore_url: str) -> None:
+    """A pressing found by search opens on the page that holds it, however deep, and is selected."""
+    asked = _record_strata_requests(page)
+    _open_artist(page, explore_url, ARTIST)
+    _show(page, "strata")
+    expect(page.locator("#strataSummary .strata-summary-title")).to_have_text(ARTIST, timeout=15_000)
+    trail = page.locator("#strataTrail")
+    selection = page.locator("#strataSelection")
+
+    # A masterless EP, two pages into the lane. The first hit is another artist's pressing: the route
+    # answers its cursor with a 404, and the search moves on to the next hit.
+    _search_strata(page, "Cinder Amber EP")
+    expect(trail).to_contain_text("releases without a master: page 2 of 2")
+    expect(selection.locator(".strata-selection-title")).to_have_text("Cinder Amber EP")
+    expect(selection.locator(".strata-state")).to_have_text("wanted + owned")
+    assert asked == [(None, 0), ("r:999001", 0), ("r:300150", 0)]
+    expect(page.locator("#strataMessage")).to_be_hidden()
+    # The pressing opened from the overview, so the first button of the trail goes back to it.
+    expect(trail.get_by_role("button").first).to_have_text("Back")
+    trail.get_by_role("button", name="Back").click()
+    expect(trail).to_be_hidden()
+
+    # A MusicBrainz-only pressing opens through the same cursor, spelled mb:<mbid>.
+    _search_strata(page, "Willow Orbit (MusicBrainz)")
+    expect(trail).to_contain_text("pressings of Willow Orbit: page 2 of 2")
+    expect(selection.locator(".strata-selection-title")).to_have_text("Willow Orbit (MusicBrainz)")
+    expect(selection.locator(".strata-blocked")).to_contain_text("exists only in MusicBrainz")
+    assert asked[-1] == ("mb:6f1c0030-0000-4000-8000-000000000030", 0)
+
+    # The table opens a pressing the same way.
+    _show(page, "table")
+    _search_strata(page, "Cinder Amber EP")
+    expect(trail).to_contain_text("releases without a master: page 2 of 2")
+    expect(_table_row(page, "Cinder Amber EP")).to_have_attribute("aria-current", "true")
+
+
+@pytest.mark.e2e
+def test_strata_labels_and_chips_never_overlap_and_repeated_titles_count(page: Page, explore_url: str) -> None:
+    """Pressing labels of one title collapse to a count, and no two labels or chips share any area."""
+    page.set_viewport_size({"width": 1400, "height": 900})
+    _open_artist(page, explore_url, ARTIST)
+    _show(page, "strata")
+    expect(page.locator("#strataSummary .strata-summary-title")).to_have_text(ARTIST, timeout=15_000)
+
+    boxes = """() => {
+        const stage = document.querySelector('#strataStage').getBoundingClientRect();
+        return [...document.querySelectorAll('#strataStage .strata-label, #strataStage .strata-tag, #strataStage .strata-plane-label')]
+            .filter((element) => !element.hidden)
+            .map((element) => {
+                const { x, y, width, height } = element.getBoundingClientRect();
+                return { text: element.textContent, chip: element.classList.contains('strata-tag'), x: x - stage.x, y: y - stage.y, w: width, h: height, stage: [stage.width, stage.height] };
+            });
+    }"""
+
+    def check(step: str) -> list[dict]:
+        shown = page.evaluate(boxes)
+        assert shown, step
+        for i, a in enumerate(shown):
+            for b in shown[i + 1 :]:
+                clash = a["x"] < b["x"] + b["w"] and a["x"] + a["w"] > b["x"] and a["y"] < b["y"] + b["h"] and a["y"] + a["h"] > b["y"]
+                assert not clash, f"{step}: {a['text']!r} overlaps {b['text']!r}"
+        return shown
+
+    check("overview")
+    # Open a master that has several pressings under one title, solo the pressings, and zoom in:
+    # the places labels are most crowded.
+    page.locator("#strataStage").focus()
+    page.keyboard.press("2")
+    _step_to(page, "]", "Willow Orbit")
+    page.keyboard.press("Enter")
+    expect(page.locator("#strataTrail")).to_contain_text("pressings of Willow Orbit")
+    page.keyboard.press("Escape")
+    page.keyboard.press("Escape")
+    page.keyboard.press("3")
+    for _ in range(3):
+        page.keyboard.press("+")
+        page.wait_for_timeout(300)
+        shown = check("zoomed pressings")
+    titles = [box["text"] for box in shown if not box["chip"] and box["text"].startswith("Willow Orbit")]
+    # One label for each repeated title, with its count, and none left stacked beside it.
+    assert sorted(titles) == ["Willow Orbit (Remastered) \u00d72", "Willow Orbit \u00d76"], titles
+    # The chips are boxes in the same placement: every one that is shown is whole, not cut by the edge.
+    for chip in [box for box in shown if box["chip"]]:
+        assert chip["x"] >= 0 and chip["x"] + chip["w"] <= chip["stage"][0], chip
+
+
+@pytest.mark.e2e
+def test_strata_table_open_column_keeps_its_labels_whole(page: Page, explore_url: str) -> None:
+    """The Open column sizes to its button and wraps its label: nothing is cut off or pushed away."""
+    page.set_viewport_size({"width": 1280, "height": 900})
+    _open_artist(page, explore_url, ARTIST)
+    _show(page, "table")
+    expect(page.locator("#strataSummary")).to_contain_text("6 credits · 40 masters · 169 releases", timeout=15_000)
+    scroll = page.locator("#strataTable")
+    buttons = page.locator("#strataTable .strata-table-open")
+    assert buttons.count() >= 3
+    # No horizontal scroll at this width, so the last column is not past the edge of the region.
+    assert scroll.evaluate("(element) => element.scrollWidth <= element.clientWidth")
+    region = scroll.bounding_box()
+    assert region is not None
+    for index in range(buttons.count()):
+        button = buttons.nth(index)
+        assert button.evaluate("(element) => element.scrollWidth <= element.clientWidth + 1 && element.scrollHeight <= element.clientHeight + 1"), (
+            button.inner_text()
+        )
+        box = button.bounding_box()
+        assert box is not None and box["x"] >= region["x"] and box["x"] + box["width"] <= region["x"] + region["width"], button.inner_text()
 
 
 @pytest.mark.e2e
@@ -266,7 +404,8 @@ def test_strata_table_is_a_view_of_its_own(page: Page, explore_url: str) -> None
     expect(page.locator("#strataSelection .strata-actions > *")).to_have_count(0)
 
     # "Only what I collect" keeps what the collector wants or owns, with what holds it.
-    # The first button of the trail goes back; it reads "Overview" until a second page is turned.
+    # The first button of the trail reads "Back" from the first drill, and goes back.
+    expect(page.locator("#strataTrail .strata-trail-btn").first).to_have_text("Back")
     page.locator("#strataTrail .strata-trail-btn").first.click()
     expect(page.locator("#strataTrail")).to_be_hidden()
     expect(rows).to_have_count(all_rows)

@@ -9,13 +9,17 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
     BLOCKED_REASON,
+    COPY_UNREAD_REASON,
     MAX_ROOT_RELEASES,
+    NO_COPY_REASON,
     PAST_REASON,
     StrataExplore,
     applyClocks,
     blockedReason,
+    copyIdOf,
     describeCursor,
     discogsLinks,
+    hitNodeId,
     initStrata,
     nodeActions,
     paintStates,
@@ -35,9 +39,18 @@ const INDEX = readFileSync(resolve(HERE, '..', 'static', 'index.html'), 'utf8');
 
 // The route canonicalises a master or lane cursor to its release aggregate's id.
 const canonical = (focus) => (focus === null ? null : focus.replace(/^m:/, 'ra:m:').replace(/^nm:/, 'ra:nm:'));
+// A pressing is a cursor that names its own page, so the request's page is ignored for it.
+const isPressing = (focus) => typeof focus === 'string' && /^(r|mb):/.test(focus);
 function recordedBody(focus, page = 0, signedIn = true) {
-    const entry = RECORDED.responses.find((item) => item.query.focus === canonical(focus) && item.query.page === page && item.query.signed_in === signedIn);
-    return entry ? structuredClone(entry.body) : null;
+    const wanted = isPressing(focus) ? 0 : page;
+    const entry = RECORDED.responses.find((item) => item.query.focus === canonical(focus) && item.query.page === wanted && item.query.signed_in === true);
+    if (!entry) return null;
+    const body = structuredClone(entry.body);
+    if (signedIn) return body;
+    // What the route sends an anonymous caller: no collector field anywhere.
+    body.signed_in = false;
+    for (const plane of body.planes) for (const node of [...plane.nodes, ...plane.aggregates]) for (const field of ['state', 'states', 'recorded_at', 'owned_copy_ids']) delete node[field];
+    return body;
 }
 const graphOf = (focus = null, page = 0, signedIn = true) => adaptStrataPayload(recordedBody(focus, page, signedIn));
 
@@ -229,6 +242,20 @@ describe('nodeActions', () => {
         expect(action).toMatchObject({ enabled: false, reason: PAST_REASON });
     });
 
+    it('records an observation against the earliest copy the route named, and says why when it named none', () => {
+        const record = (node, options) => nodeActions(node, { signedIn: true, ...options }).find((item) => item.id === CollectorAction.RECORD_OBSERVATION);
+        expect(copyIdOf(release('owned', { ownedCopyIds: ['copy-a', 'copy-b'] }))).toBe('copy-a');
+        expect(record(release('owned', { ownedCopyIds: ['copy-a', 'copy-b'] }))).toEqual({ id: 'record-observation', label: 'Record an observation', enabled: true });
+        // Owned, but the sync has not minted a copy: an empty list.
+        expect(record(release('owned', { ownedCopyIds: [] }))).toEqual({ id: 'record-observation', label: 'Record an observation', enabled: false, reason: NO_COPY_REASON });
+        // The route sent no list at all (the copy-id read degraded): disabled with its own reason.
+        expect(record(release('owned', { ownedCopyIds: null }))).toEqual({ id: 'record-observation', label: 'Record an observation', enabled: false, reason: COPY_UNREAD_REASON });
+        expect(record(release('owned'))).toMatchObject({ enabled: false, reason: COPY_UNREAD_REASON });
+        // History is read-only whatever the copies are.
+        expect(record(release('owned', { ownedCopyIds: ['copy-a'] }), { past: true })).toMatchObject({ enabled: false, reason: PAST_REASON });
+        for (const reason of [NO_COPY_REASON, COPY_UNREAD_REASON]) expect(reason).not.toMatch(/ADR/);
+    });
+
     it('offers no collector action for a MusicBrainz-only release, or for an anonymous caller', () => {
         const musicbrainz = release(null, { provider: 'musicbrainz', id: 'mb:x', releaseId: 'x' });
         expect(nodeActions(musicbrainz, { signedIn: true })).toEqual([]);
@@ -392,7 +419,10 @@ function fakeApi() {
         }),
         search: vi.fn(async () => ({ results: [] })),
         triggerSync: vi.fn(async () => ({ ok: true, status: 202, body: {} })),
-        findOwnedCopy: vi.fn(async () => 'copy-1'),
+        // The collection is never read to find a copy; a test that sees this called has found a scan.
+        getUserCollection: vi.fn(async () => {
+            throw new Error('the strata view must not scan /api/user/collection');
+        }),
         createObservation: vi.fn(async () => ({ ok: true, status: 201, body: {} })),
     };
 }
@@ -590,14 +620,16 @@ describe('StrataExplore', () => {
         panel.querySelector('[data-action="sync-now"]').click();
         await vi.waitFor(() => expect($('strataActionStatus').textContent).toMatch(/Sync started/));
         expect(api.triggerSync).toHaveBeenCalledWith('jwt');
+        expect(panel.querySelector('[data-action="record-observation"]').disabled).toBe(false);
         panel.querySelector('[data-action="record-observation"]').click();
         const form = panel.querySelector('form.strata-observation');
         form.querySelector('select').value = 'grading';
         form.querySelector('input').value = '  VG+  ';
         form.dispatchEvent(new Event('submit', { cancelable: true }));
         await vi.waitFor(() => expect($('strataActionStatus').textContent).toBe('Observation recorded.'));
-        expect(api.findOwnedCopy).toHaveBeenCalledWith('jwt', '300083', { pageSize: 200, maxPages: 10 });
-        expect(api.createObservation).toHaveBeenCalledWith('jwt', 'copy-1', { kind: 'grading', value: 'VG+', source: 'user' });
+        // The copy comes from the node the route drew, and nothing reads the collection to find it.
+        expect(api.createObservation).toHaveBeenCalledWith('jwt', 'copy-300083-a', { kind: 'grading', value: 'VG+', source: 'user' });
+        expect(api.getUserCollection).not.toHaveBeenCalled();
         // A wanted pressing has no owned copy to observe.
         strata.selectNode('r:300036');
         expect([...panel.querySelectorAll('.strata-action')].map((node) => node.textContent)).toEqual(['Open on Discogs', 'Sync now']);
@@ -608,17 +640,47 @@ describe('StrataExplore', () => {
         expect(panel.querySelector('.strata-state').textContent).toBe('wanted + owned');
         expect(panel.textContent).toContain('owned since 2017-05-09, wanted since 2011-11-10');
         expect([...panel.querySelectorAll('.strata-action')].map((node) => node.textContent)).toEqual(['Open on Discogs', 'Sync now', 'Record an observation']);
+        // Two copies: the earliest acquired comes first, and that is the one observed.
+        expect(strata.byId.get('r:300141').ownedCopyIds).toEqual(['copy-300141-a', 'copy-300141-b']);
+        await strata.recordObservation(strata.byId.get('r:300141'), { kind: 'note', value: 'first copy' });
+        expect(api.createObservation).toHaveBeenLastCalledWith('jwt', 'copy-300141-a', { kind: 'note', value: 'first copy', source: 'user' });
+        expect(api.getUserCollection).not.toHaveBeenCalled();
     });
 
-    it('explains a missing copy, a failed sync, and an empty observation', async () => {
+    it('disables the observation with a reason when the route named no copy, and never scans the collection', async () => {
+        await open();
+        await strata.load({ focus: 'ra:m:70030', page: 1 });
+        const panel = $('strataSelection');
+        // Owned, and the sync has minted no copy yet: the route sends an empty list.
+        strata.selectNode('r:300097');
+        expect(strata.byId.get('r:300097').ownedCopyIds).toEqual([]);
+        let button = panel.querySelector('[data-action="record-observation"]');
+        expect(button.disabled).toBe(true);
+        expect(button.title).toBe(NO_COPY_REASON);
+        expect(panel.querySelector('.strata-blocked').textContent).toBe(NO_COPY_REASON);
+        // The copy-id read degraded: the field is absent on the node.
+        strata.byId.get('r:300103').ownedCopyIds = null;
+        strata.selectNode('r:300103');
+        button = panel.querySelector('[data-action="record-observation"]');
+        expect(button.disabled).toBe(true);
+        expect(button.title).toBe(COPY_UNREAD_REASON);
+        button.click();
+        expect(panel.querySelector('form.strata-observation')).toBeNull();
+        // A call that gets past the disabled button says the same and records nothing.
+        expect(await strata.recordObservation(strata.byId.get('r:300103'), { kind: 'note', value: 'x' })).toBe(false);
+        expect($('strataActionStatus').textContent).toBe(COPY_UNREAD_REASON);
+        expect(await strata.recordObservation(strata.byId.get('r:300097'), { kind: 'note', value: 'x' })).toBe(false);
+        expect($('strataActionStatus').textContent).toBe(NO_COPY_REASON);
+        expect(api.createObservation).not.toHaveBeenCalled();
+        expect(api.getUserCollection).not.toHaveBeenCalled();
+    });
+
+    it('explains a failed observation, a failed sync, and an empty observation', async () => {
         await open();
         strata.selectNode('r:300083');
         const node = strata.byId.get('r:300083');
         expect(await strata.recordObservation(node, { kind: 'note', value: ' ' })).toBe(false);
         expect($('strataActionStatus').textContent).toMatch(/Write what you observed/);
-        api.findOwnedCopy.mockResolvedValueOnce(null);
-        expect(await strata.recordObservation(node, { kind: 'note', value: 'x' })).toBe(false);
-        expect($('strataActionStatus').textContent).toMatch(/no GrooveMap id yet/);
         api.createObservation.mockResolvedValueOnce({ ok: false, status: 422, body: { detail: 'bad source' } });
         expect(await strata.recordObservation(node, { kind: 'note', value: 'x' })).toBe(false);
         expect($('strataActionStatus').textContent).toBe('bad source');
@@ -677,11 +739,97 @@ describe('StrataExplore', () => {
         expect($('strataMessage').hidden).toBe(true);
         await strata.back();
         expect(renderer.layout.page).toBeNull();
-        api.search.mockResolvedValueOnce({ results: [{ type: 'release', id: '300036', name: 'x' }] });
-        expect(await strata.focusSearch('unmatched pressing')).toBe('r:300036');
+        // A pressing the view already draws is selected without a request.
+        await strata.load({ focus: 'ra:m:70030', page: 0 });
+        api.getStrata.mockClear();
+        api.search.mockResolvedValueOnce({ results: [{ type: 'release', id: '300099', name: 'x' }] });
+        expect(await strata.focusSearch('unmatched pressing')).toBe('r:300099');
+        expect(api.getStrata).not.toHaveBeenCalled();
+        expect(renderer.selected).toBe('r:300099');
         api.search.mockResolvedValueOnce(null);
         expect(await strata.focusSearch('nothing at all')).toBeNull();
-        expect($('strataMessage').textContent).toMatch(/A pressing opens through its master/);
+        expect($('strataMessage').textContent).toBe("Nothing named “nothing at all” in The Placeholder Band's masters or pressings.");
+    });
+
+    describe('search to a pressing through the release cursor', () => {
+        const searching = (...results) => api.search.mockResolvedValueOnce({ results });
+
+        it('opens a pressing the view does not draw, on the page that holds it, and selects it', async () => {
+            const renderer = await open();
+            // Two pages deep in a master: nothing on the overview draws it.
+            expect(strata.byId.has('r:300077')).toBe(false);
+            searching({ type: 'release', id: '300077', name: 'Lantern Static' });
+            expect(await strata.focusSearch('Lantern Static 2026')).toBe('r:300077');
+            expect(api.getStrata).toHaveBeenLastCalledWith('9001', { focus: 'r:300077', page: 0, budget: '3/12/16' }, 'jwt');
+            expect(renderer.layout.page).toMatchObject({ cursor: 'ra:m:70025', index: 1, pages: 2 });
+            expect(strata.cursor).toEqual({ focus: 'ra:m:70025', page: 1 });
+            expect(strata.selected).toBe('r:300077');
+            expect(renderer.selected).toBe('r:300077');
+            expect($('strataSelection').querySelector('.strata-selection-title').textContent).toBe('Lantern Static');
+            expect($('strataMessage').hidden).toBe(true);
+            expect(api.getUserCollection).not.toHaveBeenCalled();
+        });
+
+        it('reaches a pressing in a no-master lane, and a MusicBrainz-only one through mb:', async () => {
+            const renderer = await open();
+            searching({ type: 'release', id: '300150', name: 'Cinder Amber EP' });
+            expect(await strata.focusSearch('Cinder Amber EP')).toBe('r:300150');
+            expect(renderer.layout.page).toMatchObject({ cursor: 'ra:nm:c:9001', index: 1 });
+            expect(strata.selected).toBe('r:300150');
+            const mbid = '6F1C0030-0000-4000-8000-000000000030';
+            searching({ type: 'release', id: mbid, name: 'Willow Orbit (MusicBrainz)' });
+            expect(await strata.focusSearch('Willow Orbit (MusicBrainz)')).toBe(`mb:${mbid.toLowerCase()}`);
+            expect(api.getStrata).toHaveBeenLastCalledWith('9001', { focus: `mb:${mbid.toLowerCase()}`, page: 0, budget: '3/12/16' }, 'jwt');
+            expect(renderer.layout.page).toMatchObject({ cursor: 'ra:m:70030', index: 1 });
+            expect(strata.selected).toBe(`mb:${mbid.toLowerCase()}`);
+            expect($('strataSelection').querySelector('.strata-blocked').textContent).toBe(BLOCKED_REASON);
+        });
+
+        it('moves past a hit that belongs to another artist, and puts the view it left on the trail', async () => {
+            const renderer = await open();
+            searching({ type: 'release', id: '999001', name: 'Elsewhere' }, { type: 'release', id: '300103', name: 'Willow Orbit' });
+            expect(await strata.focusSearch('Willow Orbit 2025')).toBe('r:300103');
+            expect(api.getStrata.mock.calls.map(([, query]) => query.focus)).toEqual([null, 'r:999001', 'r:300103']);
+            expect(strata.selected).toBe('r:300103');
+            // The pressing opened from the overview, so the first trail button goes back to it.
+            expect(strata.trail).toEqual([{ focus: null, page: 0 }]);
+            expect($('strataTrail').querySelector('.strata-trail-btn').textContent).toBe('Back');
+            await strata.back();
+            expect(renderer.layout.page).toBeNull();
+        });
+
+        it('says nothing was found when every hit is another artist\'s, and leaves the view where it was', async () => {
+            const renderer = await open();
+            searching({ type: 'release', id: '999001', name: 'Elsewhere' }, { type: 'artist', id: '5', name: 'Not a pressing' });
+            expect(await strata.focusSearch('Elsewhere')).toBeNull();
+            expect($('strataMessage').textContent).toMatch(/Nothing named “Elsewhere”/);
+            expect(renderer.layout.page).toBeNull();
+            expect(strata.trail).toEqual([]);
+        });
+
+        it('names the node a hit opens', () => {
+            expect(hitNodeId({ type: 'master', id: '70007' })).toBe('m:70007');
+            expect(hitNodeId({ type: 'release', id: 300077 })).toBe('r:300077');
+            expect(hitNodeId({ type: 'release', id: '6F1C0030-0000-4000-8000-000000000030' })).toBe('mb:6f1c0030-0000-4000-8000-000000000030');
+            for (const hit of [{ type: 'artist', id: '1' }, { type: 'release' }, { type: 'release', id: '' }, null]) expect(hitNodeId(hit)).toBeNull();
+        });
+    });
+
+    it('reads Back on the first button of the trail from the first drill onward', async () => {
+        const renderer = await open();
+        const first = () => $('strataTrail').querySelector('.strata-trail-btn').textContent;
+        await strata.drill('m:70030');
+        expect(first()).toBe('Back');
+        await strata.turnPage(1);
+        expect(first()).toBe('Back');
+        // Drill again from there: still Back, and Back returns one step at a time.
+        await strata.drill('m:70025');
+        expect(first()).toBe('Back');
+        await strata.back();
+        expect(renderer.layout.page).toMatchObject({ cursor: 'ra:m:70030', index: 1 });
+        expect(first()).toBe('Back');
+        await strata.back();
+        expect($('strataTrail').hidden).toBe(true);
     });
 
     it('starts over for a new artist and does nothing without one', async () => {

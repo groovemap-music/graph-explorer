@@ -27,9 +27,15 @@ see in the other.
 - A **count node** stands in for a group that did not fit, such as "8 masters, 1993–2015" or "+15
   pressings". **Releases without a master** is a lane of its own on the masters plane.
 
+Labels never overlap one another or the outlined credit chips: when they would, the lower-priority one
+is left out until you zoom in or select something. Pressings of one master that share a title are one
+label with a count, such as "Willow Orbit ×6", over the middle of those pressings. The pressing you
+select or hover keeps a label of its own.
+
 Drag to orbit and tilt, scroll to zoom, and click a node to describe it in the panel. Opening a count
 node, a lane, or a master requests it as a page of its own, and the panel's trail shows where you are,
-with **Previous page**, **Next page**, and a button back. Pages wrap around.
+with **Previous page**, **Next page**, and **Back**, which returns to where you came from. **Back** is
+there from the first time you open something, not only after you turn a page. Pages wrap around.
 
 The 3D view has a keyboard path for everything the pointer does. Focus the view, then use:
 
@@ -100,9 +106,11 @@ before. A selected pressing offers at most these actions:
   to see what changed.
 - **Record an observation** is offered on a pressing you own, and only while **Recorded as of** is *now*.
   It saves a note about your copy: a matrix or run-out inscription, a grading, a purchase price, or a free
-  note. It finds your copy from your collection. If the copy has no GrooveMap identity yet, the panel asks
-  you to run **Sync now** first. An observation is a note about the copy. It does not add or remove
-  anything from Discogs.
+  note. It is recorded against your earliest-acquired copy of that pressing, which GrooveMap already
+  knows from the view, so nothing reads your collection to find it. If the copy has no GrooveMap identity
+  yet, the button is off and the panel asks you to run **Sync now** and reload the view. If GrooveMap
+  could not read your copy's identity just now, the button is off and says so. An observation is a note
+  about the copy. It does not add or remove anything from Discogs.
 
 A signed-out visitor sees the discography with no states: **Only what I collect** and **Recorded as
 of** are disabled, and the summary says that signing in shows what you want and own.
@@ -112,19 +120,18 @@ of** are disabled, and the summary says that signing in shows what you want and 
 Some pressings are known to MusicBrainz and have no Discogs release. They are drawn with a **red ring**
 in the 3D view and a **no state** chip in the table. They have no collector state at all, which is
 different from *none*, because no wantlist or collection entry at Discogs can refer to them. Selecting
-one explains this, and it offers no actions: no Discogs page, no sync, and no observation. The summary
+one says that it exists only in MusicBrainz, so GrooveMap has no collector state for it, and it offers no actions: no Discogs page, no sync, and no observation. The summary
 counts them ("13 MusicBrainz-only"), and the table lists them with **Only what cannot change state**.
 
 ## Finding something
 
 **Find a master or pressing** selects a match that is drawn in the current view, best match first. In the
 table it also finds entries the 3D view folded into a count node. If nothing drawn matches and you typed
-at least three characters, it searches the catalog for a master with that name and opens the view on it.
-
-A pressing that is not on the current page is not found by its own title: the request has no cursor for a
-single pressing, so a pressing is reached through its master. Search for the master's title, then
-find the pressing among its pages. Searching straight to an off-screen pressing is planned
-(gm-graph-explorer-sqjq) and does not work yet.
+at least three characters, it searches the catalog and opens the view on the best hit that belongs to this
+artist: a master opens on its pressings, and a pressing opens on the page that holds it, however deep in
+a large master or in the releases without a master, and is selected. A MusicBrainz-only pressing opens the
+same way. A hit that belongs to another artist is skipped. If no hit does, the view says nothing by that
+name is in this discography and stays where it was. **Back** returns to the view you searched from.
 
 ## Large artists, and slow reads
 

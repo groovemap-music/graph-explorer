@@ -63,8 +63,8 @@ hovers, picked at most once a frame. The wheel zooms.
   uses `--strata-node-stateless`. Outside the selection's lineage, nodes dim toward the canvas.
 - **Blocked pressings.** A MusicBrainz-only release (`provider: 'musicbrainz'`, `isBlocked` in
   `strata-scene.js`) is drawn state-less inside the spike's ring, one instanced ring mesh per plane
-  in `--strata-blocked`. No wantlist or collection edge can carry a change to it (ADR 0009). The
-  ring is not pickable.
+  in `--strata-blocked`. It exists only in MusicBrainz, so GrooveMap has no collector state for it.
+  The ring is not pickable.
 
 ## Resolve picking
 
@@ -84,9 +84,21 @@ pure function, for a caller that dims other planes instead of hiding them.
 ## Labels and level of detail
 
 Only label candidates get a label element, and only a candidate that projects on screen. The
-hovered and selected nodes always show. With a selection, only its lineage is labelled. Otherwise
-nodes on planes down to the level of detail's `labelDepth` are candidates, credits first. Placement
-is the mockup's greedy rule (priority order, skip overlaps) over a uniform grid. At most
+hovered and selected nodes are never dropped for a neighbour. With a selection, only its lineage is
+labelled. Otherwise nodes on planes down to the level of detail's `labelDepth` are candidates,
+credits first.
+
+`collapseRepeats` then makes one candidate of the pressings of one master that share a title: its
+text is the title and a count ("Willow Orbit ×6"), anchored over the middle of those pressings. The
+hovered and selected nodes keep their own labels, and are not counted in the group.
+
+`labelBoxes` turns the candidates and the outlined credit chips (the hull tags) into boxes in CSS
+pixels, with the heights `strata.css` gives them (`LABEL_HEIGHT`, `CREDIT_LABEL_HEIGHT`,
+`TAG_HEIGHT`), and `placeLabels` places them all in one greedy pass (priority order, skip overlaps)
+over a uniform grid, so a chip is a box like any label. No two boxes that come back overlap, and each
+keeps `LABEL_GAP` (2 px) from the next. A label that would leave the stage is dropped rather than
+clipped. Priority 0 (hovered or selected) is not dropped for a neighbour: it moves up or down to the
+nearest free slot instead, and is hidden only when the column around it is full. At most
 `MAX_NODE_LABELS` (400) node labels are placed in a frame. Labels are positioned through CSSOM
 transforms and hidden with the `hidden` attribute.
 
@@ -132,17 +144,24 @@ artist is centered after a reload. It reads `GET
   scrubbing it moves no node. Aggregate counts are today's, so in the past an aggregate is drawn
   without a state.
 - **"Only what I collect"** keeps entries holding a wanted or owned release, with their ancestors.
-- **Search-to-focus** selects a drawn match, or opens the view on a named master through the
-  route's `m:<id>` cursor, using `/api/search` to find the master's id. A pressing that is not
-  drawn is reached through its master: the route has no cursor for one pressing.
+- **Search-to-focus** selects a drawn match, or opens the view on what a `/api/search` hit names,
+  in hit order: a master through the route's `m:<id>` cursor, a Discogs pressing through `r:<id>`,
+  and a MusicBrainz-only one through `mb:<mbid>`. A pressing cursor resolves to the page that holds
+  it (`focus.id` is `ra:m:<master>` or `ra:nm:<credit>`, and the request's page is ignored), so any
+  pressing opens and is selected at any depth. A hit that is another artist's pressing is a 404 and
+  the next hit is tried. The view left goes on the trail before the new one is drawn, so the trail's
+  first button reads "Back" from the first drill.
 - **Keyboard** (on the focused stage): arrows orbit and tilt, `+` and `-` zoom, `0` resets, `1` to
   `3` solo a plane, PageUp and PageDown move to the parent or first child, `[` and `]` move along a
   plane, Enter opens a count node, and Escape clears the selection. Each binds to the renderer's
   `orbit`, `tilt`, `zoom`, `resetCamera`, `solo`, and `select`.
 - **Actions** follow `strata-collector.js`: "Open on Discogs", and for a signed-in collector on a
-  Discogs release "Sync now" and, on an owned copy only, "Record an observation" (which finds the
-  copy's `owned_copy_id` in the collection and posts to `/api/user/copies/{copy_id}/observations`).
-  Nothing writes a wantlist or a collection.
+  Discogs release "Sync now" and, on an owned copy only, "Record an observation". The observation
+  posts to `/api/user/copies/{copy_id}/observations` for `owned_copy_ids[0]`, the earliest-acquired
+  copy, which the route puts on each signed-in release node (a list, `[]` when the sync has minted
+  no copy, absent for an anonymous caller or when the copy-id read degraded). With no copy id the
+  action is disabled and says why. `/api/user/collection` is never read to find a copy. Nothing
+  writes a wantlist or a collection.
 - **Errors**: a 422 (a root above 134,051 releases) and a 504 (a read past its bound) get their own
   words. A theme change calls `refreshColors()`.
 
@@ -161,9 +180,12 @@ trail and Previous and Next in the panel page it, as they do in 3D.
   exactly one layout node, and the blocked counts add up to the route's totals the way the
   layout's releases do.
 - **Columns**: kind, name, under (the path of ancestors), year, state, "Cannot change because",
-  releases, in the 3D view, and open. A MusicBrainz-only pressing carries the full reason (ADR
-  0009); a credit, master, or group says how many such pressings it holds and that opening it lists
-  them. "Only what cannot change state" filters to those rows.
+  releases, in the 3D view, and open. A MusicBrainz-only pressing carries the full reason (it exists only in MusicBrainz, so
+  GrooveMap has no collector state for it); a credit, master, or group says how many such pressings it holds and that opening it lists
+  them, with the count pluralised ("1 pressing here exists only in MusicBrainz", "3 pressings here
+  exist only in MusicBrainz"). "Only what cannot change state" filters to those rows. The Open
+  column takes the width its button needs and wraps the label, so it is never cut off by the scroll
+  region.
 - **Sorting**: each column header is a button. Ascending, descending, then the outline order again,
   with `aria-sort` and a live sentence ("5 rows, sorted by year, descending."). Empty years and
   reasons sort last either way.
@@ -182,8 +204,9 @@ a database. Artist ids `too-large` and `timeout` answer with the 422 and 504.
 ## Tests
 
 - `explore/__tests__/strata-scene.test.js` covers the GPU-free logic: resolve picking on stacked
-  nodes and the plane tie-break, label candidates and placement, level of detail, and reduced
-  motion.
+  nodes and the plane tie-break, label candidates, repeated-title collapsing, label boxes and
+  placement (a property over generated layouts: no two label boxes overlap, chips included), level of
+  detail, and reduced motion.
 - `explore/__tests__/strata-renderer.test.js` builds the real three.js scene in jsdom with a stub
   for the WebGL context. It covers instancing, edge merging, colors, picking through the scene
   (occlusion and an exact tie), events, labels, reduced motion for every camera move, vertical link
@@ -204,8 +227,10 @@ a database. Artist ids `too-large` and `timeout` answer with the 422 and 504.
   E2E matrix, against the mock route above: search to the strata, drill and page a group, a
   MusicBrainz-only pressing and its reason, both clocks, the table (filter, sort, keyboard), "Only what
   I collect", a signed-out visitor, and the 422 and 504 messages. It drives the 3D view from the
-  keyboard. Searching to a pressing that is not drawn is not covered:
-  it is not supported yet (gm-graph-explorer-sqjq).
+  keyboard. It also searches to pressings the page does not draw (a masterless EP and a
+  MusicBrainz-only pressing, two pages deep, and a hit the route answers with a 404), records an
+  observation against the copy the route named without reading the collection, checks that no two
+  labels or chips overlap in the browser, and that the table's Open column keeps its labels whole.
   The user-facing description is [Discography Strata](discography-strata.md).
 - `tests/perf/test_strata_renderer_perf.py` is the performance smoke test below. `just test` and the
   E2E matrix skip it (marker `benchmark`).

@@ -123,6 +123,16 @@ MOCK_RECOMMENDATIONS: dict[str, Any] = {
     "total": 2,
 }
 
+# Pressings of The Placeholder Band that the strata search finds, none of them drawn on the
+# overview: a masterless EP two pages deep, a MusicBrainz-only pressing, and one the artist does not
+# hold (the route answers its cursor with a 404, so the search moves on to the next hit). They are
+# offered only to a search that asks for masters and releases together, as the strata search does.
+MOCK_STRATA_SEARCH_HITS: list[dict[str, Any]] = [
+    {"id": "999001", "name": "Cinder Amber EP (reissue)", "type": "release", "relevance": 0.95},
+    {"id": "300150", "name": "Cinder Amber EP", "type": "release", "relevance": 0.9},
+    {"id": "6f1c0030-0000-4000-8000-000000000030", "name": "Willow Orbit (MusicBrainz)", "type": "release", "relevance": 0.8},
+]
+
 # One candidate release the fit picker can find, and the profile the fit route
 # answers for it. The profile is a full one — five components, every one with
 # evidence, a native id and an impression — because the browser test walks the
@@ -248,7 +258,7 @@ STRATA_FIXTURE = Path(__file__).parent / "fixtures" / "strata-route.json"
 # Artist ids the strata mock answers with the route's errors.
 STRATA_TOO_LARGE = "too-large"
 STRATA_TIMEOUT = "timeout"
-_COLLECTOR_FIELDS = ("state", "states", "recorded_at")
+_COLLECTOR_FIELDS = ("state", "states", "recorded_at", "owned_copy_ids")
 
 
 def _strata_cursor(focus: str) -> str:
@@ -282,7 +292,8 @@ def strata_response(artist_id: str, focus: str | None, page: int, signed_in: boo
     pages = [entry for entry in recorded if entry["query"]["focus"] == cursor and entry["query"]["signed_in"] is True]
     if not pages:
         return 404, {"error": f"focus '{focus}' names nothing under this artist"}
-    count = pages[0]["body"]["focus"]["pages"] if cursor else 1
+    # A pressing is its own cursor and names its page, so the request's page is ignored for it.
+    count = pages[0]["body"]["focus"]["pages"] if cursor and not cursor.startswith(("r:", "mb:")) else 1
     body = next(entry["body"] for entry in pages if entry["query"]["page"] == page % count)
     return 200, body if signed_in else _anonymous(body)
 
@@ -406,6 +417,14 @@ def create_test_app() -> FastAPI:
             return JSONResponse(content={"detail": "Not authenticated"}, status_code=401)
         return JSONResponse(content=MOCK_COLLECTION)
 
+    @app.post("/api/user/copies/{copy_id}/observations")
+    async def user_copy_observation(copy_id: str, request: Request, authorization: str | None = Header(default=None)) -> JSONResponse:
+        """Accept one observation about an owned copy, echoing the copy it was recorded against."""
+        if not authorization or not authorization.startswith("Bearer "):
+            return JSONResponse(content={"detail": "Not authenticated"}, status_code=401)
+        observation = await request.json()
+        return JSONResponse(content={"id": "obs-1", "copy_id": copy_id, **observation}, status_code=201)
+
     @app.get("/api/user/wantlist")
     async def user_wantlist(
         authorization: str | None = Header(default=None),
@@ -469,6 +488,8 @@ def create_test_app() -> FastAPI:
         if wanted and "release" not in wanted:
             return JSONResponse(content={"results": [], "total": 0, "facets": {}, "pagination": {"limit": limit, "offset": offset}})
         matches = [r for r in MOCK_RELEASE_SEARCH["results"] if q.lower() in str(r["name"]).lower()]
+        if {"master", "release"} <= set(wanted):
+            matches += [r for r in MOCK_STRATA_SEARCH_HITS if q.lower() in str(r["name"]).lower()]
         wanted_countries = [c for c in country if c]
         if wanted_countries:
             matches = [r for r in matches if r.get("country") in wanted_countries]
