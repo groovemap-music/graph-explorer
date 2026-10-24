@@ -32,6 +32,7 @@ import {
     layoutAtlas,
     paintAtlas,
     ruleText,
+    splitCotags,
     stageAt,
     stageCounts,
     styleId,
@@ -270,6 +271,30 @@ describe('edges', () => {
             { a: primary.id, b: third.id, kind: 'cotag', rank: 2, releaseCount: 80 },
         ]);
         expect(withCotags.every((edge) => edge.a === primary.id)).toBe(true);
+    });
+
+    it('splits co-tags into the pairs drawn and the pairs only listed, best rank first', () => {
+        const layout = layoutOf(RECORDED.body);
+        const byId = byIdOf(layout);
+        const ghost = layout.nodes.find((node) => node.entity === 'ghost');
+        const primary = byId.get(ghost.ghostOf);
+        const [other, third] = layout.nodes.filter((node) => node.entity === 'style' && node.id !== primary.id);
+        const entries = [
+            { other: 'Not Drawn', release_count: 90, rank: 3 },
+            { other: third.style, release_count: 80, rank: 2 },
+            { other: primary.style, release_count: 99, rank: 0 },
+            { other: other.style, release_count: 120, rank: 1 },
+            null,
+            { release_count: 5, rank: 9 },
+        ];
+        const { drawn, listed } = splitCotags(byId, primary.id, entries);
+        expect(drawn.map((entry) => entry.other)).toEqual([other.style, third.style]);
+        // A style paired with itself, and one the atlas does not draw, stay listed.
+        expect(listed.map((entry) => entry.other)).toEqual([primary.style, 'Not Drawn']);
+        // A ghost copy splits the same as its style; nothing is drawn without a style selected.
+        expect(splitCotags(byId, ghost.id, entries).drawn).toEqual(drawn);
+        expect(splitCotags(byId, null, entries).drawn).toEqual([]);
+        expect(splitCotags(byId, primary.id, undefined)).toEqual({ drawn: [], listed: [] });
     });
 
     it('a selection lights every copy of a style and its parent genres, or a genre and what it hosts', () => {

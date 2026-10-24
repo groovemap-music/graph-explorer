@@ -852,6 +852,24 @@ class ApiClient {
         const body = await this._transport.readJson(response).catch(() => null);
         return { ok: response.ok, status: response.status, body };
     }
+
+    /**
+     * The co-tagged styles of one Genre Atlas style, for its lateral edges: the top 25 by shared
+     * releases, best first, as `[{other, release_count, rank}]`. A style with no co-tags, or one
+     * the atlas does not know, is an empty list. Any other answer throws, so the atlas can tell a
+     * failed read from a style that has none.
+     *
+     * @param {string} style - The style's name
+     * @returns {Promise<Array<{other: string, release_count: number, rank: number}>>}
+     */
+    async getStyleCotags(style) {
+        const params = new URLSearchParams({ style });
+        const response = await this._transport.fetch(`/api/insights/style-atlas/cotags?${params}`);
+        if (!response.ok) throw new Error(`Co-tag fetch failed: ${response.status}`);
+        const body = await this._transport.readJson(response);
+        if (!Array.isArray(body)) throw new Error('Co-tag fetch answered with something other than a list');
+        return body;
+    }
     // --- NLQ (Natural Language Query) ---
 
     /**
