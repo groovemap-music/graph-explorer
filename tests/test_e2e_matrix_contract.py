@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import signal
@@ -10,9 +11,17 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 PROJECTS = ("chromium", "firefox", "webkit", "iphone", "ipad")
+
+
+@pytest.fixture(autouse=True)
+def _all_projects_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """CI sets E2E_PROJECT; a test that wants one project sets it itself."""
+    monkeypatch.delenv("E2E_PROJECT", raising=False)
 
 
 def test_e2e_setup_installs_playwright_system_dependencies() -> None:
@@ -76,7 +85,7 @@ case " ${FAKE_UV_FAIL:-} " in *" ${project} "*) echo "${project} broke"; exit 3 
 """
 
 
-def _run_timed_matrix(tmp_path: Path, jobs: str, failing: str = "") -> tuple[subprocess.CompletedProcess[str], int]:
+def _run_timed_matrix(tmp_path: Path, jobs: str, failing: str = "", project: str | None = None) -> tuple[subprocess.CompletedProcess[str], int]:
     """Run the matrix against the timed fake and return its result and peak concurrency."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -91,6 +100,8 @@ def _run_timed_matrix(tmp_path: Path, jobs: str, failing: str = "") -> tuple[sub
         FAKE_UV_FAIL=failing,
         GROOVEMAP_E2E_JOBS=jobs,
     )
+    if project is not None:
+        environment["E2E_PROJECT"] = project
     result = subprocess.run(  # noqa: S603
         ["/bin/bash", str(ROOT / "scripts/run-e2e-matrix.sh")],
         cwd=tmp_path,
@@ -139,6 +150,51 @@ def test_matrix_fails_when_any_project_fails_and_repeats_its_log(tmp_path: Path)
     for project in ("webkit", "ipad"):
         failure_report = result.stdout.split(f"E2E project {project} failed; its log", 1)[1]
         assert f"{project} broke" in failure_report.split("=====", 2)[1]
+
+
+@pytest.mark.parametrize("project", PROJECTS)
+def test_matrix_runs_exactly_the_project_named_by_e2e_project(tmp_path: Path, project: str) -> None:
+    """CI gives each browser project its own runner and names it in E2E_PROJECT."""
+    result, peak = _run_timed_matrix(tmp_path, jobs="5", project=project)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert peak == 1
+    assert f"{project}: passed" in result.stdout
+    assert sorted(path.name for path in (tmp_path / "test-results").iterdir()) == [project]
+    started = [line.split()[0] for line in (tmp_path / "events").read_text().splitlines() if " start " in line]
+    assert started == [project]
+
+
+def test_matrix_fails_when_the_one_selected_project_fails(tmp_path: Path) -> None:
+    result, _peak = _run_timed_matrix(tmp_path, jobs="5", failing="webkit", project="webkit")
+
+    assert result.returncode == 1
+    assert "webkit: FAILED with exit status 3" in result.stdout
+    assert "webkit broke" in result.stdout.split("E2E project webkit failed; its log", 1)[1]
+
+
+def test_matrix_treats_an_empty_e2e_project_as_unset(tmp_path: Path) -> None:
+    result, peak = _run_timed_matrix(tmp_path, jobs="16", project="")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert peak == len(PROJECTS)
+    for project in PROJECTS:
+        assert f"{project}: passed" in result.stdout
+
+
+def test_matrix_refuses_an_unknown_e2e_project(tmp_path: Path) -> None:
+    for project in ("opera", "chromium firefox", "chrom", "../chromium"):
+        result = subprocess.run(  # noqa: S603
+            ["/bin/bash", str(ROOT / "scripts/run-e2e-matrix.sh")],
+            cwd=tmp_path,
+            env={**os.environ, "E2E_PROJECT": project},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 2
+        assert "E2E_PROJECT must be one of" in result.stderr
+        assert not (tmp_path / "test-results").exists()
 
 
 # Stands in for a project that never finishes: a grandchild of the matrix, like pytest's app
@@ -266,3 +322,127 @@ def test_documented_matrix_size_matches_the_collected_tests() -> None:
 
     conftest = (ROOT / "tests/conftest.py").read_text()
     assert f"matrix drives {total} E2E tests" in conftest
+
+
+FINALIZE = ROOT / "explore/scripts/finalize-e2e-coverage.mjs"
+INSTRUMENTED_SOURCE = "explore/static/js/app.js"
+
+
+def _istanbul_fragment(project: str) -> str:
+    """One Istanbul coverage fragment, as the browser writes it, covering one statement."""
+    source = f"/app/{project}.js"
+    position = {"line": 1, "column": 0}
+    return json.dumps(
+        {
+            source: {
+                "path": source,
+                "statementMap": {"0": {"start": position, "end": {"line": 1, "column": 5}}},
+                "fnMap": {},
+                "branchMap": {},
+                "s": {"0": 1},
+                "f": {},
+                "b": {},
+            }
+        }
+    )
+
+
+def _finalize(tmp_path: Path, fragments: tuple[str, ...], project: str | None = None) -> subprocess.CompletedProcess[str]:
+    """Run finalize-e2e-coverage.mjs in a scratch repository holding only these projects' fragments."""
+    for name in fragments:
+        raw = tmp_path / "coverage/e2e/raw" / name
+        raw.mkdir(parents=True)
+        (raw / "coverage.json").write_text(_istanbul_fragment(name))
+    # The instrumented source and the original that finalize puts back, like instrument-e2e-coverage.
+    instrumented = tmp_path / INSTRUMENTED_SOURCE
+    instrumented.parent.mkdir(parents=True)
+    instrumented.write_text("instrumented")
+    backup = tmp_path / ".build/e2e-original" / INSTRUMENTED_SOURCE
+    backup.parent.mkdir(parents=True)
+    backup.write_text("original")
+    environment = {**os.environ, "GROOVEMAP_E2E_ROOT": str(tmp_path)}
+    if project is not None:
+        environment["E2E_PROJECT"] = project
+    return subprocess.run(  # noqa: S603
+        ["node", str(FINALIZE)],  # noqa: S607 - trusted test PATH
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def _assert_sources_restored(tmp_path: Path) -> None:
+    assert (tmp_path / INSTRUMENTED_SOURCE).read_text() == "original"
+    assert not (tmp_path / ".build/e2e-original").exists()
+
+
+def test_finalize_writes_every_project_and_the_merged_report_when_unset(tmp_path: Path) -> None:
+    result = _finalize(tmp_path, PROJECTS)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    for project in PROJECTS:
+        assert f"/app/{project}.js" in (tmp_path / "coverage/e2e" / project / "lcov.info").read_text()
+    merged = (tmp_path / "coverage/e2e/lcov.info").read_text()
+    for project in PROJECTS:
+        assert f"/app/{project}.js" in merged
+    _assert_sources_restored(tmp_path)
+
+
+def test_finalize_fails_when_a_project_has_no_coverage_and_none_is_selected(tmp_path: Path) -> None:
+    result = _finalize(tmp_path, ("chromium", "firefox"))
+
+    assert result.returncode != 0
+    assert "Missing Istanbul coverage for webkit" in result.stderr
+    _assert_sources_restored(tmp_path)
+
+
+@pytest.mark.parametrize("project", PROJECTS)
+def test_finalize_succeeds_on_one_projects_coverage_alone(tmp_path: Path, project: str) -> None:
+    """A per-project runner holds only its own fragments, and writes only its own report."""
+    result = _finalize(tmp_path, (project,), project=project)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert f"/app/{project}.js" in (tmp_path / "coverage/e2e" / project / "lcov.info").read_text()
+    reports = sorted(path.relative_to(tmp_path / "coverage/e2e").as_posix() for path in (tmp_path / "coverage/e2e").rglob("lcov.info"))
+    assert reports == [f"{project}/lcov.info"]
+    _assert_sources_restored(tmp_path)
+
+
+def test_finalize_for_one_project_fails_when_its_coverage_is_missing(tmp_path: Path) -> None:
+    # Another project's fragments do not stand in for the selected project's own.
+    result = _finalize(tmp_path, ("firefox",), project="chromium")
+
+    assert result.returncode != 0
+    assert "Missing Istanbul coverage for chromium" in result.stderr
+    assert not (tmp_path / "coverage/e2e/chromium/lcov.info").exists()
+    _assert_sources_restored(tmp_path)
+
+
+def test_finalize_for_one_project_fails_when_its_coverage_is_empty(tmp_path: Path) -> None:
+    result = _finalize(tmp_path, (), project="chromium")
+    assert result.returncode != 0
+    _assert_sources_restored(tmp_path)
+
+    empty = tmp_path / "coverage/e2e/raw/chromium"
+    empty.mkdir(parents=True)
+    (empty / "notes.txt").write_text("not a coverage fragment")
+    again = subprocess.run(  # noqa: S603
+        ["node", str(FINALIZE)],  # noqa: S607 - trusted test PATH
+        cwd=tmp_path,
+        env={**os.environ, "GROOVEMAP_E2E_ROOT": str(tmp_path), "E2E_PROJECT": "chromium"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert again.returncode != 0
+    assert "Missing Istanbul coverage for chromium" in again.stderr
+
+
+def test_finalize_refuses_an_unknown_project(tmp_path: Path) -> None:
+    result = _finalize(tmp_path, ("chromium",), project="opera")
+
+    assert result.returncode != 0
+    assert "E2E_PROJECT must be one of" in result.stderr
+    _assert_sources_restored(tmp_path)

@@ -34,7 +34,7 @@ flowchart TD
   revision, license, repository, legal files, third-party notices, and brand provenance.
 - `just e2e` instruments browser JavaScript, runs Chromium, Firefox, WebKit, iPhone, and iPad
   concurrently, emits per-project and merged LCOV, captures failure artifacts, and restores every
-  source file.
+  source file. With `E2E_PROJECT=<project>` set it runs and reports that one project alone.
 - `just release-dry-run` creates the wheel, source archive, checksums, notices, SBOM, and
   provenance locally. It does not commit, tag, push, publish, or create a release.
 
@@ -59,6 +59,22 @@ Each project owns everything it writes, so running them side by side changes non
 directories. The live output prefixes every line with its project. When a project fails, its log is
 repeated whole after the run, and the run fails if any project does. An interrupt stops every
 project's process tree.
+
+### One project per runner
+
+CI runs with `e2e-matrix: true`, so each browser project has its own runner and its own
+"Browser E2E (<project>)" job instead of sharing one runner's CPUs with the other four. The job sets
+`E2E_PROJECT` to its project, and both commands it runs honour it:
+
+- `scripts/run-e2e-matrix.sh` runs exactly that project, and exits with status 2 for any name that
+  is not one of the five. Unset (or empty), it runs all five, as `just e2e` does locally.
+- `explore/scripts/finalize-e2e-coverage.mjs` reads only that project's fragments and writes only
+  `coverage/e2e/<project>/lcov.info`. It still fails when the project has no fragments. Unset, it
+  requires all five and also writes the merged `coverage/e2e/lcov.info`.
+
+The merged report is a local convenience only. No CI job holds every project's coverage, so
+`coverage-files` does not name it, and each project reaches Codecov through its own `e2e-<project>`
+flag.
 
 ## Browser-context budget
 

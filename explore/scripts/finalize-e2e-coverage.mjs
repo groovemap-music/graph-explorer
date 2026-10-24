@@ -12,7 +12,12 @@ const { createContext } = reportLibrary;
 
 const coverageRoot = resolve(root, "coverage/e2e");
 const rawRoot = resolve(coverageRoot, "raw");
-const projects = ["chromium", "firefox", "webkit", "iphone", "ipad"];
+const allProjects = ["chromium", "firefox", "webkit", "iphone", "ipad"];
+// CI sets E2E_PROJECT when each browser project runs on its own runner. That runner holds only that
+// project's fragments, so it writes only that project's report. Unset, every project is required and
+// the merged report is written too.
+const onlyProject = process.env.E2E_PROJECT || undefined;
+const projects = onlyProject === undefined ? allProjects : [onlyProject];
 
 function jsonFiles(directory) {
   if (!existsSync(directory)) return [];
@@ -33,6 +38,9 @@ function writeReports(files, directory) {
 
 let failure;
 try {
+  if (onlyProject !== undefined && !allProjects.includes(onlyProject)) {
+    throw new Error(`E2E_PROJECT must be one of ${allProjects.join(", ")}, got: ${onlyProject}`);
+  }
   const allFiles = [];
   for (const project of projects) {
     const files = jsonFiles(resolve(rawRoot, project));
@@ -40,8 +48,12 @@ try {
     writeReports(files, resolve(coverageRoot, project));
     allFiles.push(...files);
   }
-  writeReports(allFiles, coverageRoot);
-  console.log(`Merged ${allFiles.length} browser coverage fragments from ${projects.join(", ")}.`);
+  if (onlyProject === undefined) {
+    writeReports(allFiles, coverageRoot);
+    console.log(`Merged ${allFiles.length} browser coverage fragments from ${projects.join(", ")}.`);
+  } else {
+    console.log(`Wrote ${allFiles.length} ${onlyProject} browser coverage fragments.`);
+  }
 } catch (error) {
   failure = error;
 } finally {

@@ -9,7 +9,8 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CI_TARGET = "groovemap-music/automation/.github/workflows/reusable-ci.yml@dbf22ed83d486e9484fc8c6385c7c3e5995700e4"
+CI_TARGET = "groovemap-music/automation/.github/workflows/reusable-ci.yml@b80cccb7c514b0e394cbdfc90b386ac0877370fc"
+E2E_MATRIX_INPUT = "      e2e-matrix: true\n"
 RELEASE_TARGET = "groovemap-music/automation/.github/workflows/reusable-release.yml@833cb464507678c38ab78bd4718ce697399463e9"
 
 
@@ -17,18 +18,29 @@ RELEASE_TARGET = "groovemap-music/automation/.github/workflows/reusable-release.
     ("workflow", "target", "replacement", "accepted"),
     [
         ("ci.yml", CI_TARGET, CI_TARGET, True),
-        ("ci.yml", CI_TARGET, CI_TARGET.replace("dbf22ed83d486e9484fc8c6385c7c3e5995700e4", "833cb464507678c38ab78bd4718ce697399463e9"), False),
+        ("ci.yml", CI_TARGET, CI_TARGET.replace("b80cccb7c514b0e394cbdfc90b386ac0877370fc", "833cb464507678c38ab78bd4718ce697399463e9"), False),
+        ("ci.yml", CI_TARGET, CI_TARGET.replace("b80cccb7c514b0e394cbdfc90b386ac0877370fc", "dbf22ed83d486e9484fc8c6385c7c3e5995700e4"), False),
         ("ci.yml", CI_TARGET, CI_TARGET.replace("groovemap-music/automation", "foreign/automation"), False),
-        ("ci.yml", CI_TARGET, CI_TARGET.replace("dbf22ed83d486e9484fc8c6385c7c3e5995700e4", "0" * 40), False),
+        ("ci.yml", CI_TARGET, CI_TARGET.replace("b80cccb7c514b0e394cbdfc90b386ac0877370fc", "0" * 40), False),
+        ("ci.yml", E2E_MATRIX_INPUT, "", False),
         ("release.yml", RELEASE_TARGET, RELEASE_TARGET, True),
         (
             "release.yml",
             RELEASE_TARGET,
-            RELEASE_TARGET.replace("833cb464507678c38ab78bd4718ce697399463e9", "dbf22ed83d486e9484fc8c6385c7c3e5995700e4"),
+            RELEASE_TARGET.replace("833cb464507678c38ab78bd4718ce697399463e9", "b80cccb7c514b0e394cbdfc90b386ac0877370fc"),
             False,
         ),
     ],
-    ids=["current-ci", "old-ci", "foreign-ci-repository", "foreign-ci-revision", "unchanged-release", "altered-release"],
+    ids=[
+        "current-ci",
+        "old-ci",
+        "previous-ci",
+        "foreign-ci-repository",
+        "foreign-ci-revision",
+        "matrix-opt-in-removed",
+        "unchanged-release",
+        "altered-release",
+    ],
 )
 def test_actual_checker_enforces_independent_workflow_pins(tmp_path: Path, workflow: str, target: str, replacement: str, *, accepted: bool) -> None:
     inventory = subprocess.check_output(  # noqa: S603 - fixed tracked-source inventory

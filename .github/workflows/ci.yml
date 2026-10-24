@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   required:
-    uses: groovemap-music/automation/.github/workflows/reusable-ci.yml@dbf22ed83d486e9484fc8c6385c7c3e5995700e4
+    uses: groovemap-music/automation/.github/workflows/reusable-ci.yml@b80cccb7c514b0e394cbdfc90b386ac0877370fc
     with:
       runner: ubuntu-24.04
       language: mixed
@@ -34,8 +34,7 @@ jobs:
       coverage-files: |
         coverage.xml
         explore/coverage/lcov.info
-        coverage/e2e/lcov.info
-      coverage-flags: python,javascript,e2e,explorer
+      coverage-flags: python,javascript,explorer
       browser-coverage-mapping: >-
         [
           {"project":"chromium","lcov":"coverage/e2e/chromium/lcov.info","artifacts":["test-results/chromium","coverage/e2e/raw/chromium"]},
@@ -44,6 +43,7 @@ jobs:
           {"project":"iphone","lcov":"coverage/e2e/iphone/lcov.info","artifacts":["test-results/iphone","coverage/e2e/raw/iphone"]},
           {"project":"ipad","lcov":"coverage/e2e/ipad/lcov.info","artifacts":["test-results/ipad","coverage/e2e/raw/ipad"]}
         ]
+      e2e-matrix: true
       upload-codecov: true
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
