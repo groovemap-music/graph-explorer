@@ -519,6 +519,19 @@ describe('ApiClient', () => {
         });
     });
 
+    describe('getStyleAtlas', () => {
+        it('returns the status and body, an empty month included, and the body of a failure', async () => {
+            const empty = { month: null, computed_at: null, rule: { stages: ['absent'] }, timeline: null, genres: [], styles: [], ghosts: [] };
+            vi.stubGlobal('fetch', createMockFetch({ '/api/insights/style-atlas': { data: empty } }));
+            expect(await window.apiClient.getStyleAtlas()).toEqual({ ok: true, status: 200, body: empty });
+
+            vi.stubGlobal('fetch', createMockFetch({ '/api/insights/style-atlas': { status: 503, data: { detail: 'down' } } }));
+            const failed = await window.apiClient.getStyleAtlas();
+            expect(failed.ok).toBe(false);
+            expect(failed.status).toBe(503);
+        });
+    });
+
     describe('getGenreTree', () => {
         it('should return genre tree data on success', async () => {
             const treeData = {

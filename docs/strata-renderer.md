@@ -17,6 +17,7 @@ harness's `webgl-inst` mode is the source of the port.
 | `explore/static/css/strata.css` | The `--strata-*` color properties, the label classes, and the Explore view's chrome. `index.html` links it |
 | `explore/static/js/strata-explore.js` | The Explore integration: fetching, drill-down, both clocks, the filter, search-to-focus, keyboard, and the panel (below) |
 | `explore/static/js/strata-table.js` | The strata table: every credit, lane, master, and pressing as a sortable, keyboard-navigable table (below) |
+| `explore/static/js/strata-atlas-renderer.js` | `AtlasRenderer`, the Genre Atlas (concept B) on this engine: a subclass that draws the served atlas layout (below) |
 
 ## API
 
@@ -179,6 +180,26 @@ trail and Previous and Next in the panel page it, as they do in 3D.
 bodies recorded from catalog-api's fold over an invented catalog, so the view runs locally without
 a database. Artist ids `too-large` and `timeout` answer with the 422 and 504.
 
+## The Genre Atlas on the same engine
+
+The Genre Atlas (ADR 0016 section 4) runs on this engine. It opens in the Genres pane, beside the
+flat genre tree, and in the Insights pane. `AtlasRenderer` (`strata-atlas-renderer.js`) subclasses
+`StrataRenderer`, so the camera, pointer input, resolve picking, level of detail, reduced motion,
+and label placement apply unchanged. It replaces only what concept B draws differently. The planes
+carry the served genre ring, and node color is the lifecycle stage in the scrubbed year, from the
+`--groovemap-state-lifecycle-*` tokens. Provisional years get a dashed ring. Ghosts are wireframes.
+Genre hulls count their ghosts. The vertical links are the emergence edges only, and the lateral
+edges are the selected style's star only. The one change to this module is that `ribbon` is
+exported for it.
+
+`strata-atlas-layout.js` places nothing itself. Every node sits at its served `GET
+/api/insights/style-atlas` position times one scale. The footprint check shrinks a plane's nodes
+when the served positions leave no room for them, and never moves a node. `strata-atlas.js` is the
+view: the scrubber, the stage rule and its thresholds from the payload, the panel, the keys, and the
+empty month before the first monthly run. `tests/explore_test_app.py` serves the route from
+`tests/fixtures/style-atlas.json`. That body was recorded from analytics-engine's own read path
+over its seeded synthetic catalogue.
+
 ## Tests
 
 - `explore/__tests__/strata-scene.test.js` covers the GPU-free logic: resolve picking on stacked
@@ -207,6 +228,12 @@ a database. Artist ids `too-large` and `timeout` answer with the 422 and 504.
   keyboard. Searching to a pressing that is not drawn is not covered:
   it is not supported yet (gm-graph-explorer-sqjq).
   The user-facing description is [Discography Strata](discography-strata.md).
+- `explore/__tests__/strata-atlas-layout.test.js`, `strata-atlas-renderer.test.js`, and
+  `strata-atlas.test.js` cover the Genre Atlas. Positions equal the payload. Generated atlases
+  (`strata-atlas-fixtures.js`) and the recorded body have zero hull intrusions, every ghost inside
+  and counted in its host hull, and no overlapping footprints. They also cover the lifecycle colors,
+  the provisional treatment, the rule text, the emergence and lateral edges, picking, the empty
+  month, and the pane wiring.
 - `tests/perf/test_strata_renderer_perf.py` is the performance smoke test below. `just test` and the
   E2E matrix skip it (marker `benchmark`).
 

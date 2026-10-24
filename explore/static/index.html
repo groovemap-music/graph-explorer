@@ -37,6 +37,7 @@
     <link rel="stylesheet" href="/brand/tokens.css">
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="css/strata.css">
+    <link rel="stylesheet" href="css/strata-atlas.css">
     <link rel="stylesheet" href="css/nlq-pill.css">
     <style>[x-cloak] { display: none !important; }</style>
     <style>
@@ -1099,13 +1100,28 @@ body {
                     <!-- Status Footer -->
                     <div id="insightsStatus"></div>
                 </div>
+
+                <!-- The Genre Atlas (strata-atlas.js): the same view as the Genres pane's, moved
+                     here while this pane is open. It reads its own route, so it shows even when
+                     the other insights have not been computed yet. -->
+                <div class="insights-atlas-section" id="insightsAtlasMount"></div>
             </div>
         </div>
 
         <!-- Genres pane -->
         <div class="pane" id="genresPane">
             <div class="genre-tree-pane-container">
-                <div id="genreTreeContainer">
+                <!-- The Genre Atlas (strata-atlas.js) or the flat genre tree -->
+                <div class="genres-view-toggle" role="group" aria-label="Genres view">
+                    <button type="button" class="explore-view-btn active" data-genres-view="atlas" aria-pressed="true">
+                        <span class="material-symbols-outlined" aria-hidden="true">public</span>Atlas
+                    </button>
+                    <button type="button" class="explore-view-btn" data-genres-view="tree" aria-pressed="false">
+                        <span class="material-symbols-outlined" aria-hidden="true">account_tree</span>Tree
+                    </button>
+                </div>
+                <div id="genreAtlasMount"></div>
+                <div id="genreTreeContainer" hidden>
                     <div class="genre-tree-placeholder">
                         <span class="material-symbols-outlined icon-3x mb-3 text-text-mid">account_tree</span>
                         <p class="text-text-mid">Switch to the Genres tab to explore the genre/style hierarchy</p>
@@ -1415,6 +1431,7 @@ body {
     <script src="js/theme.js"></script>
     <script type="module" src="js/nlq.js"></script>
     <script type="module" src="js/strata-explore.js"></script>
+    <script type="module" src="js/strata-atlas.js"></script>
     <script src="js/settings-state.js"></script>
     <script src="js/settings.js"></script>
     <script src="js/application-lifecycle.js"></script>
