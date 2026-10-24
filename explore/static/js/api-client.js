@@ -482,29 +482,6 @@ class ApiClient {
     }
 
     /**
-     * The native id of the caller's own copy of a release (`owned_copy_id`), read from their
-     * collection, or null when the collection does not hold it or the sync has not minted an id.
-     * The collection is the only route that names a copy, so this pages through it, up to
-     * `maxPages` pages of `pageSize`.
-     *
-     * @param {string} token - JWT auth token
-     * @param {string} releaseId - The Discogs release id
-     * @returns {Promise<string|null>}
-     */
-    async findOwnedCopy(token, releaseId, { pageSize = 200, maxPages = 10 } = {}) {
-        if (!token || !releaseId) return null;
-        for (let page = 0; page < maxPages; page++) {
-            const data = await this.getUserCollection(token, pageSize, page * pageSize);
-            const items = data?.releases || [];
-            const item = items.find((entry) => String(entry.id) === String(releaseId));
-            if (item) return item.owned_copy_id || null;
-            const total = Number.isFinite(data?.total) ? data.total : null;
-            if (!items.length || (total !== null && (page + 1) * pageSize >= total)) return null;
-        }
-        return null;
-    }
-
-    /**
      * Record one observation about a copy the caller holds (ADR 0009): a matrix inscription, a
      * grading, a purchase price. It never changes a want or an own.
      *
