@@ -9,7 +9,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CI_TARGET = "groovemap-music/automation/.github/workflows/reusable-ci.yml@2f890111657d9f3e6f55d8bd5a5e7b8f9ca97b26"
+CI_TARGET = "groovemap-music/automation/.github/workflows/reusable-ci.yml@dbf22ed83d486e9484fc8c6385c7c3e5995700e4"
 RELEASE_TARGET = "groovemap-music/automation/.github/workflows/reusable-release.yml@833cb464507678c38ab78bd4718ce697399463e9"
 
 
@@ -17,14 +17,14 @@ RELEASE_TARGET = "groovemap-music/automation/.github/workflows/reusable-release.
     ("workflow", "target", "replacement", "accepted"),
     [
         ("ci.yml", CI_TARGET, CI_TARGET, True),
-        ("ci.yml", CI_TARGET, CI_TARGET.replace("2f890111657d9f3e6f55d8bd5a5e7b8f9ca97b26", "833cb464507678c38ab78bd4718ce697399463e9"), False),
+        ("ci.yml", CI_TARGET, CI_TARGET.replace("dbf22ed83d486e9484fc8c6385c7c3e5995700e4", "833cb464507678c38ab78bd4718ce697399463e9"), False),
         ("ci.yml", CI_TARGET, CI_TARGET.replace("groovemap-music/automation", "foreign/automation"), False),
-        ("ci.yml", CI_TARGET, CI_TARGET.replace("2f890111657d9f3e6f55d8bd5a5e7b8f9ca97b26", "0" * 40), False),
+        ("ci.yml", CI_TARGET, CI_TARGET.replace("dbf22ed83d486e9484fc8c6385c7c3e5995700e4", "0" * 40), False),
         ("release.yml", RELEASE_TARGET, RELEASE_TARGET, True),
         (
             "release.yml",
             RELEASE_TARGET,
-            RELEASE_TARGET.replace("833cb464507678c38ab78bd4718ce697399463e9", "2f890111657d9f3e6f55d8bd5a5e7b8f9ca97b26"),
+            RELEASE_TARGET.replace("833cb464507678c38ab78bd4718ce697399463e9", "dbf22ed83d486e9484fc8c6385c7c3e5995700e4"),
             False,
         ),
     ],
