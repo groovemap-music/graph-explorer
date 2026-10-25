@@ -91,7 +91,7 @@ Outcome posts are fire-and-forget and never gate an interaction — see
 | --- | --- | --- |
 | `catalog-api` graph-explorer route contract | `d52c7f955f74e05972a24d5b653e1b3d70292554` | [`contracts/catalog-api/graph-explorer/v1/source.json`](../contracts/catalog-api/graph-explorer/v1/source.json) and [`routes.json`](../contracts/catalog-api/graph-explorer/v1/routes.json) |
 | `python-libraries` runtime package | `21855671580a446074bb9527b4d3355fee0bfde9` | [`pyproject.toml`](../pyproject.toml) and `uv.lock` |
-| `design` generated brand assets | `7abe13ad3e22e81b5437eb92acb8db998730e11a` | [`explore/static/brand/source.json`](../explore/static/brand/source.json) |
+| `design` generated brand assets | `41be7cbe738f40df0c75ad7065475e91d6cc2aa4` | [`explore/static/brand/source.json`](../explore/static/brand/source.json) |
 
 `scripts/check-contracts.py` verifies the producer digest and checks every literal browser API
 route against the promoted route set. A registry entry may carry a `parameters` list beside its
