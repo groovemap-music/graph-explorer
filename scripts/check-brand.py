@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BRAND = ROOT / "explore/static/brand"
 PRODUCER_REPOSITORY = "https://github.com/groovemap-music/design"
-PRODUCER_COMMIT = "109cbd5bddcc699426e2406c8de486e012a30f5a"
+PRODUCER_COMMIT = "7abe13ad3e22e81b5437eb92acb8db998730e11a"
 source = json.loads((BRAND / "source.json").read_text())
 assert source["producer_repository"] == PRODUCER_REPOSITORY
 assert source["producer_commit"] == PRODUCER_COMMIT
