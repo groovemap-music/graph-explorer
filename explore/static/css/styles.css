@@ -19,22 +19,26 @@
     --text-muted: #4a5e78;
 
     /* Cyan — primary accent */
-    --cyan-900: #004d5a;
-    --cyan-700: #00838f;
-    --cyan-500: #00bcd4;
-    --cyan-glow: #00e5ff;
-    --cyan-bright: #80f0ff;
+    --cyan-900: #0d353f; /* groovemap-lagoon */
+    --cyan-700: #2a7a85;
+    --cyan-500: #a8fff2; /* groovemap-mint */
+    --cyan-glow: #a8fff2;
+    --cyan-bright: #d4fff9;
 
     /* Purple — secondary accent */
-    --purple-900: #311b92;
-    --purple-700: #5e35b1;
-    --purple-500: #7c4dff;
-    --purple-300: #b388ff;
-    --purple-bright: #d4b8ff;
+    --purple-900: #0d353f; /* groovemap-lagoon */
+    --purple-700: #2a7a85;
+    --purple-500: #a8fff2; /* groovemap-mint */
+    --purple-300: #a8fff2;
+    --purple-bright: #d4fff9;
 
     /* Legacy aliases (used by Tailwind classes and existing markup) */
-    --blue-accent: #00bcd4;
-    --purple-accent: #7c4dff;
+    --blue-accent: #a8fff2;
+    --purple-accent: #a8fff2;
+    --on-accent: #0d353f; /* text on a filled accent background (lagoon on mint) */
+    /* Secondary data role (stats, chart series). Chosen to clear the Design Strata/entity palette
+       (no state, entity, or brand-accent color). 16.1:1 on card-bg, 14.1:1 on inner-bg */
+    --accent-secondary: #e8ffb3;
 
     /* Semantic status */
     --accent-green: #00e676;
@@ -85,22 +89,25 @@
     --text-muted: #94a3b8;
 
     /* Cyan — primary accent (deepened for AA contrast on light backgrounds) */
-    --cyan-900: #b2ebf2;
-    --cyan-700: #00707d;
-    --cyan-500: #007c91;
-    --cyan-glow: #0097a7;
-    --cyan-bright: #005662;
+    --cyan-900: #d4fff9;
+    --cyan-700: #1d5560;
+    --cyan-500: #0d353f; /* groovemap-lagoon */
+    --cyan-glow: #0d353f;
+    --cyan-bright: #0d353f;
 
     /* Purple — secondary accent (deepened for AA contrast on light backgrounds) */
-    --purple-900: #ede7f6;
-    --purple-700: #4527a0;
-    --purple-500: #5e35b1;
-    --purple-300: #7c4dff;
-    --purple-bright: #311b92;
+    --purple-900: #d4fff9;
+    --purple-700: #1d5560;
+    --purple-500: #0d353f; /* groovemap-lagoon */
+    --purple-300: #0d353f;
+    --purple-bright: #0d353f;
 
     /* Legacy aliases (used by Tailwind classes and existing markup) */
-    --blue-accent: #007c91;
-    --purple-accent: #5e35b1;
+    --blue-accent: #0d353f;
+    --purple-accent: #0d353f;
+    --on-accent: #ffffff;
+    /* Chosen to clear the Design Strata/entity palette. 8.8:1 on card-bg, 7.8:1 on inner-bg */
+    --accent-secondary: #1f2bd6;
 
     /* Semantic status (deepened for AA contrast on light backgrounds) */
     --accent-green: #1b8a45;
@@ -994,7 +1001,7 @@ select option {
 
 .release-table-actions .btn-refresh {
     background: var(--blue-accent);
-    color: #fff;
+    color: var(--on-accent);
     border: none;
     border-radius: 1.25rem;
     padding: 0.4rem 1.1rem;
@@ -1190,7 +1197,7 @@ select option {
 
 .pane-pagination .page-btn.active {
     background: var(--blue-accent);
-    color: #fff;
+    color: var(--on-accent);
     border-color: var(--blue-accent);
 }
 
@@ -1582,7 +1589,7 @@ select option {
 .search-chip.active {
     background: var(--blue-accent);
     border-color: var(--blue-accent);
-    color: #fff;
+    color: var(--on-accent);
 }
 
 .search-chip-sm {
@@ -1827,7 +1834,7 @@ select option {
 
 .search-pane-pagination .page-btn.active {
     background: var(--blue-accent);
-    color: #fff;
+    color: var(--on-accent);
     border-color: var(--blue-accent);
 }
 
@@ -2091,7 +2098,7 @@ select option {
     font-size: 14px;
 }
 
-.taste-stat-value.purple { color: var(--purple-accent); }
+.taste-stat-value.purple { color: var(--accent-secondary); }
 .taste-stat-value.blue { color: var(--blue-accent); }
 .taste-stat-value.green { color: var(--accent-green); }
 
@@ -2356,7 +2363,7 @@ select option {
 
 .insights-genre-chip.active {
     background: var(--purple-accent);
-    color: white;
+    color: var(--on-accent);
     border-color: var(--purple-accent);
 }
 
@@ -2623,7 +2630,7 @@ select option {
 }
 .credits-badge {
     font-size: 0.75rem; padding: 2px 8px; border-radius: 12px;
-    background: var(--purple-accent); color: #fff;
+    background: var(--purple-accent); color: var(--on-accent);
 }
 .credits-artist-link {
     font-size: 0.75rem; color: var(--blue-accent); margin-left: auto;
