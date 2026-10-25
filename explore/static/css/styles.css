@@ -36,8 +36,9 @@
     --blue-accent: #a8fff2;
     --purple-accent: #a8fff2;
     --on-accent: #0d353f; /* text on a filled accent background (lagoon on mint) */
-    /* Secondary data role (stats, chart series): brand fit-bridge lavender, distinct from the mint accent. 9.9:1 on card-bg */
-    --accent-secondary: #bcc1eb;
+    /* Secondary data role (stats, chart series). Chosen to clear the Design Strata/entity palette
+       (no state, entity, or brand-accent color). 16.1:1 on card-bg, 14.1:1 on inner-bg */
+    --accent-secondary: #e8ffb3;
 
     /* Semantic status */
     --accent-green: #00e676;
@@ -105,8 +106,8 @@
     --blue-accent: #0d353f;
     --purple-accent: #0d353f;
     --on-accent: #ffffff;
-    /* 6.3:1 on card-bg, 5.5:1 on inner-bg */
-    --accent-secondary: #5558a8;
+    /* Chosen to clear the Design Strata/entity palette. 8.8:1 on card-bg, 7.8:1 on inner-bg */
+    --accent-secondary: #1f2bd6;
 
     /* Semantic status (deepened for AA contrast on light backgrounds) */
     --accent-green: #1b8a45;
