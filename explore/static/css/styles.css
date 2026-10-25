@@ -36,6 +36,8 @@
     --blue-accent: #a8fff2;
     --purple-accent: #a8fff2;
     --on-accent: #0d353f; /* text on a filled accent background (lagoon on mint) */
+    /* Secondary data role (stats, chart series): brand fit-bridge lavender, distinct from the mint accent. 9.9:1 on card-bg */
+    --accent-secondary: #bcc1eb;
 
     /* Semantic status */
     --accent-green: #00e676;
@@ -103,6 +105,8 @@
     --blue-accent: #0d353f;
     --purple-accent: #0d353f;
     --on-accent: #ffffff;
+    /* 6.3:1 on card-bg, 5.5:1 on inner-bg */
+    --accent-secondary: #5558a8;
 
     /* Semantic status (deepened for AA contrast on light backgrounds) */
     --accent-green: #1b8a45;
@@ -2093,7 +2097,7 @@ select option {
     font-size: 14px;
 }
 
-.taste-stat-value.purple { color: var(--purple-accent); }
+.taste-stat-value.purple { color: var(--accent-secondary); }
 .taste-stat-value.blue { color: var(--blue-accent); }
 .taste-stat-value.green { color: var(--accent-green); }
 

@@ -19,6 +19,7 @@
     --color-purple-300: var(--purple-300);
     --color-blue-accent: var(--blue-accent);
     --color-purple-accent: var(--purple-accent);
+    --color-on-accent: var(--on-accent);
     --color-accent-green: var(--accent-green);
     --color-accent-yellow: var(--accent-yellow);
     --color-accent-red: var(--accent-red);
@@ -32,7 +33,7 @@
 
 /* Button variants */
 @utility btn-primary {
-    @apply btn-base bg-cyan-500 text-white hover:bg-cyan-glow focus:ring-cyan-500;
+    @apply btn-base bg-cyan-500 text-on-accent hover:bg-cyan-glow focus:ring-cyan-500;
 }
 
 @utility btn-success {
@@ -44,7 +45,7 @@
 }
 
 @utility btn-secondary {
-    @apply btn-base bg-purple-500 text-white hover:bg-purple-300 focus:ring-purple-500;
+    @apply btn-base bg-purple-500 text-on-accent hover:bg-purple-300 focus:ring-purple-500;
 }
 
 @utility btn-danger {
@@ -56,7 +57,7 @@
 }
 
 @utility btn-outline-primary {
-    @apply btn-base border border-cyan-500 text-cyan-500 hover:bg-cyan-500 hover:text-white focus:ring-cyan-500;
+    @apply btn-base border border-cyan-500 text-cyan-500 hover:bg-cyan-500 hover:text-on-accent focus:ring-cyan-500;
 }
 
 @utility btn-outline-danger {

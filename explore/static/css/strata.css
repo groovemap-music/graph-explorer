@@ -13,10 +13,10 @@
     --strata-node-stateless: var(--text-dim);
     --strata-blocked: var(--accent-red);
     --strata-hull-1: var(--cyan-500);
-    --strata-hull-2: var(--purple-300);
+    --strata-hull-2: var(--accent-secondary);
     --strata-hull-3: var(--node-release);
     --strata-hull-4: var(--accent-yellow);
-    --strata-edge-member: var(--purple-300);
+    --strata-edge-member: var(--accent-secondary);
     --strata-edge-collab: var(--node-release);
     --strata-edge-personnel: var(--cyan-500);
     --strata-edge-company: var(--node-category);
