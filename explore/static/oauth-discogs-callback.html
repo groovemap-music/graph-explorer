@@ -1,13 +1,58 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="referrer" content="no-referrer">
     <title>Connecting Discogs…</title>
+    <meta name="color-scheme" content="dark light">
+    <meta name="theme-color" content="#0e0d0b" media="(prefers-color-scheme: dark)" data-theme-color="dark">
+    <meta name="theme-color" content="#eeeae3" media="(prefers-color-scheme: light)" data-theme-color="light">
+    <script>
+    /* Theme bootstrap. Runs before first paint so there is no flash. The OS setting is the
+       default; a stored choice ("light" or "dark") wins. theme.js wires the header toggle. */
+    (function () {
+        var root = document.documentElement;
+        var media = window.matchMedia('(prefers-color-scheme: dark)');
+        var COLORS = { dark: '#0e0d0b', light: '#eeeae3' };
+        function stored() {
+            try {
+                var value = localStorage.getItem('theme');
+                return value === 'dark' || value === 'light' ? value : null;
+            } catch (e) { return null; }
+        }
+        function effective() { return stored() || (media.matches ? 'dark' : 'light'); }
+        function apply() {
+            var theme = effective();
+            var override = stored();
+            root.classList.toggle('dark', theme === 'dark');
+            root.style.colorScheme = theme;
+            document.querySelectorAll('meta[name="theme-color"]').forEach(function (meta) {
+                meta.setAttribute('content', override ? COLORS[theme] : COLORS[meta.dataset.themeColor]);
+            });
+            return theme;
+        }
+        window.GrooveMapTheme = {
+            effective: effective,
+            apply: apply,
+            set: function (theme) {
+                try { localStorage.setItem('theme', theme); } catch (e) { /* storage blocked */ }
+                return apply();
+            },
+        };
+        apply();
+        media.addEventListener('change', function () { if (!stored()) apply(); });
+    }());
+    </script>
     <link href="tailwind.css" rel="stylesheet">
+    <link rel="stylesheet" href="/brand/tokens.css">
+    <link rel="stylesheet" href="css/styles.css">
+    <link href="vendor/fonts/inter/latin-400.css" rel="stylesheet">
+    <link href="vendor/fonts/inter/latin-600.css" rel="stylesheet">
+    <link rel="icon" type="image/svg+xml" href="/brand/favicon.svg">
+    <link rel="apple-touch-icon" href="/brand/app-icon-192.svg">
 </head>
-<body class="bg-bg-base text-text-high flex h-screen items-center justify-center">
+<body style="font-family: var(--font-body);" class="bg-bg-deep text-text-high flex h-screen items-center justify-center">
     <main class="text-center px-6">
         <h1 class="text-xl font-semibold mb-2">Connecting your Discogs account…</h1>
         <p id="status" class="text-text-mid">You can close this window if it doesn't close automatically.</p>
