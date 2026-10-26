@@ -476,7 +476,7 @@ class ExploreApp {
         } else if (loggedIn) {
             if (statusDisplay) {
                 const badge = document.createElement('span');
-                badge.className = 'badge bg-gray-600 text-text-mid discogs-badge';
+                badge.className = 'badge bg-inner-bg border border-border-color text-text-mid discogs-badge';
                 badge.textContent = 'Not connected';
                 statusDisplay.replaceChildren(badge);
             }
@@ -486,7 +486,7 @@ class ExploreApp {
         } else {
             if (statusDisplay) {
                 const badge = document.createElement('span');
-                badge.className = 'badge bg-gray-600 text-text-mid discogs-badge';
+                badge.className = 'badge bg-inner-bg border border-border-color text-text-mid discogs-badge';
                 badge.textContent = 'Not connected';
                 statusDisplay.replaceChildren(badge);
             }

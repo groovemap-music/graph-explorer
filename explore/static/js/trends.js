@@ -29,6 +29,7 @@ class TrendsChart {
         const minYear = Math.min(...years) - 3;
         const maxYear = Math.max(...years) + 3;
 
+        const s = ChartTheme.series();
         const trace = {
             x: years,
             y: counts,
@@ -36,15 +37,15 @@ class TrendsChart {
             mode: 'lines+markers',
             name: `${data.name} releases`,
             line: {
-                color: '#1877f2',
+                color: s.accent,
                 width: 2,
             },
             marker: {
-                color: '#1877f2',
+                color: s.accent,
                 size: 6,
             },
             fill: 'tozeroy',
-            fillcolor: 'rgba(24, 119, 242, 0.1)',
+            fillcolor: ChartTheme.alpha(s.accent, 0.1),
         };
 
         const c = ChartTheme.colors();
@@ -97,6 +98,17 @@ class TrendsChart {
                 paper_bgcolor: t.paper,
                 'font.color': t.textHigh,
             };
+        }, (chart) => {
+            const t = ChartTheme.series();
+            const colors = [t.accent, t.secondary].slice(0, chart.data.length);
+            return {
+                update: {
+                    'line.color': colors,
+                    'marker.color': colors,
+                    fillcolor: colors.map((color) => ChartTheme.alpha(color, 0.1)),
+                },
+                traces: colors.map((_, i) => i),
+            };
         });
         this.hasComparison = false;
     }
@@ -108,16 +120,17 @@ class TrendsChart {
     addComparison(data) {
         if (!data || !data.data || data.data.length === 0 || !this.hasData) return;
 
+        const s = ChartTheme.series();
         const trace = {
             x: data.data.map(d => d.year),
             y: data.data.map(d => d.count),
             type: 'scatter',
             mode: 'lines+markers',
             name: `${data.name} releases`,
-            line: { color: '#42b883', width: 2 },
-            marker: { color: '#42b883', size: 6 },
+            line: { color: s.secondary, width: 2 },
+            marker: { color: s.secondary, size: 6 },
             fill: 'tozeroy',
-            fillcolor: 'rgba(66, 184, 131, 0.1)',
+            fillcolor: ChartTheme.alpha(s.secondary, 0.1),
         };
 
         Plotly.addTraces(this.container, trace);

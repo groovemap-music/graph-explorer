@@ -167,32 +167,26 @@
       ]
     },
     {
-      "id": "space-grotesk",
-      "name": "Space Grotesk",
-      "package": "@fontsource/space-grotesk",
+      "id": "jura",
+      "name": "Jura",
+      "package": "@fontsource/jura",
       "version": "5.3.0",
       "declared_license": "OFL-1.1",
       "selected_license": "OFL-1.1",
-      "homepage": "https://fontsource.org/fonts/space-grotesk",
+      "homepage": "https://fontsource.org/fonts/jura",
       "license_source": {
         "scope": "package",
         "path": "LICENSE",
-        "sha256": "18a4de52385f6b988782639d5d0cc1326e5a8c2de9a7f01d7b20d9aedcc60943"
+        "sha256": "0d5db8c052b693936cbc18c1411060c34cc4d8209b98fb13baca93e267778651"
       },
-      "license_destination": "licenses/space-grotesk-5.3.0-OFL-1.1.txt",
+      "license_destination": "licenses/jura-5.3.0-OFL-1.1.txt",
       "outputs": [
-        "fonts/space-grotesk/latin-400.css",
-        "fonts/space-grotesk/latin-500.css",
-        "fonts/space-grotesk/latin-600.css",
-        "fonts/space-grotesk/latin-700.css",
-        "fonts/space-grotesk/files/space-grotesk-latin-400-normal.woff",
-        "fonts/space-grotesk/files/space-grotesk-latin-400-normal.woff2",
-        "fonts/space-grotesk/files/space-grotesk-latin-500-normal.woff",
-        "fonts/space-grotesk/files/space-grotesk-latin-500-normal.woff2",
-        "fonts/space-grotesk/files/space-grotesk-latin-600-normal.woff",
-        "fonts/space-grotesk/files/space-grotesk-latin-600-normal.woff2",
-        "fonts/space-grotesk/files/space-grotesk-latin-700-normal.woff",
-        "fonts/space-grotesk/files/space-grotesk-latin-700-normal.woff2"
+        "fonts/jura/latin-300.css",
+        "fonts/jura/latin-400.css",
+        "fonts/jura/files/jura-latin-300-normal.woff",
+        "fonts/jura/files/jura-latin-300-normal.woff2",
+        "fonts/jura/files/jura-latin-400-normal.woff",
+        "fonts/jura/files/jura-latin-400-normal.woff2"
       ]
     },
     {

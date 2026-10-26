@@ -442,7 +442,7 @@ class GraphVisualization {
                     .attr('rx', 6)
                     .attr('ry', 6)
                     .attr('fill', 'var(--node-category)')
-                    .attr('stroke', '#fff')
+                    .attr('stroke', 'var(--node-stroke)')
                     .attr('stroke-width', 1.5);
             } else if (d.isLoadMore) {
                 const w = 56, h = 22;
@@ -464,22 +464,22 @@ class GraphVisualization {
                         d.type === 'artist' ? 'var(--node-artist)' :
                         d.type === 'release' ? 'var(--node-release)' :
                         d.type === 'label' ? 'var(--node-label)' :
-                        d.type === 'genre' || d.type === 'style' ? 'var(--node-genre)' : '#888')
-                    .attr('stroke', d.isCenter ? '#fff' : 'rgba(255,255,255,0.3)')
+                        d.type === 'genre' || d.type === 'style' ? 'var(--node-genre)' : 'var(--text-muted)')
+                    .attr('stroke', d.isCenter ? 'var(--node-stroke)' : 'var(--node-stroke-soft)')
                     .attr('stroke-width', d.isCenter ? 3 : 1);
 
                 // Comparison mode styling
                 if (d.compareStatus === 'only_a') {
                     circle
                         .attr('opacity', 0.4)
-                        .attr('stroke', '#818cf8')
+                        .attr('stroke', 'var(--compare-a)')
                         .attr('stroke-width', 2)
                         .attr('stroke-dasharray', '4 2');
                 } else if (d.compareStatus === 'only_b') {
                     circle
-                        .attr('stroke', '#34d399')
+                        .attr('stroke', 'var(--compare-b)')
                         .attr('stroke-width', 2.5)
-                        .attr('filter', 'drop-shadow(0 0 4px #059669)');
+                        .attr('filter', 'drop-shadow(0 0 4px var(--compare-b))');
                 }
             }
         });
@@ -509,7 +509,7 @@ class GraphVisualization {
             })
             .style('font-size', d => d.isCenter ? '13px' : (d.isCategory || d.isLoadMore) ? '11px' : '10px')
             .style('font-weight', d => d.isCenter ? '700' : '400')
-            .style('fill', d => d.isLoadMore ? 'var(--node-load-more-text)' : null);
+            .style('fill', d => d.isLoadMore ? 'var(--node-load-more-text)' : d.isCategory ? 'var(--node-category-ink)' : null);
 
         // Simulation tick
         this.simulation.on('tick', () => {

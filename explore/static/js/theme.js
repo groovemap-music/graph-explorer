@@ -1,59 +1,81 @@
 /**
- * Theme toggle — tri-state: auto (match OS, default) → light → dark.
- * Matches dashboard implementation.
+ * Theme toggle: light or dark. The default is the OS setting (prefers-color-scheme); a user
+ * choice is stored in localStorage and wins, and with no stored choice live OS changes are
+ * followed. The inline bootstrap in each page's <head> applies the theme before first paint
+ * and exposes `window.GrooveMapTheme`; this script wires the header button and keeps a
+ * self-contained fallback so the toggle still works if the bootstrap is missing.
  */
 (function initThemeToggle() {
     'use strict';
 
-    function getMode() {
-        return localStorage.getItem('theme') || 'auto';
-    }
+    const COLORS = { dark: '#0e0d0b', light: '#eeeae3' };
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
 
-    function applyMode(mode) {
-        if (mode === 'auto') {
-            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-            document.documentElement.classList.toggle('dark', prefersDark);
-        } else {
-            document.documentElement.classList.toggle('dark', mode === 'dark');
+    function stored() {
+        try {
+            const value = localStorage.getItem('theme');
+            return value === 'dark' || value === 'light' ? value : null;
+        } catch (e) {
+            return null;
         }
     }
 
-    // Apply the persisted preference unconditionally — this must not depend on
-    // the toggle button existing so a stored choice is never silently ignored.
-    applyMode(getMode());
+    function effective() {
+        return stored() || (media.matches ? 'dark' : 'light');
+    }
 
-    // Listen for OS-level theme changes — only applies when in auto mode
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-        if (getMode() === 'auto') {
-            document.documentElement.classList.toggle('dark', e.matches);
+    function apply() {
+        const theme = effective();
+        const override = stored();
+        const root = document.documentElement;
+        root.classList.toggle('dark', theme === 'dark');
+        root.style.colorScheme = theme;
+        document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
+            meta.setAttribute('content', override ? COLORS[theme] : COLORS[meta.dataset.themeColor] || COLORS[theme]);
+        });
+        return theme;
+    }
+
+    function set(theme) {
+        try {
+            localStorage.setItem('theme', theme);
+        } catch (e) {
+            /* storage blocked: the choice applies for this page only */
         }
+        return apply();
+    }
+
+    const api = window.GrooveMapTheme || { effective, apply, set };
+
+    // Apply the stored/OS preference unconditionally; it must not depend on the button existing.
+    api.apply();
+
+    // Follow live OS changes only while the user has not made a choice.
+    media.addEventListener('change', () => {
+        if (!stored()) api.apply();
     });
 
     const btn = document.getElementById('theme-toggle');
-    const autoIcon = document.getElementById('theme-icon-auto');
     const sunIcon = document.getElementById('theme-icon-sun');
     const moonIcon = document.getElementById('theme-icon-moon');
-    if (!btn || !autoIcon || !sunIcon || !moonIcon) return;
+    if (!btn || !sunIcon || !moonIcon) return;
 
-    function updateIcons() {
-        const mode = getMode();
-        autoIcon.classList.toggle('hidden', mode !== 'auto');
-        sunIcon.classList.toggle('hidden', mode !== 'light');
-        moonIcon.classList.toggle('hidden', mode !== 'dark');
+    // The button shows the theme it will switch to: sun while dark, moon while light.
+    function updateButton() {
+        const dark = api.effective() === 'dark';
+        sunIcon.classList.toggle('hidden', !dark);
+        moonIcon.classList.toggle('hidden', dark);
+        const label = dark ? 'Switch to light theme' : 'Switch to dark theme';
+        btn.title = label;
+        btn.setAttribute('aria-label', label);
+        btn.setAttribute('aria-pressed', String(dark));
     }
 
-    updateIcons();
-
-    const cycle = { auto: 'light', light: 'dark', dark: 'auto' };
+    updateButton();
+    media.addEventListener('change', updateButton);
 
     btn.addEventListener('click', () => {
-        const next = cycle[getMode()];
-        if (next === 'auto') {
-            localStorage.removeItem('theme');
-        } else {
-            localStorage.setItem('theme', next);
-        }
-        applyMode(next);
-        updateIcons();
+        api.set(api.effective() === 'dark' ? 'light' : 'dark');
+        updateButton();
     });
 })();
