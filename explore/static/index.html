@@ -1,9 +1,48 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GrooveMap Graph Explorer</title>
+    <meta name="color-scheme" content="dark light">
+    <meta name="theme-color" content="#0e0d0b" media="(prefers-color-scheme: dark)" data-theme-color="dark">
+    <meta name="theme-color" content="#eeeae3" media="(prefers-color-scheme: light)" data-theme-color="light">
+    <script>
+    /* Theme bootstrap. Runs before first paint so there is no flash. The OS setting is the
+       default; a stored choice ("light" or "dark") wins. theme.js wires the header toggle. */
+    (function () {
+        var root = document.documentElement;
+        var media = window.matchMedia('(prefers-color-scheme: dark)');
+        var COLORS = { dark: '#0e0d0b', light: '#eeeae3' };
+        function stored() {
+            try {
+                var value = localStorage.getItem('theme');
+                return value === 'dark' || value === 'light' ? value : null;
+            } catch (e) { return null; }
+        }
+        function effective() { return stored() || (media.matches ? 'dark' : 'light'); }
+        function apply() {
+            var theme = effective();
+            var override = stored();
+            root.classList.toggle('dark', theme === 'dark');
+            root.style.colorScheme = theme;
+            document.querySelectorAll('meta[name="theme-color"]').forEach(function (meta) {
+                meta.setAttribute('content', override ? COLORS[theme] : COLORS[meta.dataset.themeColor]);
+            });
+            return theme;
+        }
+        window.GrooveMapTheme = {
+            effective: effective,
+            apply: apply,
+            set: function (theme) {
+                try { localStorage.setItem('theme', theme); } catch (e) { /* storage blocked */ }
+                return apply();
+            },
+        };
+        apply();
+        media.addEventListener('change', function () { if (!stored()) apply(); });
+    }());
+    </script>
     <link href="tailwind.css" rel="stylesheet">
     <link href="vendor/fonts/inter/latin-400.css" rel="stylesheet">
     <link href="vendor/fonts/inter/latin-500.css" rel="stylesheet">
@@ -11,10 +50,8 @@
     <link href="vendor/fonts/inter/latin-700.css" rel="stylesheet">
     <link href="vendor/fonts/jetbrains-mono/latin-400.css" rel="stylesheet">
     <link href="vendor/fonts/jetbrains-mono/latin-500.css" rel="stylesheet">
-    <link href="vendor/fonts/space-grotesk/latin-400.css" rel="stylesheet">
-    <link href="vendor/fonts/space-grotesk/latin-500.css" rel="stylesheet">
-    <link href="vendor/fonts/space-grotesk/latin-600.css" rel="stylesheet">
-    <link href="vendor/fonts/space-grotesk/latin-700.css" rel="stylesheet">
+    <link href="vendor/fonts/jura/latin-300.css" rel="stylesheet">
+    <link href="vendor/fonts/jura/latin-400.css" rel="stylesheet">
     <link href="vendor/fonts/material-symbols/outlined.css" rel="stylesheet">
     <link rel="icon" type="image/svg+xml" href="/brand/favicon.svg">
     <link rel="apple-touch-icon" href="/brand/app-icon-192.svg">
@@ -118,7 +155,7 @@ body {
 
 /* Genre emergence glow */
 @keyframes emergence-glow {
-    0% { filter: drop-shadow(0 0 6px #facc15); }
+    0% { filter: drop-shadow(0 0 6px var(--accent-yellow)); }
     100% { filter: none; }
 }
 .node-emergence {
@@ -127,7 +164,7 @@ body {
 .emergence-badge {
     font-size: 8px;
     font-weight: 700;
-    fill: #facc15;
+    fill: var(--accent-yellow);
     text-anchor: middle;
 }
 
@@ -137,13 +174,13 @@ body {
     color: var(--text-mid);
     user-select: none;
 }
-.timeline-year-a { color: #818cf8; }
-.timeline-year-b { color: #a78bfa; }
-.timeline-slider-a { accent-color: #4f46e5; }
-.timeline-slider-b { accent-color: #7c3aed; }
+.timeline-year-a { color: var(--compare-a); }
+.timeline-year-b { color: var(--compare-b); }
+.timeline-slider-a { accent-color: var(--compare-a); }
+.timeline-slider-b { accent-color: var(--compare-b); }
 .timeline-btn.active {
     background: var(--purple-accent);
-    color: #fff;
+    color: var(--on-accent);
     border-color: var(--purple-accent);
 }
 
@@ -187,16 +224,16 @@ body {
     border-radius: 50%;
 }
 .compare-swatch-both {
-    background: #6366f1;
-    border: 2px solid rgba(255,255,255,0.3);
+    background: var(--compare-both);
+    border: 2px solid color-mix(in srgb, var(--text-high) 30%, transparent);
 }
 .compare-swatch-only-a {
-    background: rgba(79,70,229,0.4);
-    border: 2px dashed #818cf8;
+    background: color-mix(in srgb, var(--compare-a) 40%, transparent);
+    border: 2px dashed var(--compare-a);
 }
 .compare-swatch-only-b {
-    background: #059669;
-    border: 2px solid #34d399;
+    background: var(--compare-b);
+    border: 2px solid var(--compare-b);
 }
 
 /* Comparison node/link styles */
@@ -205,7 +242,7 @@ body {
     opacity: 0.4;
 }
 .link-only-b {
-    stroke: #34d399;
+    stroke: var(--compare-b);
 }
 
 /* Same-year hint */
@@ -236,7 +273,7 @@ body {
     font-size: 0.7rem;
     border-radius: 9999px;
     background: var(--inner-bg);
-    color: var(--text-low);
+    color: var(--text-dim);
     border: 1px solid var(--border-color);
     margin-right: 4px;
     margin-top: 8px;
@@ -379,7 +416,7 @@ body {
                 <!-- Recovery code entry -->
                 <div x-show="tab === '2fa-recovery'" id="twoFactorRecoveryPane">
                     <div class="text-center mb-4">
-                        <span class="material-symbols-outlined text-4xl text-amber-400">key</span>
+                        <span class="material-symbols-outlined text-4xl text-accent-yellow">key</span>
                         <p class="mt-2 text-sm text-text-mid">Enter one of your recovery codes</p>
                     </div>
                     <div class="mb-4">
@@ -453,11 +490,12 @@ body {
             <!-- Brand -->
             <div class="navbar-brand">
                 <div id="app-logo" class="flex-shrink-0" aria-label="GrooveMap logo">
-                    <img src="/brand/icon-dark.svg" alt="GrooveMap" style="width:32px;height:32px;border-radius:50%;">
+                    <img class="app-logo-img app-logo-dark" src="/brand/icon-dark.svg" alt="GrooveMap" width="32" height="32">
+                    <img class="app-logo-img app-logo-light" src="/brand/icon-light.svg" alt="" aria-hidden="true" width="32" height="32">
                 </div>
                 <a class="navbar-title" href="#">
-                    <span style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:0.95rem;letter-spacing:-0.03em;" class="t-high">GrooveMap</span>
-                    <span style="font-family:'Space Grotesk',sans-serif;font-size:0.6rem;letter-spacing:0.02em;" class="t-muted ml-1">the choon network</span>
+                    <span class="navbar-wordmark">groovemap</span>
+                    <span class="navbar-tagline">explore the connections behind music</span>
                 </a>
             </div>
 
@@ -490,10 +528,9 @@ body {
 
             <!-- Utilities: theme + auth -->
             <div class="navbar-utils">
-                <button type="button" class="navbar-icon-btn" id="theme-toggle" title="Toggle theme (auto → light → dark)">
-                    <span class="material-symbols-outlined" id="theme-icon-auto">brightness_auto</span>
-                    <span class="material-symbols-outlined hidden" id="theme-icon-sun">light_mode</span>
-                    <span class="material-symbols-outlined hidden" id="theme-icon-moon">dark_mode</span>
+                <button type="button" class="navbar-icon-btn" id="theme-toggle" title="Switch to light theme" aria-label="Switch to light theme" aria-pressed="true">
+                    <span class="material-symbols-outlined" id="theme-icon-sun" aria-hidden="true">light_mode</span>
+                    <span class="material-symbols-outlined hidden" id="theme-icon-moon" aria-hidden="true">dark_mode</span>
                 </button>
                 <div class="navbar-auth">
                     <div id="authButtons">
@@ -516,7 +553,7 @@ body {
                             <div class="px-3 py-2">
                                 <div class="text-xs text-text-mid mb-1">Discogs</div>
                                 <div id="discogsStatusDisplay">
-                                    <span class="badge bg-gray-600 text-text-mid discogs-badge">Not connected</span>
+                                    <span class="badge bg-inner-bg border border-border-color text-text-mid discogs-badge">Not connected</span>
                                 </div>
                             </div>
                             <hr class="border-border-color my-1">
@@ -682,11 +719,11 @@ body {
             <div class="graph-container" id="graphContainer">
                 <svg id="graphSvg"></svg>
                 <div class="graph-legend" id="graphLegend">
-                    <div class="legend-item"><span class="legend-dot" style="background:#1DB954"></span>Artist</div>
-                    <div class="legend-item"><span class="legend-dot" style="background:#FF6B6B"></span>Release</div>
-                    <div class="legend-item"><span class="legend-dot" style="background:#6c757d"></span>Label</div>
-                    <div class="legend-item"><span class="legend-dot" style="background:#ffc107"></span>Genre/Style</div>
-                    <div class="legend-item"><span class="legend-dot legend-rect" style="background:#4A90D9"></span>Category</div>
+                    <div class="legend-item"><span class="legend-dot" style="background:var(--node-artist)"></span>Artist</div>
+                    <div class="legend-item"><span class="legend-dot" style="background:var(--node-release)"></span>Release</div>
+                    <div class="legend-item"><span class="legend-dot" style="background:var(--node-label)"></span>Label</div>
+                    <div class="legend-item"><span class="legend-dot" style="background:var(--node-genre)"></span>Genre/Style</div>
+                    <div class="legend-item"><span class="legend-dot legend-rect" style="background:var(--node-category)"></span>Category</div>
                 </div>
                 <div class="graph-controls" id="graphControls">
                     <button class="graph-control-btn" id="zoomInBtn" title="Zoom in">
@@ -828,7 +865,7 @@ body {
                     </button>
                     <span class="ml-2 hidden text-sm text-text-mid" id="compareHint">Search for another entity to overlay on the chart</span>
                     <span class="hidden" id="compareInfo">
-                        <span class="badge bg-gray-600 text-text-mid" id="compareBadge"></span>
+                        <span class="badge bg-inner-bg border border-border-color text-text-mid" id="compareBadge"></span>
                         <button class="btn-outline-danger btn-sm ml-2" id="clearCompareBtn">
                             <span class="material-symbols-outlined mr-1" style="font-size:16px">close</span>Clear
                         </button>

@@ -30,144 +30,131 @@ function setupThemeDOM() {
     document.body.appendChild(moon);
 }
 
-describe('theme toggle (tri-state)', () => {
+function mockMedia({ dark = false } = {}) {
+    const listeners = [];
+    const state = { dark };
+    globalThis.window.matchMedia = vi.fn((query) => ({
+        get matches() { return state.dark && query.includes('dark'); },
+        addEventListener: (event, cb) => { listeners.push(cb); },
+        removeEventListener: vi.fn(),
+    }));
+    // Like the real MediaQueryList: `matches` flips, then the listeners run.
+    listeners.setDark = (value) => {
+        state.dark = value;
+        listeners.forEach((cb) => cb({ matches: value }));
+    };
+    return listeners;
+}
+
+function addThemeMetas() {
+    for (const [name, color] of [['dark', '#0e0d0b'], ['light', '#eeeae3']]) {
+        const meta = document.createElement('meta');
+        meta.setAttribute('name', 'theme-color');
+        meta.setAttribute('content', color);
+        meta.dataset.themeColor = name;
+        document.head.appendChild(meta);
+    }
+}
+
+const metaColors = () =>
+    [...document.querySelectorAll('meta[name="theme-color"]')].map((meta) => meta.getAttribute('content'));
+
+describe('theme toggle (light or dark)', () => {
     beforeEach(() => {
         setupThemeDOM();
+        document.head.querySelectorAll('meta[name="theme-color"]').forEach((meta) => meta.remove());
         localStorage.clear();
         document.documentElement.classList.remove('dark');
+        delete globalThis.GrooveMapTheme;
         delete globalThis.window;
         globalThis.window = globalThis;
-
-        // Default matchMedia mock (reports no dark preference)
-        globalThis.window.matchMedia = vi.fn((query) => ({
-            matches: false,
-            addEventListener: vi.fn(),
-            removeEventListener: vi.fn(),
-        }));
+        mockMedia();
     });
 
-    it('should default to auto mode with auto icon visible', () => {
+    it('follows the OS setting by default and shows the icon for the theme it switches to', () => {
+        mockMedia({ dark: true });
         loadScript('theme.js');
 
-        const auto = document.getElementById('theme-icon-auto');
-        const sun = document.getElementById('theme-icon-sun');
-        const moon = document.getElementById('theme-icon-moon');
-
-        expect(auto.classList.contains('hidden')).toBe(false);
-        expect(sun.classList.contains('hidden')).toBe(true);
-        expect(moon.classList.contains('hidden')).toBe(true);
+        expect(document.documentElement.classList.contains('dark')).toBe(true);
+        expect(document.getElementById('theme-icon-sun').classList.contains('hidden')).toBe(false);
+        expect(document.getElementById('theme-icon-moon').classList.contains('hidden')).toBe(true);
+        expect(localStorage.getItem('theme')).toBeNull();
     });
 
-    it('should show sun icon when theme is explicitly light', () => {
-        localStorage.setItem('theme', 'light');
+    it('is light with a light OS and no stored choice', () => {
         loadScript('theme.js');
 
-        const auto = document.getElementById('theme-icon-auto');
-        const sun = document.getElementById('theme-icon-sun');
-        const moon = document.getElementById('theme-icon-moon');
-
-        expect(auto.classList.contains('hidden')).toBe(true);
-        expect(sun.classList.contains('hidden')).toBe(false);
-        expect(moon.classList.contains('hidden')).toBe(true);
+        expect(document.documentElement.classList.contains('dark')).toBe(false);
+        expect(document.getElementById('theme-icon-sun').classList.contains('hidden')).toBe(true);
+        expect(document.getElementById('theme-icon-moon').classList.contains('hidden')).toBe(false);
     });
 
-    it('should show moon icon when theme is explicitly dark', () => {
-        localStorage.setItem('theme', 'dark');
-        loadScript('theme.js');
-
-        const auto = document.getElementById('theme-icon-auto');
-        const sun = document.getElementById('theme-icon-sun');
-        const moon = document.getElementById('theme-icon-moon');
-
-        expect(auto.classList.contains('hidden')).toBe(true);
-        expect(sun.classList.contains('hidden')).toBe(true);
-        expect(moon.classList.contains('hidden')).toBe(false);
-    });
-
-    it('should cycle auto → light → dark → auto on clicks', () => {
+    it('toggles, persists the choice and keeps native controls in step', () => {
         loadScript('theme.js');
         const btn = document.getElementById('theme-toggle');
 
-        // Start: auto
-        expect(localStorage.getItem('theme')).toBeNull();
-
-        // Click 1: auto → light
-        btn.click();
-        expect(localStorage.getItem('theme')).toBe('light');
-        expect(document.documentElement.classList.contains('dark')).toBe(false);
-
-        // Click 2: light → dark
         btn.click();
         expect(localStorage.getItem('theme')).toBe('dark');
         expect(document.documentElement.classList.contains('dark')).toBe(true);
+        expect(document.documentElement.style.colorScheme).toBe('dark');
+        expect(btn.getAttribute('aria-label')).toBe('Switch to light theme');
 
-        // Click 3: dark → auto (removes from storage)
         btn.click();
-        expect(localStorage.getItem('theme')).toBeNull();
+        expect(localStorage.getItem('theme')).toBe('light');
+        expect(document.documentElement.classList.contains('dark')).toBe(false);
+        expect(document.documentElement.style.colorScheme).toBe('light');
+        expect(btn.getAttribute('aria-label')).toBe('Switch to dark theme');
     });
 
-    it('should apply OS dark preference when in auto mode', () => {
-        const listeners = [];
-        globalThis.window.matchMedia = vi.fn((query) => ({
-            matches: query.includes('dark'),
-            addEventListener: (event, cb) => { listeners.push(cb); },
-            removeEventListener: vi.fn(),
-        }));
-
+    it('lets a stored choice win over the OS setting', () => {
+        localStorage.setItem('theme', 'light');
+        mockMedia({ dark: true });
         loadScript('theme.js');
 
-        // In auto mode with OS dark preference, should be dark
+        expect(document.documentElement.classList.contains('dark')).toBe(false);
+    });
+
+    it('ignores an unrecognised stored value and falls back to the OS setting', () => {
+        localStorage.setItem('theme', 'auto');
+        mockMedia({ dark: true });
+        loadScript('theme.js');
+
+        expect(document.documentElement.classList.contains('dark')).toBe(true);
+    });
+
+    it('follows live OS changes only while no choice is stored', () => {
+        const listeners = mockMedia({ dark: true });
+        loadScript('theme.js');
         expect(document.documentElement.classList.contains('dark')).toBe(true);
 
-        // Simulate OS switching to light
-        listeners.forEach(cb => cb({ matches: false }));
+        listeners.setDark(false);
         expect(document.documentElement.classList.contains('dark')).toBe(false);
     });
 
-    it('should NOT apply OS preference change when theme is explicitly set', () => {
+    it('does not follow OS changes once the user has chosen', () => {
         localStorage.setItem('theme', 'light');
-
-        const listeners = [];
-        globalThis.window.matchMedia = vi.fn((query) => ({
-            matches: false,
-            addEventListener: (event, cb) => { listeners.push(cb); },
-            removeEventListener: vi.fn(),
-        }));
-
+        const listeners = mockMedia();
         loadScript('theme.js');
 
-        // OS says dark, but stored preference should prevent change
-        listeners.forEach(cb => cb({ matches: true }));
+        listeners.setDark(true);
         expect(document.documentElement.classList.contains('dark')).toBe(false);
     });
 
-    it('should update icons correctly through the cycle', () => {
+    it('keeps both theme-color metas in sync with a stored choice', () => {
+        addThemeMetas();
+        localStorage.setItem('theme', 'light');
+        mockMedia({ dark: true });
         loadScript('theme.js');
-        const btn = document.getElementById('theme-toggle');
-        const auto = document.getElementById('theme-icon-auto');
-        const sun = document.getElementById('theme-icon-sun');
-        const moon = document.getElementById('theme-icon-moon');
+        expect(metaColors()).toEqual(['#eeeae3', '#eeeae3']);
 
-        // auto mode
-        expect(auto.classList.contains('hidden')).toBe(false);
+        document.getElementById('theme-toggle').click();
+        expect(metaColors()).toEqual(['#0e0d0b', '#0e0d0b']);
+    });
 
-        // → light
-        btn.click();
-        expect(auto.classList.contains('hidden')).toBe(true);
-        expect(sun.classList.contains('hidden')).toBe(false);
-        expect(moon.classList.contains('hidden')).toBe(true);
-
-        // → dark
-        btn.click();
-        expect(auto.classList.contains('hidden')).toBe(true);
-        expect(sun.classList.contains('hidden')).toBe(true);
-        expect(moon.classList.contains('hidden')).toBe(false);
-
-        // → auto
-        btn.click();
-        expect(auto.classList.contains('hidden')).toBe(false);
-        expect(sun.classList.contains('hidden')).toBe(true);
-        expect(moon.classList.contains('hidden')).toBe(true);
+    it('leaves each theme-color meta on its own color when following the OS', () => {
+        addThemeMetas();
+        loadScript('theme.js');
+        expect(metaColors()).toEqual(['#0e0d0b', '#eeeae3']);
     });
 
     it('should not crash when required DOM elements are missing', () => {
@@ -176,9 +163,7 @@ describe('theme toggle (tri-state)', () => {
     });
 
     it('should apply a persisted preference even when the toggle button markup is absent', () => {
-        // Regression: previously applyMode() was gated behind the toggle
-        // button + icon spans existing, so a stored preference was silently
-        // ignored whenever that markup was missing.
+        // Regression: a stored preference must not depend on the toggle markup existing.
         document.body.textContent = '';
         localStorage.setItem('theme', 'dark');
 
@@ -187,13 +172,9 @@ describe('theme toggle (tri-state)', () => {
         expect(document.documentElement.classList.contains('dark')).toBe(true);
     });
 
-    it('should apply the OS dark preference in auto mode even when the toggle button markup is absent', () => {
+    it('should apply the OS dark preference even when the toggle button markup is absent', () => {
         document.body.textContent = '';
-        globalThis.window.matchMedia = vi.fn((query) => ({
-            matches: query.includes('dark'),
-            addEventListener: vi.fn(),
-            removeEventListener: vi.fn(),
-        }));
+        mockMedia({ dark: true });
 
         loadScript('theme.js');
 
@@ -201,12 +182,54 @@ describe('theme toggle (tri-state)', () => {
     });
 });
 
+describe('head bootstrap (no flash)', () => {
+    const bootstrapOf = (file) => {
+        const html = readFileSync(resolve(__dirname, '..', 'static', file), 'utf-8');
+        const head = html.slice(0, html.indexOf('</head>'));
+        const match = head.match(/<script>([\s\S]*?)<\/script>/);
+        expect(match, `${file} needs an inline <head> theme script`).toBeTruthy();
+        return { html, head, script: match[1] };
+    };
+
+    beforeEach(() => {
+        localStorage.clear();
+        document.head.querySelectorAll('meta[name="theme-color"]').forEach((meta) => meta.remove());
+        document.documentElement.className = '';
+        delete globalThis.window;
+        globalThis.window = globalThis;
+        mockMedia();
+    });
+
+    for (const file of ['index.html', 'oauth-discogs-callback.html']) {
+        it(`${file} applies the OS theme before any stylesheet or script loads`, () => {
+            const { head, script } = bootstrapOf(file);
+            expect(head.indexOf('<script>')).toBeLessThan(head.indexOf('rel="stylesheet"'));
+            expect(head).not.toMatch(/<html[^>]*class="dark"/);
+            expect(head).toContain('name="color-scheme"');
+            expect(head).toContain('content="#0e0d0b" media="(prefers-color-scheme: dark)"');
+            expect(head).toContain('content="#eeeae3" media="(prefers-color-scheme: light)"');
+
+            mockMedia({ dark: true });
+            globalThis.eval(script);
+            expect(document.documentElement.classList.contains('dark')).toBe(true);
+        });
+
+        it(`${file} lets a stored light choice beat a dark OS`, () => {
+            const { script } = bootstrapOf(file);
+            localStorage.setItem('theme', 'light');
+            mockMedia({ dark: true });
+            globalThis.eval(script);
+            expect(document.documentElement.classList.contains('dark')).toBe(false);
+            expect(document.documentElement.style.colorScheme).toBe('light');
+        });
+    }
+});
+
 describe('theme toggle markup', () => {
     it('index.html wires up the #theme-toggle button and icon spans theme.js requires', () => {
         const html = readFileSync(resolve(__dirname, '..', 'static', 'index.html'), 'utf-8');
 
         expect(html).toContain('id="theme-toggle"');
-        expect(html).toContain('id="theme-icon-auto"');
         expect(html).toContain('id="theme-icon-sun"');
         expect(html).toContain('id="theme-icon-moon"');
         // The toggle must be included as a real page script for it to run.

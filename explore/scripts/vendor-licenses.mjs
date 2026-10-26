@@ -22,7 +22,7 @@ const defaultSourcePaths = [join(repoRoot, 'third_party', 'three', 'source.json'
 const REQUIRED_PACKAGES = new Set([
     '@fontsource/inter',
     '@fontsource/jetbrains-mono',
-    '@fontsource/space-grotesk',
+    '@fontsource/jura',
     'alpinejs',
     'd3',
     'dompurify',
