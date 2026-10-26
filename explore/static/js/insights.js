@@ -166,28 +166,39 @@ class InsightsPanel {
             name: data.genre,
         };
 
+        const c = ChartTheme.colors();
         const layout = {
             paper_bgcolor: 'transparent',
             plot_bgcolor: 'transparent',
             margin: { t: 10, r: 20, b: 40, l: 50 },
             xaxis: {
                 title: { text: 'Decade' },
-                color: '#b0b3b8',
-                gridcolor: '#2d3051',
+                color: c.textMid,
+                gridcolor: c.grid,
                 tickformat: 'd',
             },
             yaxis: {
                 title: { text: 'Releases' },
-                color: '#b0b3b8',
-                gridcolor: '#2d3051',
+                color: c.textMid,
+                gridcolor: c.grid,
             },
-            font: { color: '#e4e6eb', family: 'system-ui, sans-serif' },
+            font: { color: c.textHigh, family: 'system-ui, sans-serif' },
             showlegend: false,
             height: 250,
         };
 
         Plotly.purge(el);
         Plotly.newPlot(el, [trace], layout, { responsive: true, displayModeBar: false });
+        ChartTheme.track(el, () => {
+            const t = ChartTheme.colors();
+            return {
+                'xaxis.color': t.textMid,
+                'xaxis.gridcolor': t.grid,
+                'yaxis.color': t.textMid,
+                'yaxis.gridcolor': t.grid,
+                'font.color': t.textHigh,
+            };
+        });
     }
 
     // ----------------------------------------------------------------

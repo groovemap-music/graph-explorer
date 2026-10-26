@@ -18,6 +18,7 @@ __pycache__/
 build/
 dist/
 explore/coverage/
+/node_modules/
 explore/node_modules/
 explore/static/tailwind.css
 explore/static/vendor/

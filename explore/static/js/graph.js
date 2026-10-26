@@ -50,7 +50,7 @@ class GraphVisualization {
             .attr('markerHeight', 6)
             .append('path')
             .attr('d', 'M 0,-5 L 10,0 L 0,5')
-            .attr('fill', '#2d3051');
+            .style('fill', 'var(--border-color)');
 
         // Handle resize — store reference for cleanup
         this._resizeHandler = () => this._onResize();

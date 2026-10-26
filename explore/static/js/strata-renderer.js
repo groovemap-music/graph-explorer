@@ -193,7 +193,7 @@ export class StrataRenderer extends EventTarget {
         this.gl.setPixelRatio(Math.min(options.pixelRatio ?? globalThis.devicePixelRatio ?? 1, 2));
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(38, 1, 1, 3000);
-        this.scene.add(new THREE.HemisphereLight(0xffffff, 0x334455, 0.85));
+        this.scene.add(new THREE.HemisphereLight(0xffffff, 0x3a352d, 0.85));
         const light = new THREE.DirectionalLight(0xffffff, 0.75);
         light.position.set(40, 140, 80);
         this.scene.add(light);

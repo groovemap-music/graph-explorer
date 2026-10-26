@@ -47,28 +47,29 @@ class TrendsChart {
             fillcolor: 'rgba(24, 119, 242, 0.1)',
         };
 
+        const c = ChartTheme.colors();
         const layout = {
             title: {
                 text: `Release Timeline: ${data.name}`,
-                font: { color: '#e4e6eb', size: 18 },
+                font: { color: c.textHigh, size: 18 },
             },
             xaxis: {
-                title: { text: 'Year', font: { color: '#b0b3b8' } },
+                title: { text: 'Year', font: { color: c.textMid } },
                 range: [minYear, maxYear],
-                tickfont: { color: '#b0b3b8' },
-                gridcolor: '#2d3051',
-                linecolor: '#2d3051',
+                tickfont: { color: c.textMid },
+                gridcolor: c.grid,
+                linecolor: c.grid,
             },
             yaxis: {
-                title: { text: 'Number of Releases', font: { color: '#b0b3b8' } },
-                tickfont: { color: '#b0b3b8' },
-                gridcolor: '#2d3051',
-                linecolor: '#2d3051',
+                title: { text: 'Number of Releases', font: { color: c.textMid } },
+                tickfont: { color: c.textMid },
+                gridcolor: c.grid,
+                linecolor: c.grid,
                 rangemode: 'tozero',
             },
-            plot_bgcolor: '#0a0e27',
-            paper_bgcolor: '#0a0e27',
-            font: { color: '#e4e6eb' },
+            plot_bgcolor: c.paper,
+            paper_bgcolor: c.paper,
+            font: { color: c.textHigh },
             margin: { t: 60, r: 30, b: 60, l: 60 },
             hovermode: 'x unified',
         };
@@ -80,6 +81,23 @@ class TrendsChart {
         };
 
         Plotly.newPlot(this.container, [trace], layout, config);
+        ChartTheme.track(this.container, () => {
+            const t = ChartTheme.colors();
+            return {
+                'title.font.color': t.textHigh,
+                'xaxis.title.font.color': t.textMid,
+                'xaxis.tickfont.color': t.textMid,
+                'xaxis.gridcolor': t.grid,
+                'xaxis.linecolor': t.grid,
+                'yaxis.title.font.color': t.textMid,
+                'yaxis.tickfont.color': t.textMid,
+                'yaxis.gridcolor': t.grid,
+                'yaxis.linecolor': t.grid,
+                plot_bgcolor: t.paper,
+                paper_bgcolor: t.paper,
+                'font.color': t.textHigh,
+            };
+        });
         this.hasComparison = false;
     }
 

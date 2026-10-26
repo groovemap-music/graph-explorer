@@ -239,6 +239,7 @@ describe('CreditsPanel', () => {
         globalThis.fetch = vi.fn(buildMockFetch());
 
         setupDOM();
+        loadScript('chart-theme.js');
         loadScript('credits.js');
     });
 

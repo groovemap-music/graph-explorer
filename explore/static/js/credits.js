@@ -274,22 +274,27 @@ class CreditsPanel {
             marker: { color: categoryColors[cat] || '#6b7280' },
         }));
 
+        const c = ChartTheme.colors();
         const layout = {
             barmode: 'stack',
             paper_bgcolor: 'transparent',
             plot_bgcolor: 'transparent',
-            font: { color: '#9ca3af', size: 11 },
+            font: { color: c.textMid, size: 11 },
             margin: { t: 10, r: 10, b: 30, l: 30 },
             height: 200,
             showlegend: true,
             legend: { orientation: 'h', y: -0.2, font: { size: 10 } },
-            xaxis: { gridcolor: '#374151' },
-            yaxis: { gridcolor: '#374151' },
+            xaxis: { gridcolor: c.grid },
+            yaxis: { gridcolor: c.grid },
         };
 
         if (typeof Plotly !== 'undefined') {
             Plotly.purge(chartEl);
             Plotly.newPlot(chartEl, traces, layout, { responsive: true, displayModeBar: false });
+            ChartTheme.track(chartEl, () => {
+                const t = ChartTheme.colors();
+                return { 'font.color': t.textMid, 'xaxis.gridcolor': t.grid, 'yaxis.gridcolor': t.grid };
+            });
         }
     }
 

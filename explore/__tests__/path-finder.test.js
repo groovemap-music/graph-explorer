@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { loadScriptDirect } from './helpers.js';
+import { loadScript, loadScriptDirect } from './helpers.js';
 
 /**
  * Set up DOM with all elements needed for initPathFinder.
@@ -140,6 +140,7 @@ describe('initPathFinder', () => {
         loadScriptDirect('autocomplete.js');
         loadScriptDirect('graph-state.js');
         loadScriptDirect('graph.js');
+        loadScript('chart-theme.js');
         loadScriptDirect('trends.js');
         loadScriptDirect('user-panes.js');
         loadScriptDirect('app.js');

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { loadScriptDirect } from './helpers.js';
+import { loadScript, loadScriptDirect } from './helpers.js';
 
 /**
  * Set up the DOM elements required by trends.js.
@@ -24,6 +24,7 @@ describe('TrendsChart', () => {
         delete globalThis.window;
         globalThis.window = globalThis;
         // Load the class into global scope once
+        loadScript('chart-theme.js');
         loadScriptDirect('trends.js');
     });
 

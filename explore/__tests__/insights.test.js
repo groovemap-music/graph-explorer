@@ -26,6 +26,7 @@ describe('InsightsPanel', () => {
         globalThis.window = globalThis;
         // Stub Plotly since it's loaded via CDN
         globalThis.Plotly = { newPlot: vi.fn(), purge: vi.fn() };
+        loadScript('chart-theme.js');
         loadScript('insights.js');
     });
 
