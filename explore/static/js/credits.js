@@ -256,14 +256,25 @@ class CreditsPanel {
             categories[t.category].y.push(t.count);
         });
 
-        const categoryColors = {
-            production: '#7c3aed',
-            engineering: '#2563eb',
-            mastering: '#dc2626',
-            session: '#16a34a',
-            design: '#ea580c',
-            management: '#0891b2',
-            other: '#6b7280',
+        // Role families share the credit pill colors (styles.css .credits-role-*): creative =
+        // primary accent, technical = secondary, performance = tertiary, business/other = neutral.
+        // Roles in one family are told apart by a fill pattern, and the legend names every role.
+        const roleStyle = (cat) => {
+            const s = ChartTheme.series();
+            const styles = {
+                production: { color: s.accent, pattern: '' },
+                design: { color: s.accent, pattern: '/' },
+                engineering: { color: s.secondary, pattern: '' },
+                mastering: { color: s.secondary, pattern: '\\' },
+                session: { color: s.tertiary, pattern: '' },
+                management: { color: s.neutral, pattern: '' },
+                other: { color: s.neutral, pattern: 'x' },
+            };
+            return styles[cat] || styles.other;
+        };
+        const barMarker = (cat, chartBg) => {
+            const { color, pattern } = roleStyle(cat);
+            return { color, pattern: { shape: pattern, fgcolor: color, bgcolor: chartBg, size: 6, solidity: 0.6 } };
         };
 
         const traces = Object.entries(categories).map(([cat, data]) => ({
@@ -271,7 +282,7 @@ class CreditsPanel {
             y: data.y,
             name: cat,
             type: 'bar',
-            marker: { color: categoryColors[cat] || '#6b7280' },
+            marker: barMarker(cat, ChartTheme.colors().paper),
         }));
 
         const c = ChartTheme.colors();
@@ -294,6 +305,17 @@ class CreditsPanel {
             ChartTheme.track(chartEl, () => {
                 const t = ChartTheme.colors();
                 return { 'font.color': t.textMid, 'xaxis.gridcolor': t.grid, 'yaxis.gridcolor': t.grid };
+            }, (chart) => {
+                const paper = ChartTheme.colors().paper;
+                const markers = chart.data.map((trace) => barMarker(trace.name, paper));
+                return {
+                    update: {
+                        'marker.color': markers.map((m) => m.color),
+                        'marker.pattern.fgcolor': markers.map((m) => m.pattern.fgcolor),
+                        'marker.pattern.bgcolor': markers.map((m) => m.pattern.bgcolor),
+                    },
+                    traces: markers.map((_, i) => i),
+                };
             });
         }
     }
@@ -441,7 +463,7 @@ class CreditsPanel {
             .selectAll('line')
             .data(links)
             .join('line')
-            .attr('stroke', '#4b5563')
+            .attr('stroke', 'var(--text-muted)')
             .attr('stroke-width', d => Math.max(1, Math.min(d.value / 2, 5)));
 
         const node = svg.append('g')
@@ -449,8 +471,8 @@ class CreditsPanel {
             .data(nodes)
             .join('circle')
             .attr('r', d => d.group === 'center' ? 12 : Math.max(5, Math.min((d.shared || 1) * 2, 10)))
-            .attr('fill', d => d.group === 'center' ? '#7c3aed' : '#3b82f6')
-            .attr('stroke', '#1f2937')
+            .attr('fill', d => d.group === 'center' ? 'var(--cyan-500)' : 'var(--accent-secondary)')
+            .attr('stroke', 'var(--card-bg)')
             .attr('stroke-width', 1.5)
             .style('cursor', 'pointer')
             .on('click', (event, d) => {
@@ -465,7 +487,7 @@ class CreditsPanel {
             .join('text')
             .text(d => d.id.length > 20 ? d.id.substring(0, 18) + '\u2026' : d.id)
             .attr('font-size', 9)
-            .attr('fill', '#d1d5db')
+            .attr('fill', 'var(--text-mid)')
             .attr('text-anchor', 'middle')
             .attr('dy', d => d.group === 'center' ? -16 : -10);
 

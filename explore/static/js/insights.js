@@ -154,15 +154,16 @@ class InsightsPanel {
         const decades = data.trends.map(t => t.decade);
         const counts = data.trends.map(t => t.release_count);
 
+        const s = ChartTheme.series();
         const trace = {
             x: decades,
             y: counts,
             type: 'scatter',
             mode: 'lines+markers',
             fill: 'tozeroy',
-            fillcolor: 'rgba(107, 70, 193, 0.15)',
-            line: { color: '#6b46c1', width: 2 },
-            marker: { color: '#6b46c1', size: 6 },
+            fillcolor: ChartTheme.alpha(s.accent, 0.15),
+            line: { color: s.accent, width: 2 },
+            marker: { color: s.accent, size: 6 },
             name: data.genre,
         };
 
@@ -197,6 +198,16 @@ class InsightsPanel {
                 'yaxis.color': t.textMid,
                 'yaxis.gridcolor': t.grid,
                 'font.color': t.textHigh,
+            };
+        }, () => {
+            const t = ChartTheme.series();
+            return {
+                update: {
+                    'line.color': t.accent,
+                    'marker.color': t.accent,
+                    fillcolor: ChartTheme.alpha(t.accent, 0.15),
+                },
+                traces: [0],
             };
         });
     }

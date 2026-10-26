@@ -788,10 +788,10 @@ class UserPanes {
     // Obscurity tiers (mainstream → obscure). Boundary inclusive on the upper
     // tier. Keep in sync with api/taste_card.py (_OBSCURITY_TIERS).
     _obscurityTier(score) {
-        if (score >= 0.75) return { name: 'Deep Cuts', color: '#f43f5e' };
-        if (score >= 0.5) return { name: 'Obscure', color: '#a855f7' };
-        if (score >= 0.25) return { name: 'Eclectic', color: '#818cf8' };
-        return { name: 'Mainstream', color: '#38bdf8' };
+        if (score >= 0.75) return { name: 'Deep Cuts', color: 'var(--scale-4)' };
+        if (score >= 0.5) return { name: 'Obscure', color: 'var(--scale-3)' };
+        if (score >= 0.25) return { name: 'Eclectic', color: 'var(--scale-2)' };
+        return { name: 'Mainstream', color: 'var(--scale-1)' };
     }
 
     _obscurityScale(score) {
@@ -902,9 +902,9 @@ class UserPanes {
                 cell.className = 'taste-heatmap-cell';
                 const opacity = maxCount > 0 ? count / maxCount : 0;
                 if (count === 0) {
-                    cell.style.background = 'var(--bg-tertiary)';
+                    cell.style.background = 'var(--inner-bg)';
                 } else {
-                    cell.style.background = `rgba(107, 70, 193, ${Math.max(0.15, opacity)})`;
+                    cell.style.background = `color-mix(in srgb, var(--cyan-500) ${Math.round(Math.max(0.15, opacity) * 100)}%, transparent)`;
                 }
                 cell.title = `${genre} ${decade}s: ${count}`;
                 grid.appendChild(cell);

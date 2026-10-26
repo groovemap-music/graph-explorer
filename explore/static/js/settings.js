@@ -346,7 +346,7 @@ class SettingsPane {
         const warnIcon = document.createElement('span');
         warnIcon.className = 'material-symbols-outlined';
         warnIcon.style.fontSize = '20px';
-        warnIcon.style.color = '#eab308';
+        warnIcon.style.color = 'var(--accent-yellow)';
         warnIcon.textContent = 'warning';
         const warnText = document.createElement('span');
         warnText.textContent = 'Save these recovery codes in a secure location. Each code can only be used once. If you lose access to your authenticator app, you can use these codes to sign in.';
@@ -1488,7 +1488,7 @@ class SettingsPane {
         const icon = document.createElement('span');
         icon.className = 'material-symbols-outlined';
         icon.style.fontSize = '20px';
-        icon.style.color = '#eab308';
+        icon.style.color = 'var(--accent-yellow)';
         icon.textContent = 'warning';
         notice.appendChild(icon);
 

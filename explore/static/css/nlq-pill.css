@@ -12,8 +12,8 @@
 .nlq-pill-root > * { pointer-events: auto; }
 
 .nlq-pill-collapsed {
-    background: linear-gradient(135deg, #9b8dff, #6b5ddf);
-    color: #fff;
+    background: var(--cyan-500);
+    color: var(--on-accent);
     padding: 8px 20px;
     border-radius: 999px;
     font-size: 13px;
@@ -21,14 +21,14 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    box-shadow: 0 4px 20px rgba(155, 141, 255, 0.5);
+    box-shadow: 0 4px 20px color-mix(in srgb, var(--cyan-500) 50%, transparent);
     cursor: pointer;
     transition: transform 0.15s ease;
     border: none;
 }
 .nlq-pill-collapsed:hover { transform: scale(1.03); }
 .nlq-pill-collapsed kbd {
-    background: rgba(255, 255, 255, 0.2);
+    background: color-mix(in srgb, var(--on-accent) 20%, transparent);
     padding: 2px 6px;
     border-radius: 3px;
     font-family: monospace;
@@ -38,10 +38,10 @@
 
 /* Ask pill — expanded card (shared by expanded / loading / answered) */
 .nlq-pill-expanded {
-    background: #141420;
-    border: 1px solid #9b8dff;
+    background: var(--card-bg);
+    border: 1px solid var(--cyan-500);
     border-radius: 14px;
-    box-shadow: 0 12px 48px rgba(155, 141, 255, 0.4);
+    box-shadow: 0 12px 48px color-mix(in srgb, var(--cyan-500) 40%, transparent);
     padding: 16px;
     width: min(640px, calc(100vw - 48px));
     max-height: min(70vh, 560px);
@@ -59,11 +59,11 @@
 
 .nlq-pill-input {
     flex: 1;
-    background: #0a0a14;
-    border: 1px solid #9b8dff;
+    background: var(--inner-bg);
+    border: 1px solid var(--cyan-500);
     border-radius: 999px;
     padding: 10px 18px;
-    color: #fff;
+    color: var(--text-high);
     font-size: 13px;
     outline: none;
 }
@@ -71,7 +71,7 @@
 .nlq-pill-close {
     background: transparent;
     border: none;
-    color: #888;
+    color: var(--text-dim);
     cursor: pointer;
     font-size: 18px;
     line-height: 1;
@@ -79,7 +79,7 @@
     border-radius: 6px;
     transition: color 0.15s, background 0.15s;
 }
-.nlq-pill-close:hover { color: #fff; background: rgba(255, 255, 255, 0.06); }
+.nlq-pill-close:hover { color: var(--text-high); background: var(--bg-hover); }
 
 .nlq-pill-body {
     display: flex;
@@ -93,22 +93,22 @@
 .nlq-chip-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .nlq-chip-label {
     font-size: 9px;
-    color: #666;
+    color: var(--text-dim);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     flex-basis: 100%;
 }
 .nlq-chip {
-    background: #1a1a24;
-    border: 1px solid #333;
+    background: var(--inner-bg);
+    border: 1px solid var(--border-color);
     border-radius: 999px;
     padding: 4px 10px;
     font-size: 11px;
-    color: #bbb;
+    color: var(--text-mid);
     cursor: pointer;
     transition: all 0.15s;
 }
-.nlq-chip:hover { border-color: #9b8dff; color: #9b8dff; }
+.nlq-chip:hover { border-color: var(--cyan-500); color: var(--cyan-500); }
 
 /* Last-answer receipt — shown above the collapsed button when an answer exists */
 .nlq-pill-receipt {
@@ -116,13 +116,13 @@
     align-items: center;
     gap: 4px;
     max-width: min(640px, calc(100vw - 48px));
-    background: rgba(20, 20, 32, 0.92);
-    border: 1px solid rgba(155, 141, 255, 0.4);
+    background: var(--glass-bg);
+    border: 1px solid color-mix(in srgb, var(--cyan-500) 40%, transparent);
     border-radius: 999px;
     padding: 4px 6px 4px 12px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 4px 16px color-mix(in srgb, var(--shadow-ink) 35%, transparent);
     backdrop-filter: blur(6px);
-    color: #ddd;
+    color: var(--text-mid);
     font-size: 11px;
 }
 .nlq-pill-receipt-body {
@@ -139,14 +139,14 @@
     min-width: 0;
 }
 .nlq-pill-receipt-label {
-    color: #888;
+    color: var(--text-dim);
     text-transform: uppercase;
     font-size: 9px;
     letter-spacing: 0.08em;
     flex-shrink: 0;
 }
 .nlq-pill-receipt-text {
-    color: #ddd;
+    color: var(--text-mid);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -155,7 +155,7 @@
 .nlq-pill-receipt-dismiss {
     background: transparent;
     border: none;
-    color: #888;
+    color: var(--text-dim);
     cursor: pointer;
     font-size: 14px;
     line-height: 1;
@@ -163,22 +163,22 @@
     border-radius: 999px;
     transition: color 0.15s, background 0.15s;
 }
-.nlq-pill-receipt-dismiss:hover { color: #fff; background: rgba(255, 255, 255, 0.06); }
+.nlq-pill-receipt-dismiss:hover { color: var(--text-high); background: var(--bg-hover); }
 
 /* Loading slot */
 .nlq-pill-loading-slot {
     display: flex;
     align-items: center;
     gap: 10px;
-    color: #888;
+    color: var(--text-dim);
     font-size: 12px;
     padding: 8px 4px;
 }
 .nlq-pill-spinner {
     width: 14px;
     height: 14px;
-    border: 2px solid rgba(155, 141, 255, 0.25);
-    border-top-color: #9b8dff;
+    border: 2px solid color-mix(in srgb, var(--cyan-500) 25%, transparent);
+    border-top-color: var(--cyan-500);
     border-radius: 50%;
     animation: nlq-spin 0.7s linear infinite;
 }
@@ -192,26 +192,26 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    color: #ddd;
+    color: var(--text-mid);
     font-size: 12.5px;
     line-height: 1.5;
 }
-.nlq-answer-slot--error .nlq-answer-summary { color: #f6a6a6; }
+.nlq-answer-slot--error .nlq-answer-summary { color: var(--accent-red); }
 
 .nlq-answer-summary > :first-child { margin-top: 0; }
 .nlq-answer-summary > :last-child { margin-bottom: 0; }
 .nlq-answer-summary p { margin: 0 0 6px 0; }
-.nlq-answer-summary strong { color: #fff; }
+.nlq-answer-summary strong { color: var(--text-high); }
 .nlq-answer-summary code {
-    background: rgba(155, 141, 255, 0.12);
+    background: color-mix(in srgb, var(--cyan-500) 12%, transparent);
     border-radius: 3px;
     padding: 1px 4px;
     font-family: 'JetBrains Mono', ui-monospace, monospace;
     font-size: 11.5px;
 }
 .nlq-answer-summary pre {
-    background: #0a0a14;
-    border: 1px solid #2a2a3a;
+    background: var(--inner-bg);
+    border: 1px solid var(--border-color);
     border-radius: 6px;
     padding: 8px 10px;
     overflow-x: auto;
@@ -232,18 +232,18 @@
 .nlq-answer-summary h6 {
     margin: 8px 0 4px 0;
     font-weight: 600;
-    color: #fff;
+    color: var(--text-high);
     font-size: 13px;
 }
 .nlq-answer-summary blockquote {
     margin: 4px 0;
     padding: 2px 10px;
-    border-left: 2px solid rgba(155, 141, 255, 0.5);
-    color: #bbb;
+    border-left: 2px solid color-mix(in srgb, var(--cyan-500) 50%, transparent);
+    color: var(--text-mid);
 }
 .nlq-answer-summary hr {
     border: none;
-    border-top: 1px solid #2a2a3a;
+    border-top: 1px solid var(--border-color);
     margin: 8px 0;
 }
 .nlq-answer-summary table {
@@ -254,16 +254,16 @@
     display: block;
     overflow-x: auto;
 }
-.nlq-answer-summary thead { background: rgba(155, 141, 255, 0.08); }
+.nlq-answer-summary thead { background: color-mix(in srgb, var(--cyan-500) 8%, transparent); }
 .nlq-answer-summary th,
 .nlq-answer-summary td {
-    border: 1px solid #2a2a3a;
+    border: 1px solid var(--border-color);
     padding: 4px 8px;
     text-align: left;
     vertical-align: top;
 }
 .nlq-answer-summary th {
-    color: #fff;
+    color: var(--text-high);
     font-weight: 600;
     font-size: 10.5px;
     text-transform: uppercase;
@@ -276,24 +276,24 @@
     align-items: center;
     gap: 8px;
     font-size: 10px;
-    color: #888;
-    border-top: 1px solid #2a2a3a;
+    color: var(--text-dim);
+    border-top: 1px solid var(--border-color);
     padding-top: 6px;
 }
 .nlq-answer-btn {
     background: transparent;
-    border: 1px solid rgba(155, 141, 255, 0.4);
-    color: #9b8dff;
+    border: 1px solid color-mix(in srgb, var(--cyan-500) 40%, transparent);
+    color: var(--cyan-500);
     cursor: pointer;
     font-size: 11px;
     padding: 3px 10px;
     border-radius: 999px;
     transition: background 0.15s;
 }
-.nlq-answer-btn:hover { background: rgba(155, 141, 255, 0.12); }
+.nlq-answer-btn:hover { background: color-mix(in srgb, var(--cyan-500) 12%, transparent); }
 
 .nlq-entity-link {
-    color: #9b8dff;
+    color: var(--cyan-500);
     text-decoration: underline;
     cursor: pointer;
 }
