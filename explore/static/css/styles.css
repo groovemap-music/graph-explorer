@@ -4,19 +4,19 @@
 
 :root {
     /* Background scale */
-    --bg-void: #060a12;
-    --bg-deep: #0a1018;
-    --card-bg: #0f1a2e;
-    --inner-bg: #162540;
-    --border-color: #1e3050;
-    --inner-border: #1e3050;
-    --bg-hover: #2a3d58;
+    --bg-void: #0a0908;
+    --bg-deep: #0e0d0b;
+    --card-bg: #12110e;
+    --inner-bg: #141310;
+    --border-color: #2e2a24;
+    --inner-border: #2e2a24;
+    --bg-hover: #24211c;
 
     /* Text scale */
-    --text-high: #f0f4f8;
-    --text-mid: #b0bec5;
-    --text-dim: #7a8ba3;
-    --text-muted: #4a5e78;
+    --text-high: #f2ede4;
+    --text-mid: #cfc6b8;
+    --text-dim: #a89f91;
+    --text-muted: #7a7164;
 
     /* Cyan — primary accent */
     --cyan-900: #3a2f12; /* brass tint */
@@ -47,12 +47,12 @@
 
     /* UI tokens */
     --card-shadow: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
-    --scrollbar-thumb: #2a3d58;
-    --glass-bg: rgba(15,26,46,0.9);
-    --label-bg: rgba(10,16,24,0.7);
+    --scrollbar-thumb: #3a352d;
+    --glass-bg: rgba(18,17,14,0.9);
+    --label-bg: rgba(14,13,11,0.7);
     --overlay-bg: rgba(0,0,0,0.85);
-    --gauge-track: #1e3050;
-    --log-msg: #b0bec5;
+    --gauge-track: #2e2a24;
+    --log-msg: #cfc6b8;
     --row-border: rgba(255,255,255,0.05);
 
     /* Graph node colors (harmonized) */
@@ -61,9 +61,9 @@
     --node-label: #78909c;
     --node-genre: #ffd54f;
     --node-category: #40c4ff;
-    --node-load-more: #162540;
-    --node-load-more-border: #1e3050;
-    --node-load-more-text: #7a8ba3;
+    --node-load-more: #141310;
+    --node-load-more-border: #2e2a24;
+    --node-load-more-text: #a89f91;
 }
 
 /* ============================================================
@@ -74,19 +74,19 @@
    ============================================================ */
 :root:not(.dark) {
     /* Background scale */
-    --bg-void: #e7ebf0;
-    --bg-deep: #f4f6f9;
-    --card-bg: #ffffff;
-    --inner-bg: #eef1f5;
-    --border-color: #d7dce4;
-    --inner-border: #d7dce4;
-    --bg-hover: #e2e7ee;
+    --bg-void: #eeeae3;
+    --bg-deep: #f7f4ee;
+    --card-bg: #fbf9f5;
+    --inner-bg: #f3efe8;
+    --border-color: #ddd5c7;
+    --inner-border: #ddd5c7;
+    --bg-hover: #ebe5db;
 
     /* Text scale */
-    --text-high: #10192b;
-    --text-mid: #45526b;
-    --text-dim: #64748b;
-    --text-muted: #94a3b8;
+    --text-high: #1a1714;
+    --text-mid: #4a4339;
+    --text-dim: #5d564b;
+    --text-muted: #8f8577;
 
     /* Cyan — primary accent (deepened for AA contrast on light backgrounds) */
     --cyan-900: #f3e3e6; /* oxblood tint */
@@ -115,14 +115,14 @@
     --accent-red: #c62828;
 
     /* UI tokens */
-    --card-shadow: 0 1px 3px rgba(15,23,42,0.12), 0 1px 2px rgba(15,23,42,0.08);
-    --scrollbar-thumb: #c3cbd6;
+    --card-shadow: 0 1px 3px rgba(26,23,20,0.12), 0 1px 2px rgba(26,23,20,0.08);
+    --scrollbar-thumb: #cfc6b6;
     --glass-bg: rgba(255,255,255,0.9);
     --label-bg: rgba(255,255,255,0.85);
-    --overlay-bg: rgba(15,23,42,0.6);
-    --gauge-track: #d7dce4;
-    --log-msg: #45526b;
-    --row-border: rgba(15,23,42,0.08);
+    --overlay-bg: rgba(26,23,20,0.6);
+    --gauge-track: #ddd5c7;
+    --log-msg: #4a4339;
+    --row-border: rgba(26,23,20,0.08);
 
     /* Graph node colors stay the same across themes — they're drawn on the
        graph canvas background (--bg-deep), not on card/text surfaces, and

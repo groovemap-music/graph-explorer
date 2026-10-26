@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { loadScriptDirect } from './helpers.js';
+import { loadScript, loadScriptDirect } from './helpers.js';
 
 /**
  * Create full DOM required for TimelineScrubber.
@@ -349,6 +349,7 @@ beforeAll(() => {
     loadScriptDirect('autocomplete.js');
     loadScriptDirect('graph-state.js');
     loadScriptDirect('graph.js');
+    loadScript('chart-theme.js');
     loadScriptDirect('trends.js');
     loadScriptDirect('user-pane-state.js');
     loadScriptDirect('user-panes.js');
