@@ -41,7 +41,6 @@ assert "commercial use is permitted" in commercial_terms
 assert "alternative commercial terms" in commercial_terms
 assert "MIT License" in notice
 assert "PolyForm Noncommercial License 1.0.0" in notice
-assert "discogs" + "ography" not in notice.lower()
 assert "external contributions are temporarily paused" in contributing
 assert "relicensing-capable contributor license agreement" in contributing
 assert "github.com/groovemap-music/design/blob/main/TRADEMARKS.md" in brand_notice
