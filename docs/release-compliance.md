@@ -99,7 +99,7 @@ Istanbul coverage instrumentation are not involved; plain contexts that load a p
 network reproduce it exactly.
 
 `tests/conftest.py` therefore retires the browser process every 32 contexts, at half the ceiling,
-so a project can grow well past 121 tests before anything has to change. Retiring is only safe
+so a project can grow well past its 130 tests before anything has to change. Retiring is only safe
 while nothing is open on the browser, which holds because the `page` fixture closes its context on
 every path out — a failed test, a crashed page, and a context that was never armed.
 
@@ -133,7 +133,8 @@ running the journeys against the no-WebGL fallback, which has journeys of its ow
 
 ## Automation
 
-The thin CI and release callers pin `groovemap-music/automation` at
+The thin CI caller pins `groovemap-music/automation` at
+`b80cccb7c514b0e394cbdfc90b386ac0877370fc` and the release caller pins it at
 `833cb464507678c38ab78bd4718ce697399463e9`. CI runs for pushes to `main`, ordinary and
 Dependabot-authored pull requests, manual dispatches, and two weekly full/security schedules.
 Every pull request uses one required job graph; there is no actor-specific skip or reduced
@@ -141,10 +142,10 @@ fallback. Hosted browser work remains split across `e2e-setup`, `e2e-instrument`
 `e2e-post`, preserving system setup, per-project results, failure artifacts, coverage finalization,
 and source restoration as distinct reusable-workflow capabilities.
 
-Complete validation needs read access to the pinned `python-libraries` revision.
-`GROOVEMAP_CI_APP_CLIENT_ID` and `GROOVEMAP_CI_APP_PRIVATE_KEY` supply that read-only checkout.
-`CODECOV_TOKEN` is mapped explicitly and uploads fail closed. Infrastructure provides the same
-credential names to ordinary Actions and Dependabot.
+The pinned `python-libraries` revision is fetched from its public repository, so neither caller
+requests private-library credentials. `CODECOV_TOKEN` is the only secret CI maps, explicitly
+rather than through `secrets: inherit`, and uploads fail closed. Infrastructure provides it to
+ordinary Actions and Dependabot under the same name.
 
 ## Historical planning privacy
 

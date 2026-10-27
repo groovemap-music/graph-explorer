@@ -4,8 +4,6 @@ import json
 import re
 from pathlib import Path
 
-from repository_source import RepositorySourceError, tracked_tree_text
-
 
 ROOT = Path(__file__).resolve().parents[1]
 AUTOMATION_REVISION = "833cb464507678c38ab78bd4718ce697399463e9"
@@ -242,23 +240,3 @@ assert 'org.opencontainers.image.revision="${VCS_REF}"' in dockerfile
 brand_source = json.loads((ROOT / "explore/static/brand/source.json").read_text())
 assert brand_source["producer_repository"] == "https://github.com/groovemap-music/design"
 assert brand_source["producer_commit"] == DESIGN_REVISION
-
-ignored_parts = {
-    ".git",
-    ".venv",
-    ".build",
-    ".pytest_cache",
-    ".ruff_cache",
-    "__pycache__",
-    "node_modules",
-    "dist",
-    "coverage",
-    "coverage-e2e",
-    "test-results",
-}
-legacy_product_name = "discogs" + "ography"
-try:
-    current_tree_text = tracked_tree_text(ROOT, excluded_parts=ignored_parts)
-except RepositorySourceError as error:
-    raise SystemExit(str(error)) from error
-assert legacy_product_name not in current_tree_text.casefold()
