@@ -151,7 +151,7 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
 
 app = FastAPI(
     title="GrooveMap Graph Explorer",
-    version="0.1.0",
+    version=__version__,
     default_response_class=JSONResponse,
     lifespan=lifespan,
 )

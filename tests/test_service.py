@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 
+from explore import __version__
 from explore import explore as service
 
 
@@ -43,6 +44,11 @@ def test_health_data_is_service_specific() -> None:
     assert data["status"] == "healthy"
     assert data["service"] == "graph-explorer"
     datetime.fromisoformat(data["timestamp"])
+
+
+def test_app_and_openapi_version_follow_package_version(test_client: TestClient) -> None:
+    assert service.app.version == __version__
+    assert test_client.get("/openapi.json").json()["info"]["version"] == __version__
 
 
 def test_startup_identity_is_repository_specific() -> None:
