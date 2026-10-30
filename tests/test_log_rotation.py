@@ -89,9 +89,7 @@ def test_service_log_file_sink_honors_deployment_overrides(tmp_path: Path, monke
     assert all(path.stat().st_size <= max_bytes for path in rotated)
 
 
-def test_service_logging_falls_back_to_console_when_log_file_unwritable(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_service_logging_falls_back_to_console_when_log_file_unwritable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """An unwritable log path (e.g. /logs outside a container) no longer stops startup."""
     blocker = tmp_path / "not-a-directory"
     blocker.write_text("")
