@@ -2,6 +2,39 @@
 
 The public-facing graph exploration application for GrooveMap. It serves a static Tailwind/Alpine/D3/Plotly interface and proxies browser requests to the separately deployed `catalog-api`, including streamed natural-language query responses.
 
+This README is for developers and operators who build, run, or deploy the service. To use the
+application, read the [user guide](docs/user-guide.md).
+
+## Quick start
+
+You need [mise](https://mise.jdx.dev/) to install the pinned tools. The example proxies to a
+[`catalog-api`](https://github.com/groovemap-music/catalog-api) that must be reachable at
+`API_BASE_URL` (default `http://api:8004`).
+
+The service writes a fixed log file, `/logs/graph-explorer.log`, and fails to start if `/logs` is
+missing or not writable. On Linux, create it and run from the checkout:
+
+```bash
+mise install
+just setup
+just web-build                                    # generate the CSS and vendor assets the page needs
+sudo mkdir -p /logs && sudo chown "$USER" /logs   # Linux only
+API_BASE_URL=http://localhost:8004 uv run graph-explorer
+```
+
+On macOS the root volume is read-only, so run the container image instead. It creates `/logs` itself:
+
+```bash
+mise install
+just image
+docker run --rm -p 8006:8006 -p 8007:8007 \
+  -e API_BASE_URL=http://host.docker.internal:8004 graph-explorer:local
+```
+
+Open <http://localhost:8006>. `GET /health` on that port, and on `8007`, reports that the process
+is up. Browser requests under `/api/*` are forwarded to `API_BASE_URL`. See the
+[configuration guide](docs/configuration.md) for every setting.
+
 ```mermaid
 flowchart LR
     Browser[Web browser] --> Explorer[graph-explorer]
@@ -27,6 +60,7 @@ just check
 The repository interface is:
 
 - `just setup` — install locked Python and Node environments.
+- `just web-build` — generate `tailwind.css` and the vendor tree, and check the vendor licenses.
 - `just check` — run the authoritative pre-merge gate.
 - `just test` / `just js-test` — run Python proxy and JavaScript unit suites.
 - `just coverage` — produce Python and JavaScript coverage reports.
@@ -39,9 +73,8 @@ The repository interface is:
 
 ## Runtime
 
-```bash
-API_BASE_URL=http://localhost:8004 uv run graph-explorer
-```
+The [quick start](#quick-start) shows how to run the service from a checkout. The container image
+runs the same `graph-explorer` command as a non-root user and provides `/logs` itself.
 
 The application listens on `8006` and its process health server on `8007`. Authentication and
 all catalog data remain owned by `catalog-api`. See the [configuration guide](docs/configuration.md)
