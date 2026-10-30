@@ -91,7 +91,7 @@ Outcome posts are fire-and-forget and never gate an interaction — see
 | Authority | Revision | Local evidence |
 | --- | --- | --- |
 | `catalog-api` graph-explorer route contract | `d52c7f955f74e05972a24d5b653e1b3d70292554` | [`contracts/catalog-api/graph-explorer/v1/source.json`](../contracts/catalog-api/graph-explorer/v1/source.json) and [`routes.json`](../contracts/catalog-api/graph-explorer/v1/routes.json) |
-| `python-libraries` runtime package | `21855671580a446074bb9527b4d3355fee0bfde9` | [`pyproject.toml`](../pyproject.toml) and `uv.lock` |
+| `python-libraries` runtime package | `6d0425f908e01a446b040e2993045e2afe30460e` | [`pyproject.toml`](../pyproject.toml) and `uv.lock` |
 | `design` generated brand assets | `41be7cbe738f40df0c75ad7065475e91d6cc2aa4` | [`explore/static/brand/source.json`](../explore/static/brand/source.json) |
 
 `scripts/check-contracts.py` verifies the producer digest and checks every literal browser API
