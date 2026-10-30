@@ -1,5 +1,8 @@
 # Graph Explorer documentation
 
+Start here to find the right page. Users should begin with the user guide; operators with
+configuration; contributors with architecture and release compliance.
+
 - [Architecture](architecture.md)
 - [Configuration](configuration.md)
 - [User guide and accessibility](user-guide.md)

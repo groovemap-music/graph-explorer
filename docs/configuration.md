@@ -1,5 +1,8 @@
 # Graph Explorer configuration
 
+This page is for operators deploying Graph Explorer. It lists every setting the service reads and
+the fixed entry points it exposes.
+
 Deployment owns runtime composition. Graph Explorer reads only the service settings below; it
 does not read datastore or catalog credentials.
 
@@ -12,8 +15,9 @@ does not read datastore or catalog credentials.
 | `LOG_FILE_MAX_BYTES` | `104857600` (100 MiB) | Rollover threshold for the `/logs/graph-explorer.log` file sink, read by `groovemap-runtime`'s `setup_logging` at handler-construction time. A non-numeric or non-positive override falls back to this default. |
 | `LOG_FILE_BACKUP_COUNT` | `5` | Number of rotated `/logs/graph-explorer.log` backups retained alongside the active file. A non-numeric or non-positive override falls back to this default. |
 
-The main application port (`8006`), process-health port (`8007`), and proxy timeout (150 seconds)
-are code-owned constants, not environment variables. The service exposes these entry points:
+The main application port (`8006`), process-health port (`8007`), proxy timeout (150 seconds), and
+log file path (`/logs/graph-explorer.log`) are code-owned constants, not environment variables. The
+`/logs` directory must exist and be writable by the service user; the container image creates it. The service exposes these entry points:
 
 | Entry point | Contract |
 | --- | --- |
