@@ -87,3 +87,24 @@ def test_service_log_file_sink_honors_deployment_overrides(tmp_path: Path, monke
     assert log_file.with_suffix(".log.1") in rotated
     assert len(rotated) == backup_count + 1
     assert all(path.stat().st_size <= max_bytes for path in rotated)
+
+
+def test_service_logging_falls_back_to_console_when_log_file_unwritable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """An unwritable log path (e.g. /logs outside a container) no longer stops startup."""
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_text("")
+    monkeypatch.delenv("LOG_FILE", raising=False)
+
+    service.setup_logging(service.SERVICE_NAME, log_file=blocker / "graph-explorer.log")
+
+    assert not [handler for handler in logging.getLogger().handlers if isinstance(handler, logging.FileHandler)]
+
+
+def test_service_log_file_env_overrides_the_code_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """LOG_FILE wins over the path main() passes, so a checkout run can pick a writable file."""
+    chosen = tmp_path / "chosen.log"
+    monkeypatch.setenv("LOG_FILE", str(chosen))
+
+    service.setup_logging(service.SERVICE_NAME, log_file=tmp_path / "ignored" / "graph-explorer.log")
+
+    assert _installed_file_handler().baseFilename == str(chosen)

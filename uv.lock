@@ -532,7 +532,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.143.3" },
-    { name = "groovemap-runtime", extras = ["otel", "otel-http"], git = "https://github.com/groovemap-music/python-libraries.git?rev=21855671580a446074bb9527b4d3355fee0bfde9" },
+    { name = "groovemap-runtime", extras = ["otel", "otel-http"], git = "https://github.com/groovemap-music/python-libraries.git?rev=6d0425f908e01a446b040e2993045e2afe30460e" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "orjson", specifier = ">=3.13.0" },
     { name = "pydantic", specifier = ">=2.14.1" },
@@ -563,7 +563,7 @@ dev = [
 [[package]]
 name = "groovemap-runtime"
 version = "0.1.0"
-source = { git = "https://github.com/groovemap-music/python-libraries.git?rev=21855671580a446074bb9527b4d3355fee0bfde9#21855671580a446074bb9527b4d3355fee0bfde9" }
+source = { git = "https://github.com/groovemap-music/python-libraries.git?rev=6d0425f908e01a446b040e2993045e2afe30460e#6d0425f908e01a446b040e2993045e2afe30460e" }
 dependencies = [
     { name = "orjson" },
     { name = "structlog" },

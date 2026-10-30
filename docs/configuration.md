@@ -12,14 +12,15 @@ does not read datastore or catalog credentials.
 | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:8003` | Comma-separated browser origin allowlist. Empty or unset uses the two development origins shown. |
 | `LOG_LEVEL` | `INFO` | Log level for Uvicorn and for `groovemap-runtime`'s structured logger. |
 | `ENVIRONMENT` | `development` | Deployment name written as the `environment` field of every structured log record. It does not change verbosity. |
-| `LOG_FILE_MAX_BYTES` | `104857600` (100 MiB) | Rollover threshold for the `/logs/graph-explorer.log` file sink, read by `groovemap-runtime`'s `setup_logging` at handler-construction time. A non-numeric or non-positive override falls back to this default. |
-| `LOG_FILE_BACKUP_COUNT` | `5` | Number of rotated `/logs/graph-explorer.log` backups retained alongside the active file. A non-numeric or non-positive override falls back to this default. |
+| `LOG_FILE` | `/logs/graph-explorer.log` | Log file path, read by `groovemap-runtime`'s `setup_logging`; overrides the path the service passes. Empty disables the file sink. If the file cannot be opened, the service logs to the console and emits one warning instead of failing. |
+| `LOG_FILE_MAX_BYTES` | `104857600` (100 MiB) | Rollover threshold for the log file sink, read by `groovemap-runtime`'s `setup_logging` at handler-construction time. A non-numeric or non-positive override falls back to this default. |
+| `LOG_FILE_BACKUP_COUNT` | `5` | Number of rotated log-file backups retained alongside the active file. A non-numeric or non-positive override falls back to this default. |
 
-The main application port (`8006`), process-health port (`8007`), proxy timeout (150 seconds), and
-log file path (`/logs/graph-explorer.log`) are code-owned constants, not environment variables.
+The main application port (`8006`), process-health port (`8007`), and proxy timeout (150 seconds) are
+code-owned constants, not environment variables.
 
-The `/logs` directory must exist and be writable by the service user, or the service fails to
-start. The container image creates it.
+The container image creates `/logs`, so the default file sink works there. Elsewhere, if `/logs` is not
+writable the service falls back to console logging; set `LOG_FILE` to a writable path to keep a file.
 
 The service exposes these entry points:
 
