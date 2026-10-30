@@ -7,19 +7,33 @@ application, read the [user guide](docs/user-guide.md).
 
 ## Quick start
 
-You need [mise](https://mise.jdx.dev/) to install the pinned tools, and a running
-[`catalog-api`](https://github.com/groovemap-music/catalog-api) to proxy to.
+You need [mise](https://mise.jdx.dev/) to install the pinned tools. The example proxies to a
+[`catalog-api`](https://github.com/groovemap-music/catalog-api) that must be reachable at
+`API_BASE_URL` (default `http://api:8004`).
+
+The service writes a fixed log file, `/logs/graph-explorer.log`, and fails to start if `/logs` is
+missing or not writable. On Linux, create it and run from the checkout:
 
 ```bash
 mise install
 just setup
-just web-build                          # generate the CSS and vendor assets the page needs
-sudo mkdir -p /logs && sudo chown "$USER" /logs   # the service writes /logs/graph-explorer.log
+just web-build                                    # generate the CSS and vendor assets the page needs
+sudo mkdir -p /logs && sudo chown "$USER" /logs   # Linux only
 API_BASE_URL=http://localhost:8004 uv run graph-explorer
 ```
 
-Open <http://localhost:8006>. `GET /health` on the same port, and on `8007`, reports that the
-process is up. Browser requests under `/api/*` are forwarded to `API_BASE_URL`.
+On macOS the root volume is read-only, so run the container image instead. It creates `/logs` itself:
+
+```bash
+mise install
+just image
+docker run --rm -p 8006:8006 -p 8007:8007 \
+  -e API_BASE_URL=http://host.docker.internal:8004 graph-explorer:local
+```
+
+Open <http://localhost:8006>. `GET /health` on that port, and on `8007`, reports that the process
+is up. Browser requests under `/api/*` are forwarded to `API_BASE_URL`. See the
+[configuration guide](docs/configuration.md) for every setting.
 
 ```mermaid
 flowchart LR

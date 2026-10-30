@@ -16,8 +16,12 @@ does not read datastore or catalog credentials.
 | `LOG_FILE_BACKUP_COUNT` | `5` | Number of rotated `/logs/graph-explorer.log` backups retained alongside the active file. A non-numeric or non-positive override falls back to this default. |
 
 The main application port (`8006`), process-health port (`8007`), proxy timeout (150 seconds), and
-log file path (`/logs/graph-explorer.log`) are code-owned constants, not environment variables. The
-`/logs` directory must exist and be writable by the service user; the container image creates it. The service exposes these entry points:
+log file path (`/logs/graph-explorer.log`) are code-owned constants, not environment variables.
+
+The `/logs` directory must exist and be writable by the service user, or the service fails to
+start. The container image creates it.
+
+The service exposes these entry points:
 
 | Entry point | Contract |
 | --- | --- |
