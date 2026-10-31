@@ -24,11 +24,18 @@ COPY pyproject.toml README.md LICENSE NOTICE COMMERCIAL-LICENSING.md BRAND-NOTIC
 COPY explore/ ./explore/
 COPY --from=css-builder /build/explore/static/tailwind.css ./explore/static/tailwind.css
 COPY --from=css-builder /build/explore/static/vendor/ ./explore/static/vendor/
-RUN uv venv /app/.venv && \
-    uv pip install --python /app/.venv/bin/python "/wheels/$(basename "$(find /wheels -name '*.whl' -print -quit)")[otel,otel-http]" \
-      "fastapi==0.141.1" "httpx==0.28.1" "orjson==3.12.0" "pydantic==2.13.4" \
-      "python-multipart==0.0.32" "structlog==26.1.0" "uvicorn[standard]==0.52.4" && \
-    uv pip install --python /app/.venv/bin/python --no-deps . && \
+# Runtime set comes from uv.lock: hashed export for the install, unhashed export baked into the
+# image for scripts/check-image-deps.py. groovemap-runtime is a git source in the lock, so it is
+# installed from the prepared wheel (--no-sources ignores the git source in pyproject) and resolved
+# against the locked set via the constraints file; no --no-deps, so conflicts fail the build.
+COPY uv.lock ./
+RUN uv export --frozen --no-dev --no-emit-project --no-emit-package groovemap-runtime -o /tmp/locked-hashed.txt && \
+    uv export --frozen --no-dev --no-emit-project --no-hashes -o /tmp/runtime-requirements.txt && \
+    grep -v '^groovemap-runtime' /tmp/runtime-requirements.txt > /tmp/constraints.txt && \
+    uv venv /app/.venv && \
+    uv pip install --python /app/.venv/bin/python --require-hashes --no-deps -r /tmp/locked-hashed.txt && \
+    uv pip install --python /app/.venv/bin/python --no-sources --constraint /tmp/constraints.txt \
+      "$(find /wheels -name '*.whl' -print -quit)[otel,otel-http]" . && \
     find /app/.venv -type f -name '*.py[co]' -delete && \
     find /app/.venv -type d -name __pycache__ -prune -exec rm -rf '{}' +
 
@@ -53,6 +60,8 @@ RUN groupadd --gid 1000 groovemap && \
     mkdir -p /app /logs && chown -R 1000:1000 /app /logs
 WORKDIR /app
 COPY --from=builder --chown=1000:1000 /app/.venv /app/.venv
+COPY --from=builder /tmp/runtime-requirements.txt /usr/share/graph-explorer/runtime-requirements.txt
+COPY scripts/check-image-deps.py /usr/share/graph-explorer/check-image-deps.py
 COPY --chown=1000:1000 LICENSE NOTICE COMMERCIAL-LICENSING.md BRAND-NOTICE.md /usr/share/doc/graph-explorer/
 ENV API_BASE_URL="http://api:8004" \
     HOME=/home/groovemap \

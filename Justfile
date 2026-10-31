@@ -94,8 +94,27 @@ brand-promote:
 
 image: prepare-runtime-wheel
     bash scripts/build-image.sh
-    docker run --rm --entrypoint /app/.venv/bin/python graph-explorer:local -c 'import explore.explore'
-    test "$(docker run --rm --entrypoint /usr/bin/id graph-explorer:local -u):$(docker run --rm --entrypoint /usr/bin/id graph-explorer:local -g)" = "1000:1000"
+    docker run --rm --entrypoint /app/.venv/bin/python "${IMAGE_TAG:-graph-explorer:local}" -c 'import explore.explore'
+    test "$(docker run --rm --entrypoint /usr/bin/id "${IMAGE_TAG:-graph-explorer:local}" -u):$(docker run --rm --entrypoint /usr/bin/id "${IMAGE_TAG:-graph-explorer:local}" -g)" = "1000:1000"
+    just image-deps-check
+    just image-deps-check-negative
+
+# Inside the built image: installed distributions must match uv.lock and `pip check` must be clean.
+image-deps-check:
+    docker run --rm --entrypoint /app/.venv/bin/python "${IMAGE_TAG:-graph-explorer:local}" /usr/share/graph-explorer/check-image-deps.py
+
+# Negative proof: the same check must fail against a lock that disagrees with the built image.
+image-deps-check-negative:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    image="${IMAGE_TAG:-graph-explorer:local}"
+    docker run --rm --entrypoint /bin/cat "${image}" /usr/share/graph-explorer/runtime-requirements.txt \
+      | sed "s/^fastapi==.*/fastapi==0.141.1/" \
+      | if docker run --rm -i --entrypoint /app/.venv/bin/python "${image}" \
+          /usr/share/graph-explorer/check-image-deps.py --lock -; then
+          echo "image-deps-check accepted a mismatched lock" >&2
+          exit 1
+        fi
 
 bump-preview:
     uv run python scripts/check_bump_preview.py
