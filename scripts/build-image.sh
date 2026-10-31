@@ -6,7 +6,7 @@ trap 'rm -rf "${docker_config}"' EXIT
 active_context="$(docker context ls --format '{{if .Current}}{{.Name}}{{end}}' | sed -n '1p')"
 docker_host="$(docker context inspect "${active_context}" --format '{{.Endpoints.docker.Host}}')"
 vcs_ref="$(git rev-parse HEAD)"
-build_version="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+build_version="$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
 build_date="$(git show -s --format=%cI HEAD)"
 [[ "${vcs_ref}" =~ ^[0-9a-f]{40}$ ]]
 DOCKER_HOST="${docker_host}" docker --config "${docker_config}" build \

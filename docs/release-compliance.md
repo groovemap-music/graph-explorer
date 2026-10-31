@@ -31,7 +31,16 @@ flowchart TD
   validated distributions instead of rebuilding the same packages inside `just check`.
 - `just audit` checks the locked Python and JavaScript environments for known vulnerabilities.
 - `just image` builds and inspects the repository-named non-root image with its exact source
-  revision, license, repository, legal files, third-party notices, and brand provenance.
+  revision, license, repository, legal files, third-party notices, and brand provenance. It also
+  runs `just image-themes`: the container is started with no Catalog API and loaded in headless
+  Chromium under `prefers-color-scheme` light and dark, and the computed custom properties must be
+  the canonical brass (dark) and oxblood (light) tokens with none of the Deep Space, Lagoon, or
+  Mint values. Source-level browser tests serve the working tree and cannot see a stale image;
+  this one reads the packaged one. Screenshots are written to `test-results/image-themes/`.
+- `just image-themes-negative` runs the same assertions against the published
+  `ghcr.io/groovemap-music/graph-explorer:v0.2.2` image (linux/amd64, still the Deep Space theme)
+  and fails unless they fail, which proves the check detects a stale theme. It needs registry
+  access, so it is a manual proof and is not part of `just check` or `just image`.
 - `just e2e` instruments browser JavaScript, runs Chromium, Firefox, WebKit, iPhone, and iPad
   concurrently, emits per-project and merged LCOV, captures failure artifacts, and restores every
   source file. With `E2E_PROJECT=<project>` set it runs and reports that one project alone.
