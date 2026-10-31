@@ -29,7 +29,7 @@ typecheck:
     uv run mypy
 
 test:
-    uv run pytest -m 'not e2e and not benchmark' --cov=explore --cov-report=term-missing --cov-report=xml
+    uv run pytest -m 'not e2e and not benchmark and not image' --cov=explore --cov-report=term-missing --cov-report=xml
 
 js-test: web-dependencies
     npm --prefix explore test
@@ -107,6 +107,7 @@ image: prepare-runtime-wheel
     just image-assets-check
     just image-deps-check
     just image-deps-check-negative
+    just image-themes
 
 # Inside the built image: installed distributions must match uv.lock and `pip check` must be clean.
 image-deps-check:
@@ -124,6 +125,26 @@ image-deps-check-negative:
           echo "image-deps-check accepted a mismatched lock" >&2
           exit 1
         fi
+
+# Real-browser check of the built image: canonical brass/oxblood tokens in light and dark, and none of
+# the previous-theme (Deep Space, Lagoon, Mint) values. Screenshots land in test-results/image-themes/.
+image-themes:
+    uv run playwright install ${CI:+--with-deps} chromium
+    GRAPH_EXPLORER_IMAGE="${IMAGE_TAG:-graph-explorer:local}" uv run pytest -m image tests/image -p no:cacheprovider
+
+# Negative proof: the same assertions must fail against the published v0.2.2 image, which still served
+# the Deep Space (navy/cyan) theme. Override PUBLISHED_IMAGE to pin a digest; the published tags are linux/amd64 (PUBLISHED_PLATFORM).
+image-themes-negative:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    published="${PUBLISHED_IMAGE:-ghcr.io/groovemap-music/graph-explorer:v0.2.2}"
+    uv run playwright install ${CI:+--with-deps} chromium
+    platform="${PUBLISHED_PLATFORM:-linux/amd64}"
+    docker pull --platform "${platform}" "${published}"
+    if GRAPH_EXPLORER_IMAGE="${published}" GRAPH_EXPLORER_PLATFORM="${platform}" uv run pytest -m image tests/image -p no:cacheprovider; then
+      echo "image theme check accepted ${published}, which carries the old theme" >&2
+      exit 1
+    fi
 
 bump-preview:
     uv run python scripts/check_bump_preview.py
