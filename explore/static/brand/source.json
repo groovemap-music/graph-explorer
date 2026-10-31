@@ -14,5 +14,6 @@
     "tokens.css": "beb1fa2357e884cc702a0cf19176203de88f614f3ae10ce983699bea5353a92c"
   },
   "producer_commit": "41be7cbe738f40df0c75ad7065475e91d6cc2aa4",
+  "producer_path": "brand/assets",
   "producer_repository": "https://github.com/groovemap-music/design"
 }
