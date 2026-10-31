@@ -11,7 +11,7 @@ source-check:
     uv run ruff format --check .
     uv run ruff check .
     uv run python scripts/check-contracts.py
-    uv run python scripts/check-brand.py
+    uv run python scripts/check-brand.py --design-repo "${GROOVEMAP_DESIGN_REPO:-../design}" --fetch
     uv run python scripts/check-repository-compliance.py
     uv run python scripts/check-docs.py
 
@@ -89,6 +89,14 @@ prepare-runtime-wheel:
 brand:
     uv run python scripts/check-brand.py
 
+# Check the record against the design repo at the pinned commit (local checkout if it has the commit, else a read-only fetch).
+brand-provenance:
+    uv run python scripts/check-brand.py --design-repo "${GROOVEMAP_DESIGN_REPO:-../design}" --fetch
+
+# Check the brand assets served by a built image without running it.
+image-assets-check:
+    bash scripts/check-image-assets.sh "${IMAGE_TAG:-graph-explorer:local}"
+
 brand-promote:
     bash scripts/promote-brand.sh
 
@@ -96,6 +104,7 @@ image: prepare-runtime-wheel
     bash scripts/build-image.sh
     docker run --rm --entrypoint /app/.venv/bin/python "${IMAGE_TAG:-graph-explorer:local}" -c 'import explore.explore'
     test "$(docker run --rm --entrypoint /usr/bin/id "${IMAGE_TAG:-graph-explorer:local}" -u):$(docker run --rm --entrypoint /usr/bin/id "${IMAGE_TAG:-graph-explorer:local}" -g)" = "1000:1000"
+    just image-assets-check
     just image-deps-check
     just image-deps-check-negative
 
