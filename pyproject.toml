@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "groovemap-graph-explorer"
-version = "0.2.2"
+version = "0.3.0"
 description = "Public graph exploration web application and Catalog API proxy for GrooveMap"
 authors = [{name = "Robert Wlodarczyk", email = "robert@simplicityguy.com"}]
 readme = "README.md"
@@ -116,6 +116,7 @@ markers = [
     "benchmark: performance regression benchmarks",
     "e2e: browser-based end-to-end tests",
     "e2e: end-to-end tests requiring external services",
+    "image: browser checks against the built container image",
     "integration: tests requiring a live backing service",
 ]
 

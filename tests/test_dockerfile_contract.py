@@ -56,3 +56,11 @@ def test_image_does_not_persist_credential_placeholders() -> None:
         if instruction.startswith("ENV "):
             keys = (assignment.split("=", 1)[0] for assignment in shlex.split(instruction.removeprefix("ENV ")))
             assert not [key for key in keys if SENSITIVE_ENV.search(key)]
+
+
+def test_image_recipe_runs_the_packaged_theme_check() -> None:
+    justfile = (ROOT / "Justfile").read_text()
+    image_recipe = justfile.split("image: prepare-runtime-wheel", 1)[1].split("\n\n", 1)[0]
+
+    assert "    just image-themes\n" in image_recipe + "\n"
+    assert "not image" in justfile  # the default pytest run must not need a container
