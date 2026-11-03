@@ -21,7 +21,7 @@
       "id": "plotly",
       "name": "Plotly.js",
       "package": "plotly.js-dist-min",
-      "version": "4.1.2",
+      "version": "4.2.0",
       "declared_license": "MIT",
       "selected_license": "MIT",
       "homepage": "https://plotly.com/javascript/",
@@ -30,7 +30,7 @@
         "path": "LICENSE",
         "sha256": "8c45d9eaf50c2f72dd9c7ab9ef440788ba58a3538484b5c51c1f17d5128752e7"
       },
-      "license_destination": "licenses/plotly.js-dist-min-4.1.2-MIT.txt",
+      "license_destination": "licenses/plotly.js-dist-min-4.2.0-MIT.txt",
       "outputs": ["plotly.min.js"]
     },
     {
@@ -86,7 +86,7 @@
       "id": "marked",
       "name": "Marked",
       "package": "marked",
-      "version": "18.1.1",
+      "version": "18.1.2",
       "declared_license": "MIT",
       "selected_license": "MIT",
       "homepage": "https://marked.js.org",
@@ -95,14 +95,14 @@
         "path": "LICENSE",
         "sha256": "8e3a3f82f59a60958f56ca08f445647c32a4733dc7ca6c2c46f6eb898471ab9c"
       },
-      "license_destination": "licenses/marked-18.1.1-MIT.txt",
+      "license_destination": "licenses/marked-18.1.2-MIT.txt",
       "outputs": ["marked.mjs"]
     },
     {
       "id": "three",
       "name": "three.js",
       "package": "three",
-      "version": "0.186.1",
+      "version": "0.187.0",
       "declared_license": "MIT",
       "selected_license": "MIT",
       "homepage": "https://threejs.org",
@@ -111,7 +111,7 @@
         "path": "LICENSE",
         "sha256": "8b378ebe60e2fe500158cb0ac71cb5e8b7d92953c2abcc63a0eb90499653b5bc"
       },
-      "license_destination": "licenses/three-0.186.1-MIT.txt",
+      "license_destination": "licenses/three-0.187.0-MIT.txt",
       "outputs": ["three.module.js", "three.core.js"]
     },
     {
@@ -193,7 +193,7 @@
       "id": "material-symbols",
       "name": "Material Symbols",
       "package": "material-symbols",
-      "version": "0.48.1",
+      "version": "0.48.2",
       "declared_license": "Apache-2.0",
       "selected_license": "Apache-2.0",
       "homepage": "https://marella.github.io/material-symbols/demo/",
@@ -202,7 +202,7 @@
         "path": "LICENSE",
         "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
       },
-      "license_destination": "licenses/material-symbols-0.48.1-Apache-2.0.txt",
+      "license_destination": "licenses/material-symbols-0.48.2-Apache-2.0.txt",
       "outputs": [
         "fonts/material-symbols/outlined.css",
         "fonts/material-symbols/material-symbols-outlined.woff2"
