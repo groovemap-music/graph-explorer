@@ -23,11 +23,11 @@
     "alpinejs": "3.17.5",
     "d3": "7.9.0",
     "dompurify": "3.4.17",
-    "marked": "18.1.1",
-    "material-symbols": "0.48.1",
-    "plotly.js-dist-min": "4.1.2",
+    "marked": "18.1.2",
+    "material-symbols": "0.48.2",
+    "plotly.js-dist-min": "4.2.0",
     "qrcodejs": "1.0.0",
-    "three": "0.186.1"
+    "three": "0.187.0"
   },
   "devDependencies": {
     "@tailwindcss/cli": "4.3.3",
