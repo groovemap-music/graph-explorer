@@ -84,6 +84,7 @@ describe('GraphVisualization snapshot/restore/clearAll/addEntity', () => {
         globalThis.d3 = createD3Stub();
         setupDOM();
         loadScriptDirect('graph-state.js');
+        loadScriptDirect('graph-labels.js');
         loadScriptDirect('graph.js');
     });
 
@@ -153,6 +154,7 @@ describe('shareable snapshots carry no Taste Strata layer', () => {
         globalThis.d3 = createD3Stub();
         setupDOM();
         loadScriptDirect('graph-state.js');
+        loadScriptDirect('graph-labels.js');
         loadScriptDirect('graph.js');
     });
 

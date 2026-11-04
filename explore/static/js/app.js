@@ -1187,7 +1187,7 @@ class ExploreApp {
         const genreSet = new Set(newGenres.map(n => n.toLowerCase()));
         this.graph.g.selectAll('g').each(function(d) {
             if (!d || (d.type !== 'genre' && d.type !== 'style')) return;
-            if (genreSet.has(d.name.toLowerCase())) {
+            if (genreSet.has((d.name || '').toLowerCase())) {
                 d3.select(this).classed('node-emergence', true);
                 setTimeout(() => d3.select(this).classed('node-emergence', false), 2000);
             }
@@ -1381,7 +1381,7 @@ class ExploreApp {
             return;
         }
 
-        title.textContent = details.name || nodeId;
+        title.textContent = GraphLabels.rowName({ name: details.name, type });
         body.replaceChildren(...this._renderDetails(details, type, nodeId));
 
         // Add ownership badges for release nodes
@@ -1417,7 +1417,10 @@ class ExploreApp {
         const nodes = [];
 
         const explorableTypes = ['artist', 'genre', 'label', 'style'];
-        if (explorableTypes.includes(type)) {
+        const named = GraphLabels.hasName(details.name);
+        const entityName = GraphLabels.rowName({ name: details.name, type });
+        if (!named) nodes.push(this._detailStat('ID', nodeId));
+        if (explorableTypes.includes(type) && named) {
             const btn = document.createElement('button');
             btn.className = 'btn-outline-primary btn-sm w-full mb-3 explore-node-btn';
             btn.dataset.name = details.name;
@@ -1434,7 +1437,7 @@ class ExploreApp {
             if (details.styles?.length) nodes.push(this._detailTags('Styles', details.styles));
             if (details.groups?.length) nodes.push(this._detailTags('Groups', details.groups));
             if (window.authManager.isLoggedIn() && details.id) {
-                nodes.push(this._gapAnalysisButton('artist', details.id, details.name));
+                nodes.push(this._gapAnalysisButton('artist', details.id, entityName));
             }
             // Collaborators section
             const collabSection = document.createElement('div');
@@ -1472,7 +1475,7 @@ class ExploreApp {
         } else if (type === 'label') {
             nodes.push(this._detailStat('Releases', details.release_count || 0));
             if (window.authManager.isLoggedIn() && details.id) {
-                nodes.push(this._gapAnalysisButton('label', details.id, details.name));
+                nodes.push(this._gapAnalysisButton('label', details.id, entityName));
             }
         } else if (type === 'genre' || type === 'style') {
             nodes.push(this._detailStat('Artists', details.artist_count || 0));
@@ -1726,8 +1729,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const nameSpan = document.createElement('span');
         nameSpan.className = 'path-node-name';
-        nameSpan.title = node.name;
-        nameSpan.textContent = node.name;   // textContent — safe
+        const label = GraphLabels.rowName(node);
+        nameSpan.title = label;
+        nameSpan.textContent = label;   // textContent — safe
 
         card.appendChild(typeSpan);
         card.appendChild(nameSpan);
