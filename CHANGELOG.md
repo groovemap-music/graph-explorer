@@ -3,6 +3,12 @@
 All notable changes to this repository will be recorded here by Commitizen from
 Conventional Commits.
 
+## v0.3.1 (2026-11-04)
+
+### Fix
+
+- **explore**: stop Explore hanging on a graph node with no name
+
 ## v0.3.0 (2026-10-31)
 
 ### Feat
