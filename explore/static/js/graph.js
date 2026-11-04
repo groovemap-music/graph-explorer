@@ -182,10 +182,11 @@ class GraphVisualization {
         // Center node
         const centerNode = {
             id: `center-${center.id}`,
-            name: center.name,
+            name: GraphLabels.rowName(center),
             type: center.type,
             isCenter: true,
             isCategory: false,
+            unnamed: !GraphLabels.hasName(center.name),
             fx: width / 2,
             fy: height / 2,
         };
@@ -194,10 +195,11 @@ class GraphVisualization {
         // Category nodes
         const expandable = [];
         data.categories.forEach(cat => {
+            const catName = GraphLabels.rowName({ name: cat.name, type: cat.category });
             const catNode = {
                 id: cat.id,
-                name: `${cat.name} (${cat.count})`,
-                displayName: cat.name,
+                name: `${catName} (${cat.count})`,
+                displayName: catName,
                 type: 'category',
                 isCenter: false,
                 isCategory: true,
@@ -259,11 +261,12 @@ class GraphVisualization {
 
                 this.nodes.push({
                     id: childId,
-                    name: child.name,
+                    name: GraphLabels.rowName(child),
                     type: child.type,
                     isCenter: false,
                     isCategory: false,
                     nodeId: String(child.id),
+                    unnamed: !GraphLabels.hasName(child.name),
                 });
                 this.links.push({ source: categoryId, target: childId });
             });
@@ -330,11 +333,12 @@ class GraphVisualization {
 
                 this.nodes.push({
                     id: childId,
-                    name: child.name,
+                    name: GraphLabels.rowName(child),
                     type: child.type,
                     isCenter: false,
                     isCategory: false,
                     nodeId: String(child.id),
+                    unnamed: !GraphLabels.hasName(child.name),
                 });
                 this.links.push({ source: d.categoryId, target: childId });
             });
@@ -368,7 +372,31 @@ class GraphVisualization {
         }
     }
 
+    /**
+     * Draw the graph. A failure inside the draw is reported to the user rather
+     * than thrown: the explore loader waits on onExpandsComplete, which is only
+     * reached if this returns, so a throw here would leave the spinner up.
+     */
     _render() {
+        try {
+            this._drawGraph();
+        } catch (err) {
+            console.error('Graph render failed', err);
+            this._showErrorToast("Couldn't draw the graph. Try the search again.");
+        }
+    }
+
+    _showErrorToast(message) {
+        const toast = document.getElementById('shareToast');
+        const msg = document.getElementById('shareToastMsg');
+        if (toast && msg) {
+            msg.textContent = message;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 5000);
+        }
+    }
+
+    _drawGraph() {
         // Cancel any pending debounced render
         if (this._renderTimeout) {
             clearTimeout(this._renderTimeout);
@@ -486,16 +514,18 @@ class GraphVisualization {
 
         // Tooltips (SVG native — shown on hover by browser)
         node.append('title').text(d => {
-            if (d.isCenter) return `${d.name} [${d.type}]`;
-            if (d.isCategory) return `${d.displayName || d.name}\n${d.count || 0} items`;
-            if (d.isLoadMore) return `${d.name}\nClick to load more`;
+            const label = GraphLabels.nodeName(d);
+            if (d.isCenter) return `${label} [${d.type}]`;
+            if (d.isCategory) return `${label}\n${d.count || 0} items`;
+            if (d.isLoadMore) return `${label}\nClick to load more`;
             const explorableTypes = ['artist', 'genre', 'label', 'style'];
             const hints = ['Click for details'];
-            if (explorableTypes.includes(d.type)) hints.push('double-click to explore');
+            if (explorableTypes.includes(d.type) && !d.unnamed) hints.push('double-click to explore');
             let suffix = '';
-            if (d.compareStatus === 'only_a') suffix = '\n(Year A only)';
-            else if (d.compareStatus === 'only_b') suffix = '\n(Year B only)';
-            return `${d.name} [${d.type}]\n${hints.join(', ')}${suffix}`;
+            if (d.unnamed && d.nodeId) suffix += `\nID ${d.nodeId}`;
+            if (d.compareStatus === 'only_a') suffix += '\n(Year A only)';
+            else if (d.compareStatus === 'only_b') suffix += '\n(Year B only)';
+            return `${label} [${d.type}]\n${hints.join(', ')}${suffix}`;
         });
 
         // Labels
@@ -503,7 +533,7 @@ class GraphVisualization {
             .attr('class', 'node-label')
             .attr('dy', d => (d.isCategory || d.isLoadMore) ? 0 : this._getNodeRadius(d) + 14)
             .text(d => {
-                const name = d.displayName || d.name;
+                const name = GraphLabels.nodeName(d);
                 if (d.isLoadMore) return name.length > 18 ? name.substring(0, 16) + '…' : name;
                 return name.length > 20 ? name.substring(0, 18) + '...' : name;
             })
@@ -567,7 +597,8 @@ class GraphVisualization {
     _onNodeDblClicked(event, d) {
         event.stopPropagation();
         event.preventDefault();
-        if (d.isCategory || d.isCenter) return;
+        // A nameless node has no name to explore by, so double-click does nothing.
+        if (d.isCategory || d.isCenter || d.unnamed) return;
 
         if (this.onNodeExpand) {
             this.onNodeExpand(d.name, d.type);
@@ -740,11 +771,12 @@ class GraphVisualization {
 
                 this.nodes.push({
                     id: childId,
-                    name: child.name,
+                    name: GraphLabels.rowName(child),
                     type: child.type,
                     isCenter: false,
                     isCategory: false,
                     nodeId: String(child.id),
+                    unnamed: !GraphLabels.hasName(child.name),
                 });
                 this.links.push({ source: categoryId, target: childId });
             });
@@ -880,11 +912,12 @@ class GraphVisualization {
 
                 this.nodes.push({
                     id: childId,
-                    name: child.name,
+                    name: GraphLabels.rowName(child),
                     type: child.type,
                     isCenter: false,
                     isCategory: false,
                     nodeId: String(child.id),
+                    unnamed: !GraphLabels.hasName(child.name),
                     compareStatus,
                 });
                 this.links.push({

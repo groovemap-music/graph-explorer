@@ -139,6 +139,7 @@ describe('initPathFinder', () => {
         // Load all scripts in dependency order — this will initialize initPathFinder
         loadScriptDirect('autocomplete.js');
         loadScriptDirect('graph-state.js');
+        loadScriptDirect('graph-labels.js');
         loadScriptDirect('graph.js');
         loadScript('chart-theme.js');
         loadScriptDirect('trends.js');
