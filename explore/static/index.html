@@ -1188,7 +1188,7 @@ body {
 
                 <div class="loading-overlay" id="creditsLoading">
                     <div class="spinner" role="status"></div>
-                    <p class="mt-2 text-text-mid">Loading credits...</p>
+                    <p class="mt-2 text-text-mid" id="creditsLoadingText">Loading credits...</p>
                 </div>
 
                 <!-- Person Profile Card -->
@@ -1213,7 +1213,7 @@ body {
                 <!-- Release List -->
                 <div id="creditsReleaseSection" class="credits-section hidden">
                     <div class="credits-section-header">
-                        <h6>Releases</h6>
+                        <h6>Releases <span id="creditsReleaseCount" class="text-text-mid"></span></h6>
                         <div class="credits-filter-pills" id="creditsRoleFilter"></div>
                     </div>
                     <div id="creditsReleaseList" class="credits-release-list"></div>

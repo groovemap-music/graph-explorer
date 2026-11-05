@@ -4,9 +4,16 @@
  * Provides person search, profile cards, timeline charts, release lists,
  * connections graphs, and role leaderboards.
  */
+
+// Largest page the catalog API accepts for /api/credits/person/{name} (limit 1..500).
+const CREDITS_PAGE_SIZE = 500;
+// The API limits /api/credits/person/{name} to 60 requests a minute per client; a 429 is waited out.
+const CREDITS_MAX_RATE_LIMIT_RETRIES = 5;
+
 class CreditsPanel {
     constructor() {
         this._currentPerson = null;
+        this._loadId = 0;
         this._allCredits = [];
         this._activeFilter = null;
         this._debounceTimer = null;
@@ -129,24 +136,37 @@ class CreditsPanel {
     async _loadPersonData(name) {
         this._showLoading(true);
         this._hideEmptyState();
+        // Credits can take minutes for a large person; a load for someone else may start meanwhile.
+        const loadId = ++this._loadId;
 
         try {
             const [profileResp, creditsResp, timelineResp, connectionsResp] = await Promise.allSettled([
                 fetch(`/api/credits/person/${encodeURIComponent(name)}/profile`),
-                fetch(`/api/credits/person/${encodeURIComponent(name)}`),
+                this._fetchAllCredits(
+                    name,
+                    (loaded, total) => this._showLoadingProgress(loaded, total),
+                    (seconds) => this._showLoadingText(`Rate limit reached; continuing in ${seconds}s...`),
+                ),
                 fetch(`/api/credits/person/${encodeURIComponent(name)}/timeline`),
                 fetch(`/api/credits/connections/${encodeURIComponent(name)}?depth=1&limit=30`),
             ]);
+
+            // A newer selection superseded this load: its results must not reach the screen.
+            if (loadId !== this._loadId) return;
 
             if (profileResp.status === 'fulfilled' && profileResp.value.ok) {
                 const profile = await profileResp.value.json();
                 this._renderProfile(profile);
             }
 
-            if (creditsResp.status === 'fulfilled' && creditsResp.value.ok) {
-                const credits = await creditsResp.value.json();
-                this._allCredits = credits.credits || [];
-                this._renderReleaseList(this._allCredits);
+            if (creditsResp.status === 'fulfilled') {
+                this._allCredits = creditsResp.value.credits;
+                this._renderReleaseList(this._allCredits, creditsResp.value.total);
+            } else {
+                // Never leave the previous person's releases on screen under this person's name.
+                console.error('Loading credits failed', creditsResp.reason);
+                this._allCredits = [];
+                this._renderReleaseList([]);
             }
 
             if (timelineResp.status === 'fulfilled' && timelineResp.value.ok) {
@@ -167,8 +187,69 @@ class CreditsPanel {
         } catch {
             // Silently fail
         } finally {
-            this._showLoading(false);
+            if (loadId === this._loadId) this._showLoading(false);
         }
+    }
+
+    /**
+     * Fetch every credit for a person by paging until the API says there are no more.
+     *
+     * Pages of CREDITS_PAGE_SIZE rows are requested in order; the loop stops only when the
+     * response reports has_more === false. An API without the paging fields returns all rows
+     * in its first response, so it ends after one request. Any failure rejects the whole
+     * load: a partial list is never returned.
+     */
+    async _fetchAllCredits(name, onProgress, onWait) {
+        const base = `/api/credits/person/${encodeURIComponent(name)}`;
+        const credits = [];
+        let offset = 0;
+        let total = null;
+
+        for (;;) {
+            const page = await this._fetchCreditsPage(base, offset, onWait);
+            const rows = page.credits || [];
+            credits.push(...rows);
+            if (typeof page.total_credits === 'number') total = page.total_credits;
+            if (onProgress) onProgress(credits.length, total);
+
+            if (page.has_more !== true) break;
+            if (rows.length === 0) {
+                throw new Error(`credits paging stalled at offset ${offset} with has_more set`);
+            }
+            offset += rows.length;
+        }
+
+        return { credits, total: total ?? credits.length };
+    }
+
+    /**
+     * GET one page, waiting out the API's rate limit (HTTP 429, Retry-After in seconds) and
+     * retrying the same offset. A page is never skipped; after CREDITS_MAX_RATE_LIMIT_RETRIES
+     * the load fails rather than returning a partial list.
+     */
+    async _fetchCreditsPage(base, offset, onWait) {
+        for (let attempt = 0; ; attempt++) {
+            const resp = await fetch(`${base}?limit=${CREDITS_PAGE_SIZE}&offset=${offset}`);
+            if (resp.ok) return resp.json();
+            if (resp.status !== 429 || attempt >= CREDITS_MAX_RATE_LIMIT_RETRIES) {
+                throw new Error(`credits page at offset ${offset} failed: HTTP ${resp.status}`);
+            }
+            const header = parseInt(resp.headers?.get?.('Retry-After'), 10);
+            const seconds = Number.isFinite(header) && header > 0 ? Math.min(header, 120) : 60;
+            if (onWait) onWait(seconds);
+            await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+        }
+    }
+
+    _showLoadingProgress(loaded, total) {
+        this._showLoadingText(total
+            ? `Loading credits... ${loaded.toLocaleString()} of ${total.toLocaleString()}`
+            : `Loading credits... ${loaded.toLocaleString()}`);
+    }
+
+    _showLoadingText(text) {
+        const el = document.getElementById('creditsLoadingText');
+        if (el) el.textContent = text;
     }
 
     async _loadLeaderboard(category) {
@@ -320,18 +401,21 @@ class CreditsPanel {
         }
     }
 
-    _renderReleaseList(credits) {
+    _renderReleaseList(credits, total = credits.length) {
         const section = document.getElementById('creditsReleaseSection');
         const listEl = document.getElementById('creditsReleaseList');
         const filterEl = document.getElementById('creditsRoleFilter');
+        const countEl = document.getElementById('creditsReleaseCount');
         if (!section || !listEl) return;
 
         if (!credits.length) {
+            listEl.textContent = '';
             section.classList.add('hidden');
             return;
         }
 
         section.classList.remove('hidden');
+        if (countEl) countEl.textContent = total ? `(${total.toLocaleString()})` : '';
 
         // Build filter pills
         const categories = [...new Set(credits.map(c => c.category))].sort();
@@ -371,7 +455,10 @@ class CreditsPanel {
 
     _renderCreditRows(container, credits) {
         container.textContent = '';
-        credits.slice(0, 100).forEach(c => {
+        // Every credit is rendered; nothing is capped here. Rows go in through one fragment so
+        // a person with tens of thousands of credits is one DOM insertion, not one per row.
+        const fragment = document.createDocumentFragment();
+        credits.forEach(c => {
             const row = document.createElement('div');
             row.className = 'credits-release-row';
 
@@ -401,15 +488,10 @@ class CreditsPanel {
             row.appendChild(yearSpan);
             row.appendChild(infoDiv);
             row.appendChild(roleSpan);
-            container.appendChild(row);
+            fragment.appendChild(row);
         });
 
-        if (credits.length > 100) {
-            const msg = document.createElement('p');
-            msg.className = 'text-text-mid mt-2';
-            msg.textContent = `Showing first 100 of ${credits.length} credits.`;
-            container.appendChild(msg);
-        }
+        container.appendChild(fragment);
     }
 
     _renderConnections(connections, centerName) {
@@ -535,6 +617,8 @@ class CreditsPanel {
     _showLoading(show) {
         const el = document.getElementById('creditsLoading');
         if (el) el.classList.toggle('active', show);
+        const text = document.getElementById('creditsLoadingText');
+        if (show && text) text.textContent = 'Loading credits...';
     }
 
     _hideEmptyState() {

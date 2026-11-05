@@ -91,6 +91,7 @@ function setupDOM() {
         'creditsTimelineChart',
         'creditsReleaseSection',
         'creditsReleaseList',
+        'creditsReleaseCount',
         'creditsRoleFilter',
         'creditsConnectionsSection',
         'creditsConnectionsGraph',
@@ -598,6 +599,203 @@ describe('CreditsPanel', () => {
         });
     });
 
+    // ── 7b. _fetchAllCredits (paged) ───────────────────────────────── //
+
+    describe('_fetchAllCredits', () => {
+        // A paged fake of GET /api/credits/person/{name} over `total` rows, shaped like the new API.
+        function pagedCreditsFetch(total, { category = (i) => 'engineering', pageLimitCap = 500 } = {}) {
+            const calls = [];
+            const fn = vi.fn(async (url) => {
+                if (!url.includes('?limit=')) {
+                    return { ok: false, status: 404, json: async () => ({}) };
+                }
+                calls.push(url);
+                const u = new URL(url, 'http://x');
+                const limit = Math.min(Number(u.searchParams.get('limit') ?? 100), pageLimitCap);
+                const offset = Number(u.searchParams.get('offset') ?? 0);
+                const end = Math.min(offset + limit, total);
+                const rows = [];
+                for (let i = offset; i < end; i++) {
+                    rows.push({ year: 2000, title: `R${i}`, artists: [], role: 'x', category: category(i) });
+                }
+                return {
+                    ok: true, status: 200,
+                    json: async () => ({
+                        name: 'Bob', total_credits: total, credits: rows,
+                        limit, offset, has_more: end < total,
+                    }),
+                };
+            });
+            return { fn, calls };
+        }
+
+        it('pages with limit 500 until has_more is false and returns every row', async () => {
+            const { fn, calls } = pagedCreditsFetch(60758);
+            globalThis.fetch = fn;
+
+            const result = await window.creditsPanel._fetchAllCredits('Bob Ludwig');
+
+            expect(result.credits.length).toBe(60758);
+            expect(result.total).toBe(60758);
+            expect(calls.length).toBe(Math.ceil(60758 / 500));
+            expect(calls[0]).toContain('/api/credits/person/Bob%20Ludwig?limit=500&offset=0');
+            expect(calls[1]).toContain('limit=500&offset=500');
+            expect(calls.at(-1)).toContain(`offset=${Math.floor(60758 / 500) * 500}`);
+            expect(result.credits[60757].title).toBe('R60757');
+        });
+
+        it('reports progress as rows load against total_credits', async () => {
+            globalThis.fetch = pagedCreditsFetch(1200).fn;
+            const progress = [];
+
+            await window.creditsPanel._fetchAllCredits('Bob', (loaded, total) => progress.push([loaded, total]));
+
+            expect(progress).toEqual([[500, 1200], [1000, 1200], [1200, 1200]]);
+        });
+
+        it('keeps paging after a short page while has_more is true', async () => {
+            // Server caps pages at 250 even though 500 was asked for; offset must follow rows received.
+            globalThis.fetch = pagedCreditsFetch(1000, { pageLimitCap: 250 }).fn;
+
+            const result = await window.creditsPanel._fetchAllCredits('Bob');
+
+            expect(result.credits.length).toBe(1000);
+        });
+
+        it('works against the current API, which has no has_more: one request, all rows', async () => {
+            const rows = Array.from({ length: 3 }, (_, i) => ({ year: 2000, title: `T${i}`, artists: [], role: 'x', category: 'engineering' }));
+            const fn = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ name: 'Bob', credits: rows }) }));
+            globalThis.fetch = fn;
+
+            const result = await window.creditsPanel._fetchAllCredits('Bob');
+
+            expect(fn).toHaveBeenCalledTimes(1);
+            expect(result.credits).toEqual(rows);
+            expect(result.total).toBe(3);
+        });
+
+        it('rejects instead of returning a partial list when a later page fails', async () => {
+            const good = pagedCreditsFetch(1200).fn;
+            globalThis.fetch = vi.fn(async (url) => {
+                if (url.includes('offset=500')) return { ok: false, status: 500, json: async () => ({}) };
+                return good(url);
+            });
+
+            await expect(window.creditsPanel._fetchAllCredits('Bob')).rejects.toThrow(/offset 500 failed: HTTP 500/);
+        });
+
+        it('rejects when has_more is set but a page is empty, so the load cannot silently stop', async () => {
+            globalThis.fetch = vi.fn(async () => ({
+                ok: true, status: 200,
+                json: async () => ({ credits: [], total_credits: 900, has_more: true }),
+            }));
+
+            await expect(window.creditsPanel._fetchAllCredits('Bob')).rejects.toThrow(/stalled/);
+        });
+
+        it('waits out a 429 using Retry-After and retries the same page, skipping nothing', async () => {
+            const good = pagedCreditsFetch(700).fn;
+            let throttled = false;
+            const waits = [];
+            globalThis.fetch = vi.fn(async (url) => {
+                if (url.includes('offset=500') && !throttled) {
+                    throttled = true;
+                    return { ok: false, status: 429, headers: new Headers({ 'Retry-After': '3' }), json: async () => ({}) };
+                }
+                return good(url);
+            });
+
+            const pending = window.creditsPanel._fetchAllCredits('Bob', null, (s) => waits.push(s));
+            await vi.advanceTimersByTimeAsync(3000);
+            const result = await pending;
+
+            expect(waits).toEqual([3]);
+            expect(result.credits.length).toBe(700);
+            const offsets = globalThis.fetch.mock.calls.map((c) => new URL(c[0], 'http://x').searchParams.get('offset'));
+            expect(offsets).toEqual(['0', '500', '500']);
+        });
+
+        it('gives up with an error after repeated 429s instead of returning a partial list', async () => {
+            globalThis.fetch = vi.fn(async (url) => {
+                if (url.includes('offset=500')) {
+                    return { ok: false, status: 429, headers: new Headers({ 'Retry-After': '1' }), json: async () => ({}) };
+                }
+                return pagedCreditsFetch(1200).fn(url);
+            });
+
+            const pending = window.creditsPanel._fetchAllCredits('Bob');
+            const assertion = expect(pending).rejects.toThrow(/offset 500 failed: HTTP 429/);
+            await vi.advanceTimersByTimeAsync(60000);
+            await assertion;
+        });
+
+        it('drops a slow load that a newer person selection superseded', async () => {
+            let releaseBob;
+            const bobGate = new Promise((resolve) => { releaseBob = resolve; });
+            const page = (title) => ({
+                ok: true, status: 200,
+                json: async () => ({ credits: [{ year: 2000, title, artists: [], role: 'x', category: 'engineering' }] }),
+            });
+            globalThis.fetch = vi.fn(async (url) => {
+                if (url.includes('/api/credits/person/Bob') && url.includes('?limit=')) {
+                    await bobGate;
+                    return page('BOB');
+                }
+                if (url.includes('/api/credits/person/Ann') && url.includes('?limit=')) return page('ANN');
+                return { ok: false, status: 404, json: async () => ({}) };
+            });
+            window.creditsPanel._leaderboardLoaded = true;
+
+            const bob = window.creditsPanel._loadPersonData('Bob');
+            await window.creditsPanel._loadPersonData('Ann');
+            releaseBob();
+            await bob;
+
+            const titles = [...document.querySelectorAll('.credits-release-title')].map((e) => e.textContent);
+            expect(titles).toEqual(['ANN']);
+            expect(window.creditsPanel._allCredits.map((c) => c.title)).toEqual(['ANN']);
+            // The overlay belongs to the newest load, so the superseded one must not have hidden it early.
+            expect(document.getElementById('creditsLoading').classList.contains('active')).toBe(false);
+        });
+
+        it('clears the previous releases when the new person fails to load', async () => {
+            window.creditsPanel._leaderboardLoaded = true;
+            globalThis.fetch = vi.fn(async (url) => {
+                if (url.includes('/api/credits/person/Ann') && url.includes('?limit=')) {
+                    return { ok: true, status: 200, json: async () => ({ credits: [{ year: 2000, title: 'ANN', artists: [], role: 'x', category: 'engineering' }] }) };
+                }
+                if (url.includes('/api/credits/person/Bob') && url.includes('?limit=')) {
+                    return { ok: false, status: 500, json: async () => ({}) };
+                }
+                return { ok: false, status: 404, json: async () => ({}) };
+            });
+            vi.spyOn(console, 'error').mockImplementation(() => {});
+
+            await window.creditsPanel._loadPersonData('Ann');
+            expect(document.querySelectorAll('.credits-release-row').length).toBe(1);
+
+            await window.creditsPanel._loadPersonData('Bob');
+            expect(document.querySelectorAll('.credits-release-row').length).toBe(0);
+            expect(window.creditsPanel._allCredits).toEqual([]);
+            expect(document.getElementById('creditsReleaseSection').classList.contains('hidden')).toBe(true);
+        });
+
+        it('builds role pills from every page, not only the first', async () => {
+            // Role "mastering" appears only after row 500, so it exists only on page 2.
+            globalThis.fetch = pagedCreditsFetch(800, {
+                category: (i) => (i < 500 ? 'engineering' : 'mastering'),
+            }).fn;
+
+            await window.creditsPanel._loadPersonData('Bob');
+
+            const filterEl = document.getElementById('creditsRoleFilter');
+            expect(filterEl.querySelector('[data-filter="mastering"]')).not.toBeNull();
+            const countEl = document.getElementById('creditsReleaseCount');
+            expect(countEl.textContent).toBe('(800)');
+            expect(document.getElementById('creditsReleaseList').querySelectorAll('.credits-release-row').length).toBe(800);
+        });
+    });
+
     // ── 8. _loadPersonData ─────────────────────────────────────────── //
 
     describe('_loadPersonData', () => {
@@ -1093,9 +1291,10 @@ describe('CreditsPanel', () => {
             expect(artist.textContent).toBe('Artist A, Artist B');
         });
 
-        it('should truncate at 100 rows', () => {
+        it('should render every credit, not just the first 100', () => {
+            // jsdom is slow at DOM insertion; the 60,758-row case is measured in a real browser.
             const container = document.getElementById('creditsReleaseList');
-            const manyCredits = Array.from({ length: 150 }, (_, i) => ({
+            const manyCredits = Array.from({ length: 5000 }, (_, i) => ({
                 year: 2000 + (i % 20),
                 title: `Release ${i}`,
                 artists: ['Artist'],
@@ -1106,10 +1305,11 @@ describe('CreditsPanel', () => {
             window.creditsPanel._renderCreditRows(container, manyCredits);
 
             const rows = container.querySelectorAll('.credits-release-row');
-            expect(rows.length).toBe(100);
+            expect(rows.length).toBe(5000);
+            expect(rows[4999].querySelector('.credits-release-title').textContent).toBe('Release 4999');
         });
 
-        it('should show truncation message when over 100 credits', () => {
+        it('should not add any truncation note', () => {
             const container = document.getElementById('creditsReleaseList');
             const manyCredits = Array.from({ length: 150 }, (_, i) => ({
                 year: 2000,
@@ -1120,13 +1320,6 @@ describe('CreditsPanel', () => {
             }));
 
             window.creditsPanel._renderCreditRows(container, manyCredits);
-
-            expect(container.textContent).toContain('Showing first 100 of 150 credits');
-        });
-
-        it('should not show truncation message for 100 or fewer credits', () => {
-            const container = document.getElementById('creditsReleaseList');
-            window.creditsPanel._renderCreditRows(container, MOCK_CREDITS.credits);
 
             expect(container.textContent).not.toContain('Showing first');
         });
