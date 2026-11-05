@@ -10,10 +10,32 @@ const CREDITS_PAGE_SIZE = 500;
 // The API limits /api/credits/person/{name} to 60 requests a minute per client; a 429 is waited out.
 const CREDITS_MAX_RATE_LIMIT_RETRIES = 5;
 
+const isAbort = (error) => error?.name === 'AbortError';
+
+/** Wait ``ms``, rejecting with an AbortError the moment ``signal`` aborts. */
+function abortableSleep(ms, signal) {
+    return new Promise((resolve, reject) => {
+        if (signal?.aborted) {
+            reject(new DOMException('Aborted', 'AbortError'));
+            return;
+        }
+        const timer = setTimeout(() => {
+            signal?.removeEventListener('abort', onAbort);
+            resolve();
+        }, ms);
+        const onAbort = () => {
+            clearTimeout(timer);
+            reject(new DOMException('Aborted', 'AbortError'));
+        };
+        signal?.addEventListener('abort', onAbort, { once: true });
+    });
+}
+
 class CreditsPanel {
     constructor() {
         this._currentPerson = null;
         this._loadId = 0;
+        this._loadAbort = null;
         this._allCredits = [];
         this._activeFilter = null;
         this._debounceTimer = null;
@@ -134,60 +156,82 @@ class CreditsPanel {
     // ── Data Loading ──────────────────────────────────────────────────── //
 
     async _loadPersonData(name) {
+        // A load for someone else may start while this one pages for minutes: stop the old requests
+        // now, so they stop spending the rate-limit bucket and the catalog's Neo4j reads.
+        if (this._loadAbort) this._loadAbort.abort();
+        const controller = new AbortController();
+        this._loadAbort = controller;
+        const { signal } = controller;
+        const loadId = ++this._loadId;
+        const current = () => loadId === this._loadId;
+
         this._showLoading(true);
         this._hideEmptyState();
-        // Credits can take minutes for a large person; a load for someone else may start meanwhile.
-        const loadId = ++this._loadId;
+        this._clearPersonPanels();
 
-        try {
-            const [profileResp, creditsResp, timelineResp, connectionsResp] = await Promise.allSettled([
-                fetch(`/api/credits/person/${encodeURIComponent(name)}/profile`),
-                this._fetchAllCredits(
-                    name,
-                    (loaded, total) => this._showLoadingProgress(loaded, total),
-                    (seconds) => this._showLoadingText(`Rate limit reached; continuing in ${seconds}s...`),
-                ),
-                fetch(`/api/credits/person/${encodeURIComponent(name)}/timeline`),
-                fetch(`/api/credits/connections/${encodeURIComponent(name)}?depth=1&limit=30`),
-            ]);
+        const getJson = async (path) => {
+            const resp = await fetch(path, { signal });
+            if (!resp.ok) throw new Error(`${path} failed: HTTP ${resp.status}`);
+            return resp.json();
+        };
+        const encoded = encodeURIComponent(name);
 
-            // A newer selection superseded this load: its results must not reach the screen.
-            if (loadId !== this._loadId) return;
+        // Each panel renders the moment its own request settles. Credits can take minutes for a large
+        // person, and the other three are one request each, so none of them waits for the last page.
+        // A superseded load renders nothing.
+        const panel = (request, render) => request.then(
+            (data) => { if (current()) render(data); },
+            (error) => { if (current() && !isAbort(error)) console.error('Loading a credits panel failed', error); },
+        );
 
-            if (profileResp.status === 'fulfilled' && profileResp.value.ok) {
-                const profile = await profileResp.value.json();
-                this._renderProfile(profile);
-            }
-
-            if (creditsResp.status === 'fulfilled') {
-                this._allCredits = creditsResp.value.credits;
-                this._renderReleaseList(this._allCredits, creditsResp.value.total);
-            } else {
-                // Never leave the previous person's releases on screen under this person's name.
-                console.error('Loading credits failed', creditsResp.reason);
+        const credits = this._fetchAllCredits(
+            name,
+            (loaded, total) => { if (current()) this._showLoadingProgress(loaded, total); },
+            (seconds) => { if (current()) this._showLoadingText(`Rate limit reached; continuing in ${seconds}s...`); },
+            signal,
+        ).then(
+            (result) => {
+                if (!current()) return;
+                this._allCredits = result.credits;
+                this._renderReleaseList(this._allCredits, result.total);
+            },
+            (error) => {
+                if (!current() || isAbort(error)) return;
+                // Never render a partial list, or the previous person's releases under this name.
+                console.error('Loading credits failed', error);
                 this._allCredits = [];
                 this._renderReleaseList([]);
-            }
+            },
+        );
 
-            if (timelineResp.status === 'fulfilled' && timelineResp.value.ok) {
-                const timeline = await timelineResp.value.json();
-                this._renderTimeline(timeline.timeline || []);
-            }
-
-            if (connectionsResp.status === 'fulfilled' && connectionsResp.value.ok) {
-                const connections = await connectionsResp.value.json();
-                this._renderConnections(connections.connections || [], name);
-            }
+        try {
+            await Promise.all([
+                panel(getJson(`/api/credits/person/${encoded}/profile`), (profile) => this._renderProfile(profile)),
+                panel(getJson(`/api/credits/person/${encoded}/timeline`), (timeline) => this._renderTimeline(timeline.timeline || [])),
+                panel(
+                    getJson(`/api/credits/connections/${encoded}?depth=1&limit=30`),
+                    (connections) => this._renderConnections(connections.connections || [], name),
+                ),
+                credits,
+            ]);
 
             // Load leaderboard on first visit
-            if (!this._leaderboardLoaded) {
+            if (current() && !this._leaderboardLoaded) {
                 this._loadLeaderboard('mastering');
                 this._leaderboardLoaded = true;
             }
-        } catch {
-            // Silently fail
         } finally {
-            if (loadId === this._loadId) this._showLoading(false);
+            if (current()) this._showLoading(false);
+        }
+    }
+
+    /** Empty the person panels, so a new person never shows the previous one's data while loading. */
+    _clearPersonPanels() {
+        this._allCredits = [];
+        this._activeFilter = null;
+        for (const id of ['creditsProfileCard', 'creditsTimelineSection', 'creditsReleaseSection', 'creditsConnectionsSection']) {
+            const el = document.getElementById(id);
+            if (el) el.classList.add('hidden');
         }
     }
 
@@ -199,14 +243,14 @@ class CreditsPanel {
      * in its first response, so it ends after one request. Any failure rejects the whole
      * load: a partial list is never returned.
      */
-    async _fetchAllCredits(name, onProgress, onWait) {
+    async _fetchAllCredits(name, onProgress, onWait, signal) {
         const base = `/api/credits/person/${encodeURIComponent(name)}`;
         const credits = [];
         let offset = 0;
         let total = null;
 
         for (;;) {
-            const page = await this._fetchCreditsPage(base, offset, onWait);
+            const page = await this._fetchCreditsPage(base, offset, onWait, signal);
             const rows = page.credits || [];
             credits.push(...rows);
             if (typeof page.total_credits === 'number') total = page.total_credits;
@@ -227,9 +271,9 @@ class CreditsPanel {
      * retrying the same offset. A page is never skipped; after CREDITS_MAX_RATE_LIMIT_RETRIES
      * the load fails rather than returning a partial list.
      */
-    async _fetchCreditsPage(base, offset, onWait) {
+    async _fetchCreditsPage(base, offset, onWait, signal) {
         for (let attempt = 0; ; attempt++) {
-            const resp = await fetch(`${base}?limit=${CREDITS_PAGE_SIZE}&offset=${offset}`);
+            const resp = await fetch(`${base}?limit=${CREDITS_PAGE_SIZE}&offset=${offset}`, { signal });
             if (resp.ok) return resp.json();
             if (resp.status !== 429 || attempt >= CREDITS_MAX_RATE_LIMIT_RETRIES) {
                 throw new Error(`credits page at offset ${offset} failed: HTTP ${resp.status}`);
@@ -237,7 +281,7 @@ class CreditsPanel {
             const header = parseInt(resp.headers?.get?.('Retry-After'), 10);
             const seconds = Number.isFinite(header) && header > 0 ? Math.min(header, 120) : 60;
             if (onWait) onWait(seconds);
-            await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+            await abortableSleep(seconds * 1000, signal);
         }
     }
 

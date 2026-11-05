@@ -774,6 +774,65 @@ describe('CreditsPanel', () => {
             expect(document.getElementById('creditsLoading').classList.contains('active')).toBe(false);
         });
 
+        it('renders profile, timeline and connections while credits are still paging', async () => {
+            let releaseCredits;
+            const gate = new Promise((resolve) => { releaseCredits = resolve; });
+            const ok = (body) => ({ ok: true, status: 200, json: async () => body });
+            globalThis.fetch = vi.fn(async (url) => {
+                if (url.includes('/profile')) return ok({ name: 'Bob', total_credits: 60000, role_breakdown: [] });
+                if (url.includes('/timeline')) return ok({ timeline: [{ year: 2000, count: 3 }] });
+                if (url.includes('/connections/')) return ok({ connections: [] });
+                await gate;
+                return ok({ credits: [{ year: 2000, title: 'LATE', artists: [], role: 'x', category: 'engineering' }] });
+            });
+            window.creditsPanel._leaderboardLoaded = true;
+
+            const load = window.creditsPanel._loadPersonData('Bob');
+            await vi.waitFor(() => expect(document.getElementById('creditsPersonName').textContent).toBe('Bob'));
+
+            // Credits have not answered: the other panels are up, and the progress indicator is still showing.
+            expect(document.getElementById('creditsProfileCard').classList.contains('hidden')).toBe(false);
+            expect(document.getElementById('creditsTimelineSection').classList.contains('hidden')).toBe(false);
+            expect(document.getElementById('creditsReleaseSection').classList.contains('hidden')).toBe(true);
+            expect(document.getElementById('creditsLoading').classList.contains('active')).toBe(true);
+
+            releaseCredits();
+            await load;
+            expect(document.querySelectorAll('.credits-release-row').length).toBe(1);
+            expect(document.getElementById('creditsLoading').classList.contains('active')).toBe(false);
+        });
+
+        it('aborts the superseded load: its paging stops and its rate-limit wait ends', async () => {
+            const bobSignals = [];
+            const pagesAsked = [];
+            globalThis.fetch = vi.fn((url, init) => {
+                if (url.includes('/api/credits/person/Bob') && url.includes('?limit=')) {
+                    pagesAsked.push(url);
+                    bobSignals.push(init.signal);
+                    return Promise.resolve({
+                        ok: false, status: 429, headers: new Headers({ 'Retry-After': '60' }), json: async () => ({}),
+                    });
+                }
+                if (url.includes('/api/credits/person/Ann') && url.includes('?limit=')) {
+                    return Promise.resolve({ ok: true, status: 200, json: async () => ({ credits: [] }) });
+                }
+                return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+            });
+            window.creditsPanel._leaderboardLoaded = true;
+
+            vi.useFakeTimers();
+            const bob = window.creditsPanel._loadPersonData('Bob');
+            await vi.advanceTimersByTimeAsync(10); // Bob's first page is in its 60 s wait
+            expect(pagesAsked.length).toBe(1);
+
+            await window.creditsPanel._loadPersonData('Ann');
+            await bob;
+            await vi.advanceTimersByTimeAsync(10 * 60 * 1000); // minutes later
+
+            expect(bobSignals.every((signal) => signal.aborted)).toBe(true);
+            expect(pagesAsked.length).toBe(1); // the retry never fired
+        });
+
         it('clears the previous releases when the new person fails to load', async () => {
             window.creditsPanel._leaderboardLoaded = true;
             globalThis.fetch = vi.fn(async (url) => {

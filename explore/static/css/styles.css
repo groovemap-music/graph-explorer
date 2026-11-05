@@ -615,6 +615,28 @@
     display: flex;
 }
 
+/* Credits progress sits in the flow under the search bar, so the panels that have loaded stay usable. */
+.credits-progress {
+    display: none;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.credits-progress.active {
+    display: flex;
+}
+
+.credits-progress p {
+    margin: 0;
+}
+
+.spinner.spinner-sm {
+    width: 16px;
+    height: 16px;
+    border-width: 2px;
+}
+
 .spinner {
     width: 32px;
     height: 32px;
