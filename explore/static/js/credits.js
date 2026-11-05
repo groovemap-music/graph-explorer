@@ -33,7 +33,7 @@ class CreditsPanel {
         if (dropdown) {
             document.addEventListener('click', (e) => {
                 if (!dropdown.contains(e.target) && e.target !== input) {
-                    dropdown.classList.add('hidden');
+                    dropdown.classList.remove('show');
                 }
             });
         }
@@ -60,7 +60,7 @@ class CreditsPanel {
 
     _onSearchKeydown(e) {
         const dropdown = document.getElementById('creditsAutocompleteDropdown');
-        if (!dropdown || dropdown.classList.contains('hidden')) return;
+        if (!dropdown || !dropdown.classList.contains('show')) return;
 
         const items = dropdown.querySelectorAll('.autocomplete-item');
         const active = dropdown.querySelector('.autocomplete-item.active');
@@ -101,7 +101,7 @@ class CreditsPanel {
         if (!dropdown) return;
 
         if (!results.length) {
-            dropdown.classList.add('hidden');
+            dropdown.classList.remove('show');
             return;
         }
 
@@ -115,12 +115,12 @@ class CreditsPanel {
             dropdown.appendChild(item);
         });
 
-        dropdown.classList.remove('hidden');
+        dropdown.classList.add('show');
     }
 
     _hideDropdown() {
         const dropdown = document.getElementById('creditsAutocompleteDropdown');
-        if (dropdown) dropdown.classList.add('hidden');
+        if (dropdown) dropdown.classList.remove('show');
     }
 
     async _selectPerson(name) {
