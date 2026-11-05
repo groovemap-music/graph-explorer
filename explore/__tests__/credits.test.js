@@ -263,32 +263,48 @@ describe('CreditsPanel', () => {
 
     // ── 2. Search input debouncing ─────────────────────────────────── //
 
+    describe('autocomplete dropdown visibility', () => {
+        // The stylesheet shows .autocomplete-dropdown only with .show; a hidden-class toggle leaves it invisible.
+        it('opens with the show class and closes without it, and the markup starts closed', () => {
+            const dropdown = document.getElementById('creditsAutocompleteDropdown');
+            expect(dropdown.classList.contains('show')).toBe(false);
+            expect(dropdown.classList.contains('hidden')).toBe(false);
+
+            window.creditsPanel._showDropdown([{ name: 'Bob Ludwig' }]);
+            expect(dropdown.classList.contains('show')).toBe(true);
+            expect(dropdown.classList.contains('hidden')).toBe(false);
+
+            window.creditsPanel._hideDropdown();
+            expect(dropdown.classList.contains('show')).toBe(false);
+        });
+    });
+
     describe('_onSearchInput', () => {
         it('should hide dropdown for queries shorter than 2 characters', () => {
             const dropdown = document.getElementById('creditsAutocompleteDropdown');
-            dropdown.classList.remove('hidden');
+            dropdown.classList.add('show');
 
             window.creditsPanel._onSearchInput('a');
 
-            expect(dropdown.classList.contains('hidden')).toBe(true);
+            expect(dropdown.classList.contains('show')).toBe(false);
         });
 
         it('should hide dropdown for empty input', () => {
             const dropdown = document.getElementById('creditsAutocompleteDropdown');
-            dropdown.classList.remove('hidden');
+            dropdown.classList.add('show');
 
             window.creditsPanel._onSearchInput('');
 
-            expect(dropdown.classList.contains('hidden')).toBe(true);
+            expect(dropdown.classList.contains('show')).toBe(false);
         });
 
         it('should hide dropdown for whitespace-only input', () => {
             const dropdown = document.getElementById('creditsAutocompleteDropdown');
-            dropdown.classList.remove('hidden');
+            dropdown.classList.add('show');
 
             window.creditsPanel._onSearchInput('   ');
 
-            expect(dropdown.classList.contains('hidden')).toBe(true);
+            expect(dropdown.classList.contains('show')).toBe(false);
         });
 
         it('should debounce search calls by 300ms', async () => {
@@ -336,7 +352,7 @@ describe('CreditsPanel', () => {
     describe('_onSearchKeydown', () => {
         function populateDropdown() {
             const dropdown = document.getElementById('creditsAutocompleteDropdown');
-            dropdown.classList.remove('hidden');
+            dropdown.classList.add('show');
             dropdown.textContent = '';
             ['Bob Ludwig', 'Bob Clearmountain', 'Bob Rock'].forEach(name => {
                 const item = document.createElement('div');
@@ -349,7 +365,7 @@ describe('CreditsPanel', () => {
 
         it('should do nothing when dropdown is hidden', () => {
             const dropdown = document.getElementById('creditsAutocompleteDropdown');
-            dropdown.classList.add('hidden');
+            dropdown.classList.remove('show');
 
             const e = new KeyboardEvent('keydown', { key: 'ArrowDown' });
             window.creditsPanel._onSearchKeydown(e);
@@ -442,7 +458,7 @@ describe('CreditsPanel', () => {
             window.creditsPanel._onSearchKeydown(esc);
 
             const dropdown = document.getElementById('creditsAutocompleteDropdown');
-            expect(dropdown.classList.contains('hidden')).toBe(true);
+            expect(dropdown.classList.contains('show')).toBe(false);
         });
     });
 
@@ -457,7 +473,7 @@ describe('CreditsPanel', () => {
             );
 
             const dropdown = document.getElementById('creditsAutocompleteDropdown');
-            expect(dropdown.classList.contains('hidden')).toBe(false);
+            expect(dropdown.classList.contains('show')).toBe(true);
             const items = dropdown.querySelectorAll('.autocomplete-item');
             expect(items.length).toBe(3);
         });
@@ -507,20 +523,20 @@ describe('CreditsPanel', () => {
 
         it('should remove hidden class from dropdown', () => {
             const dropdown = document.getElementById('creditsAutocompleteDropdown');
-            dropdown.classList.add('hidden');
+            dropdown.classList.remove('show');
 
             window.creditsPanel._showDropdown(MOCK_AUTOCOMPLETE.results);
 
-            expect(dropdown.classList.contains('hidden')).toBe(false);
+            expect(dropdown.classList.contains('show')).toBe(true);
         });
 
         it('should hide dropdown when results array is empty', () => {
             const dropdown = document.getElementById('creditsAutocompleteDropdown');
-            dropdown.classList.remove('hidden');
+            dropdown.classList.add('show');
 
             window.creditsPanel._showDropdown([]);
 
-            expect(dropdown.classList.contains('hidden')).toBe(true);
+            expect(dropdown.classList.contains('show')).toBe(false);
         });
 
         it('should clear previous items before rendering new ones', () => {
@@ -550,11 +566,11 @@ describe('CreditsPanel', () => {
     describe('_hideDropdown', () => {
         it('should add hidden class to dropdown', () => {
             const dropdown = document.getElementById('creditsAutocompleteDropdown');
-            dropdown.classList.remove('hidden');
+            dropdown.classList.add('show');
 
             window.creditsPanel._hideDropdown();
 
-            expect(dropdown.classList.contains('hidden')).toBe(true);
+            expect(dropdown.classList.contains('show')).toBe(false);
         });
 
         it('should not throw when dropdown element is missing', () => {
@@ -576,11 +592,11 @@ describe('CreditsPanel', () => {
 
         it('should hide dropdown', async () => {
             const dropdown = document.getElementById('creditsAutocompleteDropdown');
-            dropdown.classList.remove('hidden');
+            dropdown.classList.add('show');
 
             await window.creditsPanel._selectPerson('Bob Ludwig');
 
-            expect(dropdown.classList.contains('hidden')).toBe(true);
+            expect(dropdown.classList.contains('show')).toBe(false);
         });
 
         it('should set _currentPerson', async () => {
@@ -1467,11 +1483,11 @@ describe('CreditsPanel', () => {
     describe('_init event listeners', () => {
         it('should hide dropdown when clicking outside', () => {
             const dropdown = document.getElementById('creditsAutocompleteDropdown');
-            dropdown.classList.remove('hidden');
+            dropdown.classList.add('show');
 
             document.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
-            expect(dropdown.classList.contains('hidden')).toBe(true);
+            expect(dropdown.classList.contains('show')).toBe(false);
         });
 
         it('should trigger leaderboard load on category select change', () => {
