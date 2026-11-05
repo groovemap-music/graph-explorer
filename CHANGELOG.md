@@ -3,6 +3,14 @@
 All notable changes to this repository will be recorded here by Commitizen from
 Conventional Commits.
 
+## v0.3.2 (2026-11-05)
+
+### Fix
+
+- **credits**: render each panel as it settles and abort a superseded load
+- **credits**: show the person-search dropdown with the class the stylesheet displays
+- **credits**: page through every credit for a person and stop capping the list at 100
+
 ## v0.3.1 (2026-11-04)
 
 ### Fix
