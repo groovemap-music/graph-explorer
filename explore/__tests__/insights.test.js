@@ -281,6 +281,34 @@ describe('InsightsPanel', () => {
             expect(el.querySelector('.insights-completeness-label').textContent).toBe('Releases');
         });
 
+        it('should render a null completeness_pct as n/a with an empty bar and keep the other rows', () => {
+            const el = document.getElementById('insightsCompleteness');
+            window.insightsPanel._renderDataCompleteness({
+                items: [
+                    { entity_type: 'releases', completeness_pct: 89.5, total_count: 15000000 },
+                    { entity_type: 'artists', completeness_pct: null, total_count: 8000000 },
+                    { entity_type: 'labels', total_count: 40000 },
+                ],
+            });
+            const rows = el.querySelectorAll('.insights-completeness-row');
+            expect(rows).toHaveLength(3);
+            expect(rows[0].querySelector('.insights-completeness-pct').textContent).toBe('89.5%');
+            expect(rows[0].querySelector('.insights-completeness-bar').style.width).toBe('89.5%');
+            for (const row of [rows[1], rows[2]]) {
+                expect(row.querySelector('.insights-completeness-pct').textContent).toBe('n/a');
+                expect(row.querySelector('.insights-completeness-bar').style.width).toBe('0%');
+            }
+            expect(rows[1].querySelector('.insights-completeness-count').textContent).toBe('8,000,000');
+        });
+
+        it('should still show a real zero as 0.0%, not n/a', () => {
+            const el = document.getElementById('insightsCompleteness');
+            window.insightsPanel._renderDataCompleteness({
+                items: [{ entity_type: 'releases', completeness_pct: 0, total_count: 10 }],
+            });
+            expect(el.querySelector('.insights-completeness-pct').textContent).toBe('0.0%');
+        });
+
         it('should cap bar width at 100%', () => {
             const el = document.getElementById('insightsCompleteness');
             window.insightsPanel._renderDataCompleteness({

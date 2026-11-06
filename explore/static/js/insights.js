@@ -304,11 +304,14 @@ class InsightsPanel {
 
             const bar = document.createElement('div');
             bar.className = 'insights-completeness-bar';
-            bar.style.width = `${Math.min(100, item.completeness_pct)}%`;
+            // null means the entity has no scorable field (artists and labels once images left the score).
+            // It is not 0%: show n/a with an empty bar, and let the rest of the panel render.
+            const hasScore = typeof item.completeness_pct === 'number' && Number.isFinite(item.completeness_pct);
+            bar.style.width = hasScore ? `${Math.min(100, item.completeness_pct)}%` : '0%';
 
             const pct = document.createElement('span');
             pct.className = 'insights-completeness-pct';
-            pct.textContent = `${item.completeness_pct.toFixed(1)}%`;
+            pct.textContent = hasScore ? `${item.completeness_pct.toFixed(1)}%` : 'n/a';
 
             const count = document.createElement('span');
             count.className = 'insights-completeness-count';
