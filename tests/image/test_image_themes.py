@@ -206,20 +206,49 @@ PAGE_STATE_JS = """() => ({
 })"""
 
 
-def _write_timeout_diagnostics(page: Page, events: dict, url: str, scheme: str) -> Path:
-    """Record what a readiness timeout saw, beside the screenshots, so a CI failure can be read after the run."""
+TIMEOUT_SUMMARY_LIMIT = 4096
+
+
+def _timeout_summary(report: dict) -> str:
+    """The evidence a CI log needs, errors first, capped so it stays a few KB whatever the page did."""
+    events = report["events"]
+    page = report["page"] if isinstance(report["page"], dict) else {"evaluate_failed": report["page"]}
+    lines = [f"{IMAGE} {report['scheme']}: readiness timed out at {report['url']}"]
+    lines += [f"failed request: {item['url']} ({item['failure']})" for item in events["failed_requests"]]
+    lines += [f"page error: {text}" for text in events["page_errors"]]
+    lines += [f"console {item['type']}: {item['text']}" for item in events["console"] if item["type"] == "error"]
+    lines += [f"console {item['type']}: {item['text']}" for item in events["console"] if item["type"] != "error"]
+    lines += [f"response {item['status']}: {item['url']}" for item in events["responses"] if item["status"] >= 400]
+    if "evaluate_failed" in page:
+        lines.append(f"page evaluate failed: {page['evaluate_failed']}")
+    else:
+        lines.append(f"readyState={page['readyState']} bgVoid={page['bgVoid']!r} fonts={page['fontsStatus']}")
+        lines += [f"stylesheet {sheet['href']}: parsed={sheet['parsed']} rules={sheet['rules']}" for sheet in page["stylesheets"]]
+        not_loaded = [face for face in page["fontFaces"] if not face.endswith(": loaded")]
+        lines.append(f"font faces: {len(page['fontFaces'])} total, {len(not_loaded)} not loaded")
+        lines += [f"font face not loaded: {face}" for face in not_loaded[:20]]
+    summary = "\n".join(lines)
+    if len(summary) > TIMEOUT_SUMMARY_LIMIT:
+        summary = summary[:TIMEOUT_SUMMARY_LIMIT] + "\n...[truncated; full report in the timeout JSON]"
+    return summary
+
+
+def _write_timeout_diagnostics(page: Page, events: dict, url: str, scheme: str) -> tuple[Path, str]:
+    """Record what a readiness timeout saw: the full JSON and a screenshot beside them, plus a capped summary for the log."""
     SCREENSHOTS.mkdir(parents=True, exist_ok=True)
     label = re.sub(r"[^A-Za-z0-9_.-]+", "_", IMAGE)
     report_path = SCREENSHOTS / f"{label}-{scheme}-timeout.json"
     try:
         state: object = page.evaluate(PAGE_STATE_JS)
     except PlaywrightError as error:
-        state = {"evaluate_failed": str(error)}
+        state = str(error)
     report = {"image": IMAGE, "scheme": scheme, "url": url, "page": state, "events": events}
     report_path.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
     with contextlib.suppress(PlaywrightError):  # the JSON above is the evidence; a broken page can refuse a screenshot too
         page.screenshot(path=str(SCREENSHOTS / f"{label}-{scheme}-timeout.png"), full_page=True)
-    return report_path
+    summary = _timeout_summary(report)
+    print(summary, flush=True)  # stdout reaches the CI log even when the failure message is shortened
+    return report_path, summary
 
 
 def _load(browser: object, url: str, scheme: str) -> tuple[Page, dict]:
@@ -239,8 +268,8 @@ def _load(browser: object, url: str, scheme: str) -> tuple[Page, dict]:
     try:
         page.wait_for_function("getComputedStyle(document.documentElement).getPropertyValue('--bg-void').trim() !== ''", timeout=15_000)
     except PlaywrightTimeoutError as error:
-        report = _write_timeout_diagnostics(page, events, url, scheme)
-        raise AssertionError(f"{IMAGE} {scheme}: the theme token never resolved; diagnostics: {report}") from error
+        report_path, summary = _write_timeout_diagnostics(page, events, url, scheme)
+        raise AssertionError(f"the theme token never resolved\n{summary}\nfull report: {report_path}") from error
     SCREENSHOTS.mkdir(parents=True, exist_ok=True)
     label = re.sub(r"[^A-Za-z0-9_.-]+", "_", IMAGE)
     page.screenshot(path=str(SCREENSHOTS / f"{label}-{scheme}.png"))
