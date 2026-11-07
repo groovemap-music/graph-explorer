@@ -2408,6 +2408,51 @@ select option {
     margin-bottom: 12px;
 }
 
+/* Longest-running labels: title row with the placeholder toggle */
+.insights-section-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 4px 16px;
+    margin-bottom: 12px;
+}
+
+.insights-section-header .insights-section-title {
+    margin-bottom: 0;
+}
+
+.insights-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.75rem;
+    color: var(--text-mid);
+    cursor: pointer;
+}
+
+.insights-toggle input {
+    accent-color: var(--purple-accent);
+}
+
+.insights-placeholder-row .insights-table-cell {
+    background: var(--inner-bg);
+}
+
+.insights-placeholder-tag {
+    font-size: 0.6875rem;
+    font-style: italic;
+    color: var(--text-mid);
+}
+
+.insights-placeholder-note {
+    display: block;
+    margin-top: 2px;
+    font-size: 0.6875rem;
+    font-weight: 400;
+    color: var(--text-mid);
+}
+
 /* Top Artists Table */
 .insights-table {
     width: 100%;

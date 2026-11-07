@@ -11,12 +11,17 @@ function setupInsightsDOM() {
         'insightsPane', 'insightsLoading', 'insightsPlaceholder',
         'insightsContent', 'insightsTopArtists', 'insightsGenreChart',
         'insightsThisMonth', 'insightsCompleteness', 'insightsStatus',
+        'insightsLabelLongevity',
     ];
     for (const id of ids) {
         const el = document.createElement('div');
         el.id = id;
         document.body.appendChild(el);
     }
+    const toggle = document.createElement('input');
+    toggle.type = 'checkbox';
+    toggle.id = 'insightsIncludePlaceholders';
+    document.body.appendChild(toggle);
 }
 
 describe('InsightsPanel', () => {
@@ -552,6 +557,94 @@ describe('InsightsPanel', () => {
             await window.insightsPanel.load();
             const loading = document.getElementById('insightsLoading');
             expect(loading.classList.contains('active')).toBe(false);
+        });
+    });
+    describe('longest-running labels', () => {
+        const REAL = [
+            { rank: 1, label_id: '1', label_name: 'Columbia', first_year: 1889, last_year: null, years_active: 137, total_releases: 351183, still_active: true, is_placeholder: false },
+            { rank: 2, label_id: '2', label_name: 'Decca', first_year: 1929, last_year: 1999, years_active: 70, total_releases: 90000, still_active: false, is_placeholder: false },
+        ];
+        const NOT_ON_LABEL = {
+            rank: 51, label_id: '0', label_name: 'Not On Label', first_year: 1900, last_year: null,
+            years_active: 126, total_releases: 3000000, still_active: true, is_placeholder: true,
+        };
+
+        function stubApi(withPlaceholders) {
+            const getInsightsLabelLongevity = vi.fn(async (_limit, include) => ({
+                items: include ? [REAL[0], NOT_ON_LABEL, REAL[1]] : REAL,
+            }));
+            window.apiClient = { getInsightsLabelLongevity };
+            return getInsightsLabelLongevity;
+        }
+
+        const rows = () => [...document.querySelectorAll('#insightsLabelLongevity tbody tr')];
+
+        it('hides placeholders by default and asks the API without include_placeholders', async () => {
+            const get = stubApi();
+            await window.insightsPanel._loadLabelLongevity();
+
+            expect(get).toHaveBeenCalledWith(20, false);
+            expect(rows().map(r => r.children[1].textContent)).toEqual(['Columbia', 'Decca']);
+            expect(document.querySelector('.insights-placeholder-note')).toBeNull();
+            expect(document.getElementById('insightsIncludePlaceholders').checked).toBe(false);
+        });
+
+        it('includes placeholders when the checkbox is ticked and shows the note, not the stored rank', async () => {
+            const get = stubApi();
+            const toggle = document.getElementById('insightsIncludePlaceholders');
+            toggle.checked = true;
+            toggle.dispatchEvent(new Event('change'));
+            await vi.waitFor(() => expect(rows()).toHaveLength(3));
+
+            expect(get).toHaveBeenLastCalledWith(20, true);
+            const placeholder = rows()[1];
+            expect(placeholder.classList.contains('insights-placeholder-row')).toBe(true);
+            expect(placeholder.children[0].textContent).toBe('placeholder');
+            expect(placeholder.textContent).not.toContain('51');
+            expect(placeholder.querySelector('.insights-placeholder-note').textContent)
+                .toBe('Releases with no label, usually white labels, bootlegs or test pressings.');
+        });
+
+        it('does not change the ranks of real labels when the placeholders are shown', async () => {
+            stubApi();
+            await window.insightsPanel._loadLabelLongevity();
+            const hidden = rows().filter(r => !r.classList.contains('insights-placeholder-row')).map(r => r.children[0].textContent);
+
+            await window.insightsPanel.setIncludePlaceholders(true);
+            const shown = rows().filter(r => !r.classList.contains('insights-placeholder-row')).map(r => r.children[0].textContent);
+
+            expect(shown).toEqual(hidden);
+            expect(shown).toEqual(['1', '2']);
+        });
+
+        it('hides them again when the checkbox is cleared', async () => {
+            const get = stubApi();
+            await window.insightsPanel.setIncludePlaceholders(true);
+            expect(rows()).toHaveLength(3);
+            await window.insightsPanel.setIncludePlaceholders(false);
+
+            expect(get).toHaveBeenLastCalledWith(20, false);
+            expect(rows()).toHaveLength(2);
+        });
+
+        it('ignores a slower response for a choice the user already changed', async () => {
+            let releaseSlow;
+            const slow = new Promise(resolve => { releaseSlow = resolve; });
+            window.apiClient = {
+                getInsightsLabelLongevity: vi.fn((_limit, include) => (include ? slow : Promise.resolve({ items: REAL }))),
+            };
+            const pending = window.insightsPanel.setIncludePlaceholders(true);
+            await window.insightsPanel.setIncludePlaceholders(false);
+            releaseSlow({ items: [REAL[0], NOT_ON_LABEL, REAL[1]] });
+            await pending;
+
+            expect(rows()).toHaveLength(2);
+        });
+
+        it('says so when the API has nothing', async () => {
+            window.apiClient = { getInsightsLabelLongevity: vi.fn().mockResolvedValue(null) };
+            await window.insightsPanel._loadLabelLongevity();
+            expect(document.getElementById('insightsLabelLongevity').textContent).toBe('No label data available yet');
         });
     });
 });
