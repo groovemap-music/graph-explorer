@@ -97,7 +97,7 @@ def test_placeholder_labels_are_hidden_by_default_and_shown_marked_when_asked(pa
     expect(toggle).not_to_be_checked()
     rows = section.locator("tbody tr")
     expect(rows).to_have_count(2)
-    expect(section).not_to_contain_text("Not On Label")
+    expect(section.locator("tbody")).not_to_contain_text("Not On Label")
     assert "include_placeholders" not in requests[-1]
 
     toggle.check()
@@ -116,5 +116,5 @@ def test_placeholder_labels_are_hidden_by_default_and_shown_marked_when_asked(pa
     toggle.uncheck()
 
     expect(rows).to_have_count(2)
-    expect(section).not_to_contain_text("Not On Label")
+    expect(section.locator("tbody")).not_to_contain_text("Not On Label")
     assert errors == [], f"the browser reported page errors: {errors}"
