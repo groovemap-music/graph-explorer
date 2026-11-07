@@ -3,6 +3,16 @@
 All notable changes to this repository will be recorded here by Commitizen from
 Conventional Commits.
 
+## v0.3.3 (2026-11-06)
+
+### Release notes
+
+No schema change. A null completeness_pct renders as n/a, which must be live before catalog-api returns nulls for it.
+
+### Fix
+
+- **insights**: render a null completeness_pct as n/a
+
 ## v0.3.2 (2026-11-05)
 
 ### Fix
