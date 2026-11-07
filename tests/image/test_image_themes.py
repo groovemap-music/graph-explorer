@@ -12,6 +12,8 @@ negative proof that they detect the regression. Screenshots go to test-results/i
 
 from __future__ import annotations
 
+import contextlib
+import json
 import os
 import re
 import subprocess
@@ -22,7 +24,9 @@ from typing import TYPE_CHECKING
 
 import httpx
 import pytest
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, sync_playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 
 if TYPE_CHECKING:
@@ -182,12 +186,61 @@ def headless_chromium() -> Iterator[object]:
         browser.close()
 
 
+# What the page had loaded when the readiness wait gave up: every linked stylesheet, whether it parsed,
+# the font faces, and the one token the wait is waiting for.
+PAGE_STATE_JS = """() => ({
+    readyState: document.readyState,
+    title: document.title,
+    bodyTextStart: (document.body ? document.body.innerText : '').slice(0, 300),
+    htmlClass: document.documentElement.className,
+    bgVoid: getComputedStyle(document.documentElement).getPropertyValue('--bg-void'),
+    stylesheets: [...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => {
+        let rules = null;
+        if (link.sheet) {
+            try { rules = link.sheet.cssRules.length; } catch (error) { rules = 'unreadable: ' + error.message; }
+        }
+        return { href: link.getAttribute('href'), parsed: link.sheet !== null, rules };
+    }),
+    fontsStatus: document.fonts ? document.fonts.status : null,
+    fontFaces: document.fonts ? [...document.fonts].map((face) => face.family + ' ' + face.weight + ': ' + face.status) : [],
+})"""
+
+
+def _write_timeout_diagnostics(page: Page, events: dict, url: str, scheme: str) -> Path:
+    """Record what a readiness timeout saw, beside the screenshots, so a CI failure can be read after the run."""
+    SCREENSHOTS.mkdir(parents=True, exist_ok=True)
+    label = re.sub(r"[^A-Za-z0-9_.-]+", "_", IMAGE)
+    report_path = SCREENSHOTS / f"{label}-{scheme}-timeout.json"
+    try:
+        state: object = page.evaluate(PAGE_STATE_JS)
+    except PlaywrightError as error:
+        state = {"evaluate_failed": str(error)}
+    report = {"image": IMAGE, "scheme": scheme, "url": url, "page": state, "events": events}
+    report_path.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
+    with contextlib.suppress(PlaywrightError):  # the JSON above is the evidence; a broken page can refuse a screenshot too
+        page.screenshot(path=str(SCREENSHOTS / f"{label}-{scheme}-timeout.png"), full_page=True)
+    return report_path
+
+
 def _load(browser: object, url: str, scheme: str) -> tuple[Page, dict]:
     context = browser.new_context(color_scheme=scheme, viewport={"width": 1280, "height": 900})  # type: ignore[attr-defined]
     page = context.new_page()
+    # Listeners go on before navigation, so the events of the first load are kept.
+    events: dict[str, list] = {"responses": [], "failed_requests": [], "console": [], "page_errors": []}
+    page.on("response", lambda response: events["responses"].append({"url": response.url, "status": response.status}))
+    page.on("requestfailed", lambda request: events["failed_requests"].append({"url": request.url, "failure": request.failure}))
+    page.on(
+        "console",
+        lambda message: events["console"].append({"type": message.type, "text": message.text}) if message.type in {"error", "warning"} else None,
+    )
+    page.on("pageerror", lambda error: events["page_errors"].append(str(error)))
     page.goto(url, wait_until="load")
     # tokens.css and styles.css are linked stylesheets: wait until a brand token has resolved.
-    page.wait_for_function("getComputedStyle(document.documentElement).getPropertyValue('--bg-void').trim() !== ''", timeout=15_000)
+    try:
+        page.wait_for_function("getComputedStyle(document.documentElement).getPropertyValue('--bg-void').trim() !== ''", timeout=15_000)
+    except PlaywrightTimeoutError as error:
+        report = _write_timeout_diagnostics(page, events, url, scheme)
+        raise AssertionError(f"{IMAGE} {scheme}: the theme token never resolved; diagnostics: {report}") from error
     SCREENSHOTS.mkdir(parents=True, exist_ok=True)
     label = re.sub(r"[^A-Za-z0-9_.-]+", "_", IMAGE)
     page.screenshot(path=str(SCREENSHOTS / f"{label}-{scheme}.png"))
