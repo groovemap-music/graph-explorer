@@ -814,6 +814,25 @@ class ApiClient {
         return this._transport.readJson(response);
     }
 
+    /**
+     * Labels ranked by years of active operation. Placeholder labels (Not On Label and the like)
+     * are left out unless includePlaceholders is true; then each placeholder that ranks within the
+     * list is included and flagged is_placeholder. A real label's rank is the same either way.
+     * @param {number} limit - Real labels to list
+     * @param {boolean} includePlaceholders - Also list placeholders, in ranking order
+     * @returns {Promise<Object|null>} {items, count} or null on error
+     */
+    async getInsightsLabelLongevity(limit = 20, includePlaceholders = false) {
+        // The proxy rejects a limit outside 1..200 with a 422, so never send one.
+        const requested = Math.trunc(Number(limit));
+        const bounded = Number.isFinite(requested) ? Math.min(200, Math.max(1, requested)) : 20;
+        const params = new URLSearchParams({ limit: String(bounded) });
+        if (includePlaceholders) params.set('include_placeholders', 'true');
+        const response = await this._transport.fetch(`/api/insights/label-longevity?${params}`);
+        if (!response.ok) return null;
+        return this._transport.readJson(response);
+    }
+
     async getInsightsGenreTrends(genre) {
         const params = new URLSearchParams({ genre });
         const response = await this._transport.fetch(`/api/insights/genre-trends?${params}`);

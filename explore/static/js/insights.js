@@ -9,11 +9,20 @@ class InsightsPanel {
         this._pollInterval = null;
         this._lastComputedAt = null;
         this._selectedGenre = 'Rock';
+        // Placeholder labels (Not On Label, self-releases) are hidden until the user asks.
+        this._includePlaceholders = false;
+        this._longevityRequest = 0;
 
         this._container = document.getElementById('insightsPane');
         this._loading = document.getElementById('insightsLoading');
         this._placeholder = document.getElementById('insightsPlaceholder');
         this._content = document.getElementById('insightsContent');
+
+        const toggle = document.getElementById('insightsIncludePlaceholders');
+        if (toggle) {
+            toggle.checked = false;
+            toggle.addEventListener('change', () => this.setIncludePlaceholders(toggle.checked));
+        }
     }
 
     async load() {
@@ -39,6 +48,7 @@ class InsightsPanel {
             if (this._content) this._content.classList.remove('hidden');
 
             this._renderTopArtists(artists);
+            await this._loadLabelLongevity();
             this._renderThisMonth(thisMonth);
             this._renderDataCompleteness(completeness);
             this._renderStatus(status);
@@ -114,6 +124,108 @@ class InsightsPanel {
         const tbody = document.createElement('tbody');
         rows.forEach(r => tbody.appendChild(r));
         table.append(thead, tbody);
+        el.appendChild(table);
+    }
+
+    // ----------------------------------------------------------------
+    // Longest-running labels
+    // ----------------------------------------------------------------
+
+    static PLACEHOLDER_NOTE = 'Releases with no label, usually white labels, bootlegs or test pressings.';
+
+    /** Show or hide placeholder labels, then reload the list. Real labels keep their ranks either way. */
+    async setIncludePlaceholders(include) {
+        this._includePlaceholders = Boolean(include);
+        const toggle = document.getElementById('insightsIncludePlaceholders');
+        if (toggle) toggle.checked = this._includePlaceholders;
+        await this._loadLabelLongevity();
+    }
+
+    async _loadLabelLongevity() {
+        const request = ++this._longevityRequest;
+        const include = this._includePlaceholders;
+        let data = null;
+        try {
+            data = await window.apiClient.getInsightsLabelLongevity(20, include);
+        } catch {
+            data = null;
+        }
+        // A slower response for the previous choice must not overwrite the current one.
+        if (request !== this._longevityRequest) return;
+        this._renderLabelLongevity(data);
+    }
+
+    _renderLabelLongevity(data) {
+        const el = document.getElementById('insightsLabelLongevity');
+        if (!el) return;
+
+        if (!data?.items?.length) {
+            el.textContent = '';
+            const msg = document.createElement('p');
+            msg.className = 'text-text-mid text-sm';
+            msg.textContent = 'No label data available yet';
+            el.appendChild(msg);
+            return;
+        }
+
+        const tbody = document.createElement('tbody');
+        for (const label of data.items) {
+            const tr = document.createElement('tr');
+            if (label.is_placeholder) tr.className = 'insights-placeholder-row';
+
+            // A placeholder never shows its stored rank (it sits after every real label's); real labels do.
+            const tdRank = document.createElement('td');
+            tdRank.className = 'insights-table-cell text-text-mid';
+            if (label.is_placeholder) {
+                const tag = document.createElement('span');
+                tag.className = 'insights-placeholder-tag';
+                tag.textContent = 'placeholder';
+                tdRank.appendChild(tag);
+            } else {
+                tdRank.textContent = String(label.rank);
+            }
+
+            const tdName = document.createElement('td');
+            tdName.className = 'insights-table-cell';
+            tdName.textContent = label.label_name;
+            if (label.is_placeholder) {
+                const note = document.createElement('span');
+                note.className = 'insights-placeholder-note';
+                note.textContent = InsightsPanel.PLACEHOLDER_NOTE;
+                tdName.appendChild(note);
+            }
+
+            const tdActive = document.createElement('td');
+            tdActive.className = 'insights-table-cell text-text-mid';
+            const end = label.still_active || label.last_year == null ? 'present' : String(label.last_year);
+            tdActive.textContent = `${label.first_year}\u2013${end}`;
+
+            const tdYears = document.createElement('td');
+            tdYears.className = 'insights-table-cell text-right text-text-mid';
+            tdYears.textContent = String(label.years_active);
+
+            const tdReleases = document.createElement('td');
+            tdReleases.className = 'insights-table-cell text-right text-text-mid';
+            tdReleases.textContent = label.total_releases.toLocaleString();
+
+            tr.append(tdRank, tdName, tdActive, tdYears, tdReleases);
+            tbody.appendChild(tr);
+        }
+
+        const thead = document.createElement('thead');
+        const headRow = document.createElement('tr');
+        ['#', 'Label', 'Active', 'Years', 'Releases'].forEach((text, i) => {
+            const th = document.createElement('th');
+            th.className = 'insights-table-header' + (i >= 3 ? ' text-right' : '');
+            th.textContent = text;
+            headRow.appendChild(th);
+        });
+        thead.appendChild(headRow);
+
+        const table = document.createElement('table');
+        table.className = 'insights-table';
+        table.append(thead, tbody);
+        el.textContent = '';
         el.appendChild(table);
     }
 
