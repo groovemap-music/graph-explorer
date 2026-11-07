@@ -593,6 +593,27 @@ describe('ApiClient', () => {
             expect(capturedUrl).toContain('limit=5');
         });
 
+        it('getInsightsLabelLongevity sends include_placeholders only when asked, and never a limit outside 1..200', async () => {
+            const urls = [];
+            vi.stubGlobal('fetch', async (url) => {
+                urls.push(url);
+                return { ok: true, json: async () => ({ items: [] }) };
+            });
+
+            await window.apiClient.getInsightsLabelLongevity(20, false);
+            await window.apiClient.getInsightsLabelLongevity(20, true);
+            await window.apiClient.getInsightsLabelLongevity(5000, false);
+            await window.apiClient.getInsightsLabelLongevity(0, false);
+            await window.apiClient.getInsightsLabelLongevity(Number.NaN, false);
+
+            expect(urls[0]).toContain('/api/insights/label-longevity?limit=20');
+            expect(urls[0]).not.toContain('include_placeholders');
+            expect(urls[1]).toContain('include_placeholders=true');
+            expect(urls[2]).toContain('limit=200');
+            expect(urls[3]).toContain('limit=1');
+            expect(urls[4]).toContain('limit=20');
+        });
+
         it('getInsightsGenreTrends should include genre param', async () => {
             let capturedUrl;
             vi.stubGlobal('fetch', async (url) => {

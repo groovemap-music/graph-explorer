@@ -823,7 +823,10 @@ class ApiClient {
      * @returns {Promise<Object|null>} {items, count} or null on error
      */
     async getInsightsLabelLongevity(limit = 20, includePlaceholders = false) {
-        const params = new URLSearchParams({ limit: String(limit) });
+        // The proxy rejects a limit outside 1..200 with a 422, so never send one.
+        const requested = Math.trunc(Number(limit));
+        const bounded = Number.isFinite(requested) ? Math.min(200, Math.max(1, requested)) : 20;
+        const params = new URLSearchParams({ limit: String(bounded) });
         if (includePlaceholders) params.set('include_placeholders', 'true');
         const response = await this._transport.fetch(`/api/insights/label-longevity?${params}`);
         if (!response.ok) return null;
