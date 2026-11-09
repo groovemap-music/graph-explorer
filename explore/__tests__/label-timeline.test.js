@@ -90,6 +90,17 @@ describe('LabelTimeline', () => {
             expect(rows[0].hover).toContain('Not On Label (placeholder)');
         });
 
+        it('escapes a label name so Plotly cannot render it as markup', () => {
+            const evil = { ...REAL[1], label_name: '<a href="javascript:alert(1)">x</a> & <b>' };
+            const { rows } = buildModel([evil]);
+            expect(rows[0].tick).not.toContain('<');
+            expect(rows[0].hover).not.toMatch(/<a|<b>/);
+            expect(rows[0].hover).toContain('&lt;a href=&quot;javascript:alert(1)&quot;&gt;');
+            expect(rows[0].hover).toContain('&amp;');
+            // The only markup left is our own line break.
+            expect(rows[0].hover.match(/<[^>]+>/g)).toEqual(['<br>', '<br>']);
+        });
+
         it('truncates a long tick label but keeps the full name in the hover text', () => {
             const { rows } = buildModel([{ ...REAL[0], label_name: 'A'.repeat(60) }]);
             expect(rows[0].tick.length).toBeLessThanOrEqual(24);
