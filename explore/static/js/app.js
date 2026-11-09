@@ -975,8 +975,10 @@ class ExploreApp {
         if (pane === 'insights') {
             window.insightsPanel.load();
             window.insightsPanel.startPolling();
-        } else if (pane === 'trends' && this.currentQuery) {
-            this._loadTrends(this.currentQuery, this.searchType);
+        } else if (pane === 'trends') {
+            // The labels timeline shows with or without a searched entity.
+            window.labelTimeline?.activate();
+            if (this.currentQuery) this._loadTrends(this.currentQuery, this.searchType);
         } else if (pane === 'collection' && window.authManager.isLoggedIn()) {
             this.userPanes.loadCollection(true);
             this.userPanes.loadCollectionStats();
