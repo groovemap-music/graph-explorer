@@ -880,6 +880,24 @@ body {
                     <span class="material-symbols-outlined icon-3x mb-3 text-text-mid">trending_up</span>
                     <p class="text-text-mid">Search for an entity to see release trends over time</p>
                 </div>
+
+                <!-- Longest-running labels: shown whether or not an entity is searched -->
+                <details class="insights-section label-timeline" id="labelTimelineSection" open>
+                    <summary class="label-timeline-summary">
+                        <span class="insights-section-title">
+                            <span class="material-symbols-outlined mr-2" style="font-size:18px;vertical-align:middle">history</span>Longest-running labels
+                        </span>
+                    </summary>
+                    <div class="label-timeline-controls">
+                        <label class="insights-toggle" for="trendsIncludePlaceholders">
+                            <input type="checkbox" id="trendsIncludePlaceholders">
+                            Include placeholder labels (Not On Label, self-releases)
+                        </label>
+                        <button type="button" class="btn-outline-secondary btn-sm" id="labelTimelineShowAll" aria-pressed="false">Show all</button>
+                    </div>
+                    <div class="text-text-mid text-sm hidden" id="labelTimelineStatus" role="status"></div>
+                    <div id="labelTimelineChart"></div>
+                </details>
             </div>
         </div>
 
@@ -1477,7 +1495,9 @@ body {
     <script src="js/graph-labels.js"></script>
     <script src="js/graph.js"></script>
     <script src="js/chart-theme.js"></script>
+    <script src="js/label-longevity-state.js"></script>
     <script src="js/trends.js"></script>
+    <script src="js/label-timeline.js"></script>
     <script src="js/copy-evidence.js"></script>
     <script src="js/user-pane-state.js"></script>
     <script src="js/user-panes.js"></script>

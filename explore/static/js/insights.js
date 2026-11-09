@@ -9,9 +9,14 @@ class InsightsPanel {
         this._pollInterval = null;
         this._lastComputedAt = null;
         this._selectedGenre = 'Rock';
-        // Placeholder labels (Not On Label, self-releases) are hidden until the user asks.
-        this._includePlaceholders = false;
+        // Placeholder labels (Not On Label, self-releases) are hidden until the user asks. The choice is
+        // shared with the Trends timeline (label-longevity-state.js), so both checkboxes always agree.
         this._longevityRequest = 0;
+        window.labelLongevityState.subscribe((include) => {
+            const box = document.getElementById('insightsIncludePlaceholders');
+            if (box) box.checked = include;
+            return this._loadLabelLongevity();
+        });
 
         this._container = document.getElementById('insightsPane');
         this._loading = document.getElementById('insightsLoading');
@@ -20,7 +25,7 @@ class InsightsPanel {
 
         const toggle = document.getElementById('insightsIncludePlaceholders');
         if (toggle) {
-            toggle.checked = false;
+            toggle.checked = window.labelLongevityState.includePlaceholders;
             toggle.addEventListener('change', () => this.setIncludePlaceholders(toggle.checked));
         }
     }
@@ -135,15 +140,12 @@ class InsightsPanel {
 
     /** Show or hide placeholder labels, then reload the list. Real labels keep their ranks either way. */
     async setIncludePlaceholders(include) {
-        this._includePlaceholders = Boolean(include);
-        const toggle = document.getElementById('insightsIncludePlaceholders');
-        if (toggle) toggle.checked = this._includePlaceholders;
-        await this._loadLabelLongevity();
+        await window.labelLongevityState.setIncludePlaceholders(include);
     }
 
     async _loadLabelLongevity() {
         const request = ++this._longevityRequest;
-        const include = this._includePlaceholders;
+        const include = window.labelLongevityState.includePlaceholders;
         let data = null;
         try {
             data = await window.apiClient.getInsightsLabelLongevity(20, include);

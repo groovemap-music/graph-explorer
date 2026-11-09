@@ -32,6 +32,7 @@ describe('InsightsPanel', () => {
         // Stub Plotly since it's loaded via CDN
         globalThis.Plotly = { newPlot: vi.fn(), purge: vi.fn() };
         loadScript('chart-theme.js');
+        loadScript('label-longevity-state.js');
         loadScript('insights.js');
     });
 
