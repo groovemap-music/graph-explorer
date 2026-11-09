@@ -4,14 +4,15 @@ const deferred = () => { let resolve, reject; const promise = new Promise((a,b) 
 const ok = observations => ({ ok: true, body: { observations } });
 const observation = value => ({ kind: 'note', value, source: 'user', confidence: 0.7, observed_at: '2020-observed', created_at: '2021-recorded' });
 describe('selected physical copy evidence', () => {
-    let api, auth, component, container;
+    let api, auth, component, container, onStatus;
     beforeAll(() => { delete globalThis.window; globalThis.window = globalThis; loadScript('copy-evidence.js'); loadScript('user-pane-state.js'); loadScriptDirect('user-panes.js'); });
     beforeEach(() => {
         document.body.innerHTML = '<section id="detail"></section>';
         container = document.getElementById('detail');
         auth = { getToken: vi.fn(() => 'A') };
         api = { getOwnedCopies: vi.fn(async () => ({ ok: true, body: { copies: [{ id: 'a' }, { id: 'b' }], truncated: false } })), getCopyObservations: vi.fn(async (_token, copy) => ok([observation(`${copy} history`)])), createObservation: vi.fn(async () => ({ ok: true })) };
-        component = new CopyEvidence({ container, api, auth });
+        onStatus = vi.fn();
+        component = new CopyEvidence({ container, api, auth, onStatus });
     });
     it('requires a choice for duplicate copies and reads/posts only the selected second copy', async () => {
         await component.loadItem('native-uuid');
@@ -49,7 +50,14 @@ describe('selected physical copy evidence', () => {
         component.showCopies([{ id: 'a' }]); await component.selectCopy('a'); const old = deferred(); api.createObservation.mockReturnValueOnce(old.promise);
         const posted = component.record({ kind: 'note', value: 'private' }); component.destroy(); auth.getToken.mockReturnValue('B');
         if (error) old.reject(Error('offline')); else old.resolve({ ok: true });
-        expect(await posted).toBe(false); expect(container.textContent).toBe('');
+        expect(await posted).toBe(false); expect(container.textContent).toBe(''); expect(onStatus).not.toHaveBeenCalled();
+    });
+    it.each([false,true])('ignores a late POST success/error after selecting another copy (%s)', async error => {
+        component.showCopies([{ id: 'a' }, { id: 'b' }]); await component.selectCopy('a');
+        const old = deferred(); api.createObservation.mockReturnValueOnce(old.promise);
+        const posted = component.record({ kind: 'note', value: 'old copy' }); await component.selectCopy('b');
+        if (error) old.reject(Error('offline')); else old.resolve({ ok: true });
+        expect(await posted).toBe(false); expect(container.textContent).toContain('b history'); expect(onStatus).not.toHaveBeenCalled();
     });
     it.each([false,true])('ignores late copy-list success/error after destroy (%s)', async error => {
         const old = deferred(); api.getOwnedCopies.mockReturnValueOnce(old.promise); const pending = component.loadItem('item'); component.destroy();
