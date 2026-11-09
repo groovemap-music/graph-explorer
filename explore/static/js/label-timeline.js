@@ -14,6 +14,16 @@ class LabelTimeline {
     static MAX_LIMIT = 50;
     static LABEL_MAX_CHARS = 24;
 
+    /**
+     * Plotly renders a small HTML subset (<a>, <b>, <br>, ...) in tick and hover text, and a label's name
+     * is catalog data, so every name is escaped before it goes into either. Only our own <br> is markup.
+     */
+    static escapeText(text) {
+        return String(text).replace(/[&<>"']/g, (ch) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+        }[ch]));
+    }
+
     constructor() {
         this._section = document.getElementById('labelTimelineSection');
         this._chart = document.getElementById('labelTimelineChart');
@@ -117,12 +127,13 @@ class LabelTimeline {
             const name = label.label_name;
             // A placeholder never shows its stored rank (it sits after every real label's); real labels do.
             const shown = label.is_placeholder ? `${name} (placeholder)` : `${label.rank}. ${name}`;
-            const tick = shown.length > LabelTimeline.LABEL_MAX_CHARS
+            // Truncate the plain text first, then escape, so an entity is never cut in half.
+            const tick = LabelTimeline.escapeText(shown.length > LabelTimeline.LABEL_MAX_CHARS
                 ? `${shown.slice(0, LabelTimeline.LABEL_MAX_CHARS - 1)}…`
-                : shown;
+                : shown);
             const range = `${label.first_year}–${label.still_active || label.last_year == null ? 'present' : label.last_year}`;
             const peak = label.peak_decade == null ? '' : `<br>Peak decade: ${label.peak_decade}s`;
-            const hover = `${shown}<br>${range} (${label.years_active} years)${peak}`;
+            const hover = `${LabelTimeline.escapeText(shown)}<br>${range} (${label.years_active} years)${peak}`;
             return {
                 y: index,
                 tick,
