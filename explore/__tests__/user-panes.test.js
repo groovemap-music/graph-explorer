@@ -46,6 +46,12 @@ function setupUserPanesDOM() {
 
 describe('UserPanes', () => {
     let userPanes;
+    const deferred = () => {
+        let resolve;
+        let reject;
+        const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+        return { promise, resolve, reject };
+    };
 
     beforeAll(() => {
         delete globalThis.window;
@@ -225,6 +231,52 @@ describe('UserPanes', () => {
             expect(body.textContent).toContain('Failed to load collection.');
             expect(loading.classList.contains('active')).toBe(false);
         });
+    });
+
+    it('clears owner DOM and ignores a late A response while B still loads', async () => {
+        const replyA = deferred();
+        let currentToken = 'token-a';
+        window.authManager.getToken.mockImplementation(() => currentToken);
+        window.apiClient.getUserCollection
+            .mockReturnValueOnce(replyA.promise)
+            .mockResolvedValueOnce({ total: 1, releases: [] });
+
+        const requestA = userPanes.loadCollection();
+        document.getElementById('collectionBody').textContent = 'private A';
+        userPanes._gapMediaTaxonomy = { families: [{ id: 'a-private' }], mediums: [] };
+        currentToken = null;
+        userPanes.resetForAccountChange();
+        expect(document.getElementById('collectionBody').textContent).toBe('');
+        expect(userPanes._gapMediaTaxonomy).toBeNull();
+
+        currentToken = 'token-b';
+        const requestB = userPanes.loadCollection();
+        replyA.resolve({ total: 1, releases: [{ id: 'private-a', title: 'A shelf' }] });
+        await requestA;
+        await requestB;
+
+        expect(document.getElementById('collectionBody').textContent).not.toContain('A shelf');
+        expect(document.getElementById('collectionBody').textContent).toContain('empty');
+    });
+
+    it('does not cache A media taxonomy when the account changes during the taxonomy fetch', async () => {
+        const mediaA = deferred();
+        let currentToken = 'token-a';
+        window.authManager.getToken.mockImplementation(() => currentToken);
+        window.apiClient.getCollectionMedia.mockReturnValueOnce(mediaA.promise).mockResolvedValueOnce(MEDIA_TAXONOMY);
+        const requestA = userPanes.loadGapAnalysis('artist', 'artist-a', true);
+        currentToken = 'token-b';
+        userPanes.resetForAccountChange();
+        mediaA.resolve({ families: [{ id: 'private-a', count: 1 }], mediums: [] });
+        await requestA;
+
+        expect(userPanes._gapMediaTaxonomy).toBeNull();
+        expect(window.apiClient.getCollectionGaps).not.toHaveBeenCalled();
+
+        const requestB = userPanes.loadGapAnalysis('artist', 'artist-b', true);
+        await requestB;
+        expect(userPanes._gapMediaTaxonomy).toEqual(MEDIA_TAXONOMY);
+        expect(window.apiClient.getCollectionGaps).toHaveBeenCalledWith('token-b', 'artist', 'artist-b', expect.any(Object));
     });
 
     describe('loadWantlist', () => {
@@ -1446,6 +1498,7 @@ describe('UserPanes', () => {
 
         it('should discard a stale response that resolves after a newer request', async () => {
             let resolveFirst, resolveSecond;
+            userPanes._gapMediaTaxonomy = MEDIA_TAXONOMY;
             window.apiClient.getCollectionGaps
                 .mockReturnValueOnce(new Promise(r => { resolveFirst = r; }))
                 .mockReturnValueOnce(new Promise(r => { resolveSecond = r; }));

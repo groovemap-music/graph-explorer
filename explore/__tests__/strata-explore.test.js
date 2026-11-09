@@ -385,6 +385,11 @@ class FakeRenderer extends EventTarget {
         this.layout = layout;
         this.calls.push(['setLayout']);
     }
+    resetLayout() {
+        this.layout = null;
+        this.selected = null;
+        this.calls.push(['resetLayout']);
+    }
     select(id) {
         if (id === this.selected) return;
         this.selected = id;
@@ -463,6 +468,25 @@ describe('StrataExplore', () => {
         await strata.show();
         return renderers[0];
     };
+
+    it('drops an old principal graph response and reloads copy state for the current principal', async () => {
+        let token = 'jwt-a';
+        auth.getToken.mockImplementation(() => token);
+        let resolveA;
+        api.getStrata.mockImplementationOnce(() => new Promise((resolve) => { resolveA = resolve; }));
+        strata.setArtist({ id: '9001', name: 'The Placeholder Band' });
+        const pendingA = strata.show();
+
+        token = 'jwt-b';
+        strata.resetForAccountChange();
+        await vi.waitFor(() => expect(strata.graph?.signedIn).toBe(true));
+        const currentCopyIds = strata.byId.get('r:300083').ownedCopyIds;
+        resolveA({ ok: true, status: 200, body: recordedBody(null, 0, true) });
+        await pendingA;
+
+        expect(strata.byId.get('r:300083').ownedCopyIds).toEqual(currentCopyIds);
+        expect(currentCopyIds).toEqual(['copy-300083-a']);
+    });
 
     it('opens an artist: fetches the overview with the token, lays it out, and draws it', async () => {
         const renderer = await open();

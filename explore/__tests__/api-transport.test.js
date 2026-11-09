@@ -42,6 +42,25 @@ describe('ApiTransport', () => {
         expect(window.authManager.notify).toHaveBeenCalledOnce();
     });
 
+    it('does not let an old account 401 clear a newer session', async () => {
+        let token = 'token-a';
+        window.authManager = {
+            isLoggedIn: () => Boolean(token),
+            getToken: () => token,
+            clear: vi.fn(() => { token = null; }),
+            notify: vi.fn(),
+        };
+        const response = { status: 401 };
+        const transport = new window.ApiTransport(() => Promise.resolve(response));
+        await transport.fetch('/private', { headers: { Authorization: 'Bearer token-a' } });
+        token = 'token-b';
+
+        transport.checkAuthResponse(response);
+
+        expect(window.authManager.clear).not.toHaveBeenCalled();
+        expect(token).toBe('token-b');
+    });
+
     describe('credential re-check requests (gm-graph-explorer-8ww.2)', () => {
         function response401(header) {
             return {

@@ -73,6 +73,7 @@ class FitPane {
         // panes carry.
         this._searchRequestId = 0;
         this._profileRequestId = 0;
+        this._ownerGeneration = 0;
         this._bound = false;
         this._mode = FitPane.TEXT_MODE;
         this._textPlaceholder = '';
@@ -177,17 +178,25 @@ class FitPane {
         if (picker) picker.hidden = !signedIn;
         if (prompt) prompt.hidden = signedIn;
         if (!signedIn) {
-            this._selected = null;
-            this._profile = null;
-            this._setCandidates([]);
-            const body = document.getElementById('fitBody');
-            if (body) body.replaceChildren();
-            this.clearLandingPoint();
-            const input = document.getElementById('fitSearchInput');
-            if (input) input.value = '';
-            this.setMode(FitPane.TEXT_MODE);
-            this._setRunEnabled(false);
+            this.resetForAccountChange();
         }
+    }
+
+    /** Drop owner-derived fit state and invalidate any lookup or profile still in flight. */
+    resetForAccountChange() {
+        this._ownerGeneration += 1;
+        this._searchRequestId += 1;
+        this._profileRequestId += 1;
+        this._selected = null;
+        this._profile = null;
+        this._setCandidates([]);
+        document.getElementById('fitBody')?.replaceChildren();
+        document.getElementById('fitLoading')?.classList.remove('active');
+        const input = document.getElementById('fitSearchInput');
+        if (input) input.value = '';
+        this.clearLandingPoint();
+        this.setMode(FitPane.TEXT_MODE);
+        this._setRunEnabled(false);
     }
 
     // ------------------------------------------------------------------ //
@@ -393,6 +402,13 @@ class FitPane {
         });
         option.setAttribute('aria-selected', 'true');
         option.classList.add('active');
+        if (this._selected?.id !== hit?.id) {
+            const replacingSelection = Boolean(this._selected || this._profile);
+            this._profileRequestId += 1;
+            this._profile = null;
+            document.getElementById('fitBody')?.replaceChildren();
+            if (replacingSelection) this.clearLandingPoint();
+        }
         this._selected = hit;
         this._setRunEnabled(FitPane.isScoreable(hit));
     }
@@ -421,19 +437,22 @@ class FitPane {
         const token = window.authManager?.getToken?.();
         const body = document.getElementById('fitBody');
         if (!token || !this._selected?.id || !body) return;
+        const releaseId = String(this._selected.id);
+        const ownerGeneration = this._ownerGeneration;
 
         const loading = document.getElementById('fitLoading');
         const requestId = ++this._profileRequestId;
         loading?.classList.add('active');
         let profile;
         try {
-            profile = await window.apiClient.getFitProfile(token, String(this._selected.id));
+            profile = await window.apiClient.getFitProfile(token, releaseId);
         } catch {
             profile = null;
         } finally {
             if (requestId === this._profileRequestId) loading?.classList.remove('active');
         }
-        if (requestId !== this._profileRequestId) return;
+        if (requestId !== this._profileRequestId || ownerGeneration !== this._ownerGeneration
+            || token !== window.authManager?.getToken?.() || releaseId !== String(this._selected?.id ?? '')) return;
 
         this._profile = profile;
         if (!profile) {

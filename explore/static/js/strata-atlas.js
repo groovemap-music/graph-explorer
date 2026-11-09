@@ -257,6 +257,7 @@ export class GenreAtlas {
             this.themeObserver.observe(doc.documentElement, { attributes: true, attributeFilter: ['class'] });
         }
         this.authUnsubscribe = typeof this.auth?.onChange === 'function' ? this.auth.onChange((signedIn) => this.onAuthChange(signedIn)) : null;
+        this.accountUnsubscribe = typeof this.auth?.onAccountChange === 'function' ? this.auth.onAccountChange(() => this.onAccountChange()) : null;
         this.renderTaste();
     }
 
@@ -515,6 +516,7 @@ export class GenreAtlas {
         this.pause();
         this.themeObserver?.disconnect();
         this.authUnsubscribe?.();
+        this.accountUnsubscribe?.();
         this.renderer?.dispose();
         this.renderer = null;
         this.root.remove();
@@ -539,18 +541,24 @@ export class GenreAtlas {
         }
     }
 
+    onAccountChange() {
+        this.setTaste(null, 'anonymous');
+        this.setLanding(null);
+    }
+
     /** Fetch the caller's projection and lay it on the atlas. A later sign-out drops a late answer. */
     async loadTaste() {
         const request = ++this.tasteRequest;
+        const token = this.auth.getToken();
         this.tasteStatus = 'loading';
         this.renderTaste();
         let answer;
         try {
-            answer = await this.api.getTasteProjection(this.auth.getToken());
+            answer = await this.api.getTasteProjection(token);
         } catch {
             answer = { ok: false, status: 0, body: null };
         }
-        if (request !== this.tasteRequest) return;
+        if (request !== this.tasteRequest || token !== this.auth.getToken()) return;
         if (!answer.ok) {
             // A 401 is a stale session (the client signs it out): the visitor is anonymous.
             this.setTaste(null, answer.status === 401 || !this.signedIn() ? 'anonymous' : 'failed');

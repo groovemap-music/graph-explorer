@@ -608,6 +608,7 @@ const TASTE = fixture('taste-projection.json').body;
 /** A stand-in for window.authManager: a token, and listeners told about sign-in and sign-out. */
 function standInAuth(token = 'tok') {
     const listeners = [];
+    const accountListeners = [];
     return {
         token,
         isLoggedIn() { return !!this.token; },
@@ -616,8 +617,14 @@ function standInAuth(token = 'tok') {
             listeners.push(fn);
             return () => listeners.splice(listeners.indexOf(fn), 1);
         },
+        onAccountChange(fn) {
+            accountListeners.push(fn);
+            return () => accountListeners.splice(accountListeners.indexOf(fn), 1);
+        },
         set(next) {
+            const previous = this.token;
             this.token = next;
+            if (previous !== next) for (const fn of [...accountListeners]) fn({ previousToken: previous, token: next });
             for (const fn of [...listeners]) fn(!!next);
         },
     };
@@ -776,6 +783,26 @@ describe('Taste Strata', () => {
         expect(atlas.taste).toBeNull();
         expect(collectorNodes(renderer().layout)).toEqual([]);
         expect(tasteText(atlas)).toBe(TASTE_SIGN_IN);
+    });
+
+    it('drops an in-flight taste answer when the authenticated principal changes', async () => {
+        let releaseA;
+        const auth = standInAuth('tok-a');
+        const taste = vi.fn()
+            .mockImplementationOnce(() => new Promise((done) => { releaseA = done; }))
+            .mockResolvedValueOnce({ ok: true, status: 200, body: TASTE });
+        const { atlas, api, renderer } = tasteAtlas({ auth, taste });
+        const shown = atlas.show();
+        await new Promise((r) => setTimeout(r, 0));
+        auth.set('tok-b');
+        releaseA({ ok: true, status: 200, body: TASTE });
+        await shown;
+        await new Promise((r) => setTimeout(r, 0));
+
+        expect(api.getTasteProjection).toHaveBeenCalledTimes(2);
+        expect(api.getTasteProjection).toHaveBeenLastCalledWith('tok-b');
+        expect(atlas.taste).not.toBeNull();
+        expect(collectorNodes(renderer().layout)).toHaveLength(3);
     });
 
     it('keeps the projection out of the URL and the browser\'s storage', async () => {
