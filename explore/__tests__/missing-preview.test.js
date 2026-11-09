@@ -3,7 +3,7 @@ import { loadScript, loadScriptDirect } from './helpers.js';
 
 const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
 function fixture(complete = false) {
-    return { preview: { catalog_snapshot_id: '<catalog>', collection_snapshot_id: 'owner-window', denominator_evidence: { denominator: 4, owned: 1, missing: 1, ownership_review: 2, needs_review: 3, excluded: 2, denominator_complete: complete, ownership_complete: complete, completion_fraction: 0.25 } }, sources: Object.fromEntries(['catalog', 'aliases', 'ownership'].map(name => [name, { status: 'observed', truncated: false, version: complete ? 'synthetic-test-only' : null, started_at: 'start', finished_at: 'end' }])), scope_basis: 'bounded projection', consistency: 'independent windows', co_release_policy: 'needs_review' };
+    return { preview: { catalog_snapshot_id: '<catalog>', collection_snapshot_id: 'owner-window', denominator_evidence: { denominator: 4, owned: 1, missing: complete ? 3 : 1, ownership_review: complete ? 0 : 2, needs_review: complete ? 0 : 3, excluded: 2, unknown_excluded: 0, denominator_complete: complete, ownership_complete: complete, completion_fraction: 0.25 } }, sources: Object.fromEntries(['catalog', 'aliases', 'ownership'].map(name => [name, { status: 'observed', truncated: false, version: complete ? 'synthetic-test-only' : null, started_at: 'start', finished_at: 'end' }])), scope_basis: 'bounded projection', consistency: 'independent windows', co_release_policy: 'needs_review' };
 }
 describe('transient Missing preview', () => {
     let panes;
@@ -31,7 +31,7 @@ describe('transient Missing preview', () => {
         const view = document.getElementById('gapsBody');
         panes._renderMissingPreview(view, fixture(true), 'label', '5');
         expect(view.textContent).toContain('Completion: 25%');
-        for (const mutate of [data => data.sources.ownership.status = 'unavailable', data => data.sources.catalog.truncated = true, data => data.sources.aliases.version = null, data => data.preview.denominator_evidence.ownership_complete = false]) {
+        for (const mutate of [data => data.sources.ownership.status = 'unavailable', data => data.sources.catalog.truncated = true, data => data.sources.aliases.version = null, data => data.preview.denominator_evidence.ownership_complete = false, data => data.preview.denominator_evidence.ownership_review = 1, data => data.preview.denominator_evidence.needs_review = 1, data => data.preview.denominator_evidence.unknown_excluded = 1, data => data.preview.denominator_evidence.completion_fraction = 1.5]) {
             const data = fixture(true); mutate(data); panes._renderMissingPreview(view, data, 'label', '5'); expect(view.textContent).not.toContain('%');
         }
     });
