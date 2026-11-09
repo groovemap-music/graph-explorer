@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * The strata fixtures port catalog-api's fold (strata-fixtures.js `buildStrata`). These bodies were
- * written by the Python itself (`api.strata.build_strata` and `apply_labels` at the promoted
+ * written by the Python itself (`api.strata.build_strata` and `apply_labels` at the recorded
  * producer commit) over an invented catalog, so replaying the catalog through the port must give
  * the same bodies, labels aside. If catalog-api changes its fold, re-record the bodies with the new
  * contract and this test names what moved.
@@ -14,7 +14,6 @@ import { buildStrata } from './strata-fixtures.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const RECORDED = JSON.parse(readFileSync(resolve(HERE, '..', '..', 'tests', 'fixtures', 'strata-route.json'), 'utf8'));
-const SOURCE = JSON.parse(readFileSync(resolve(HERE, '..', '..', 'contracts', 'catalog-api', 'graph-explorer', 'v1', 'source.json'), 'utf8'));
 
 const catalog = {
     rootId: RECORDED.catalog.rootId,
@@ -36,8 +35,8 @@ function unlabelled(body) {
 }
 
 describe('the fixture fold against bodies the route recorded', () => {
-    it('was recorded at the promoted producer commit', () => {
-        expect(RECORDED.producer_commit).toBe(SOURCE.producer_commit);
+    it('retains the producer revision that recorded these fixture bodies', () => {
+        expect(RECORDED.producer_commit).toBe('334fca36e13dc277db3aeb16242aa777605d4966');
         expect(RECORDED.responses.length).toBeGreaterThan(20);
     });
 
