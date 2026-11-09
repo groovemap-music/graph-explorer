@@ -974,6 +974,18 @@ select option {
     overflow: hidden;
 }
 
+/* Scroll the full Collection, including tall mobile stats and copy detail. A shrinking,
+   clipped body can otherwise reduce the table to zero height below the stats. */
+#collectionBody {
+    flex: 0 0 auto;
+    overflow: visible;
+}
+
+#collectionBody .release-table-wrap,
+#collectionBody .release-table-scroll {
+    flex: 0 0 auto;
+}
+
 .user-pane-empty {
     display: flex;
     flex-direction: column;
@@ -3542,3 +3554,6 @@ select option {
 .copy-timeline li { margin-block: 0.75rem; }
 .collection-copy-detail .strata-field { display: block; margin-block: 0.5rem; }
 .collection-copy-detail .strata-field input { display: block; max-width: 100%; }
+
+#collectionBody .release-list-title { white-space: normal; overflow-wrap: anywhere; }
+.collection-copy-open { display: block; max-width: 100%; white-space: normal; overflow-wrap: anywhere; margin-top: 0.5rem; }

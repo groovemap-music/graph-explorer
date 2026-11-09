@@ -1649,6 +1649,7 @@ class UserPanes {
             if (refreshBtnId === 'collectionRefreshBtn') {
                 const detail = document.createElement('button');
                 detail.type = 'button';
+                detail.className = 'collection-copy-open';
                 detail.textContent = 'Physical copies';
                 detail.setAttribute('aria-label', `Physical copies of ${r.title || 'this release'}`);
                 detail.addEventListener('click', () => this._openCollectionCopies(r, wrap));
