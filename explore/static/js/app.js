@@ -453,6 +453,9 @@ class ExploreApp {
         if (loggedIn && user) {
             const emailEl = document.getElementById('userEmailDisplay');
             if (emailEl) emailEl.textContent = user.email || '';
+        } else {
+            const emailEl = document.getElementById('userEmailDisplay');
+            if (emailEl) emailEl.textContent = '';
         }
 
         // Discogs status display
@@ -514,6 +517,18 @@ class ExploreApp {
         // above. It still has to be told, in both directions: a logout clears
         // the profile and hides the picker, a login brings the picker back.
         window.fitPane?.refreshSession?.();
+    }
+
+    _onAccountChange(account) {
+        this._nodeClickRequestId += 1;
+        document.querySelectorAll('.ownership-badge').forEach((badge) => badge.closest('.mb-2')?.remove());
+        const settingsEmail = document.getElementById('settingsEmail');
+        if (settingsEmail) settingsEmail.textContent = '';
+        this.userPanes?.resetForAccountChange?.();
+        window.settingsPane?.resetForAccountChange?.(account);
+        window.fitPane?.resetForAccountChange?.();
+        this.strata?.resetForAccountChange?.();
+        this._updateAuthUI();
     }
 
     // ------------------------------------------------------------------ //
@@ -929,9 +944,13 @@ class ExploreApp {
 
     async _handleLogout() {
         const token = window.authManager.getToken();
-        await window.apiClient.logout(token);
         window.authManager.clear();
         window.authManager.notify();
+        try {
+            await window.apiClient.logout(token);
+        } catch {
+            // Local logout is immediate even when the server cannot be reached.
+        }
     }
 
     // ------------------------------------------------------------------ //
@@ -1076,11 +1095,13 @@ class ExploreApp {
     async _decorateOwnership() {
         if (!window.authManager.isLoggedIn()) return;
         const token = window.authManager.getToken();
+        const accountGeneration = window.authManager.getAccountGeneration?.();
         const releaseNodes = (this.graph.nodes || []).filter(n => n.type === 'release' && !n.isCategory);
         if (releaseNodes.length === 0) return;
 
         const ids = releaseNodes.map(n => n.nodeId || n.name).slice(0, 100);
         const result = await window.apiClient.getUserStatus(ids, token);
+        if (token !== window.authManager.getToken() || (accountGeneration !== undefined && accountGeneration !== window.authManager.getAccountGeneration?.())) return;
         if (!result || !result.status) return;
 
         // Update info panel if it's showing a release node that has status
@@ -1387,8 +1408,9 @@ class ExploreApp {
         // Add ownership badges for release nodes
         if (type === 'release' && window.authManager.isLoggedIn()) {
             const token = window.authManager.getToken();
+            const accountGeneration = window.authManager.getAccountGeneration?.();
             const result = await window.apiClient.getUserStatus([nodeId], token);
-            if (requestId !== this._nodeClickRequestId) return;
+            if (requestId !== this._nodeClickRequestId || token !== window.authManager.getToken() || (accountGeneration !== undefined && accountGeneration !== window.authManager.getAccountGeneration?.())) return;
             if (result?.status?.[nodeId]) {
                 this._addOwnershipBadges(nodeId, result.status[nodeId]);
             }

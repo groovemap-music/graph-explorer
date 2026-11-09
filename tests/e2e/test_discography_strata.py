@@ -182,6 +182,7 @@ def test_strata_journey_from_search_to_a_pressing_nothing_can_change(page: Page,
     expect(actions.get_by_role("link", name="Open on Discogs")).to_have_attribute("href", re.compile(r"^https://www\.discogs\.com/release/\d+$"))
     actions.get_by_role("button", name="Sync now").click()
     expect(page.locator("#strataActionStatus")).to_contain_text("Sync started. States change only when Discogs reports them", timeout=10_000)
+    selection.get_by_label("Physical copy", exact=True).select_option("copy-300083-a")
     actions.get_by_role("button", name="Record an observation").click()
     form = selection.get_by_role("form", name="Record an observation about your copy")
     expect(form).to_be_visible()

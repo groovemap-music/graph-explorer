@@ -32,6 +32,7 @@ import {
 } from '../static/js/strata-explore.js';
 import { adaptStrataPayload, layoutStrata } from '../static/js/strata-layout.js';
 import { COLLECTOR_STATES, CollectorAction, canPerform } from '../static/js/strata-collector.js';
+import { loadScript } from './helpers.js';
 import { TABLE_HELP } from '../static/js/strata-table.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -243,10 +244,12 @@ describe('nodeActions', () => {
         expect(action).toMatchObject({ enabled: false, reason: PAST_REASON });
     });
 
-    it('records an observation against the earliest copy the route named, and says why when it named none', () => {
+    it('requires a selected copy returned by the route, and says why when it named none', () => {
         const record = (node, options) => nodeActions(node, { signedIn: true, ...options }).find((item) => item.id === CollectorAction.RECORD_OBSERVATION);
-        expect(copyIdOf(release('owned', { ownedCopyIds: ['copy-a', 'copy-b'] }))).toBe('copy-a');
-        expect(record(release('owned', { ownedCopyIds: ['copy-a', 'copy-b'] }))).toEqual({ id: 'record-observation', label: 'Record an observation', enabled: true });
+        expect(copyIdOf(release('owned', { ownedCopyIds: ['copy-a', 'copy-b'] }))).toBeNull();
+        expect(copyIdOf(release('owned', { ownedCopyIds: ['copy-a', 'copy-b'] }), 'copy-b')).toBe('copy-b');
+        expect(record(release('owned', { ownedCopyIds: ['copy-a', 'copy-b'] }))).toMatchObject({ enabled: false, reason: 'Choose a physical copy first.' });
+        expect(record(release('owned', { ownedCopyIds: ['copy-a', 'copy-b'] }), { selectedCopyId: 'copy-b' })).toMatchObject({ enabled: true });
         // Owned, but the sync has not minted a copy: an empty list.
         expect(record(release('owned', { ownedCopyIds: [] }))).toEqual({ id: 'record-observation', label: 'Record an observation', enabled: false, reason: NO_COPY_REASON });
         // The route sent no list at all (the copy-id read degraded): disabled with its own reason.
@@ -385,6 +388,11 @@ class FakeRenderer extends EventTarget {
         this.layout = layout;
         this.calls.push(['setLayout']);
     }
+    resetLayout() {
+        this.layout = null;
+        this.selected = null;
+        this.calls.push(['resetLayout']);
+    }
     select(id) {
         if (id === this.selected) return;
         this.selected = id;
@@ -424,6 +432,7 @@ function fakeApi() {
         getUserCollection: vi.fn(async () => {
             throw new Error('the strata view must not scan /api/user/collection');
         }),
+        getCopyObservations: vi.fn(async () => ({ ok: true, body: { observations: [] } })),
         createObservation: vi.fn(async () => ({ ok: true, status: 201, body: {} })),
     };
 }
@@ -435,6 +444,7 @@ describe('StrataExplore', () => {
     const renderers = [];
 
     beforeEach(() => {
+        loadScript('copy-evidence.js');
         mountMarkup();
         api = fakeApi();
         auth = { isLoggedIn: vi.fn(() => true), getToken: vi.fn(() => 'jwt') };
@@ -463,6 +473,25 @@ describe('StrataExplore', () => {
         await strata.show();
         return renderers[0];
     };
+
+    it('drops an old principal graph response and reloads copy state for the current principal', async () => {
+        let token = 'jwt-a';
+        auth.getToken.mockImplementation(() => token);
+        let resolveA;
+        api.getStrata.mockImplementationOnce(() => new Promise((resolve) => { resolveA = resolve; }));
+        strata.setArtist({ id: '9001', name: 'The Placeholder Band' });
+        const pendingA = strata.show();
+
+        token = 'jwt-b';
+        strata.resetForAccountChange();
+        await vi.waitFor(() => expect(strata.graph?.signedIn).toBe(true));
+        const currentCopyIds = strata.byId.get('r:300083').ownedCopyIds;
+        resolveA({ ok: true, status: 200, body: recordedBody(null, 0, true) });
+        await pendingA;
+
+        expect(strata.byId.get('r:300083').ownedCopyIds).toEqual(currentCopyIds);
+        expect(currentCopyIds).toEqual(['copy-300083-a']);
+    });
 
     it('opens an artist: fetches the overview with the token, lays it out, and draws it', async () => {
         const renderer = await open();
@@ -638,6 +667,8 @@ describe('StrataExplore', () => {
         panel.querySelector('[data-action="sync-now"]').click();
         await vi.waitFor(() => expect($('strataActionStatus').textContent).toMatch(/Sync started/));
         expect(api.triggerSync).toHaveBeenCalledWith('jwt');
+        expect(panel.querySelector('[data-action="record-observation"]').disabled).toBe(true);
+        await strata.copyEvidence.selectCopy('copy-300083-a');
         expect(panel.querySelector('[data-action="record-observation"]').disabled).toBe(false);
         panel.querySelector('[data-action="record-observation"]').click();
         const form = panel.querySelector('form.strata-observation');
@@ -658,10 +689,12 @@ describe('StrataExplore', () => {
         expect(panel.querySelector('.strata-state').textContent).toBe('wanted + owned');
         expect(panel.textContent).toContain('owned since 2017-05-09, wanted since 2011-11-10');
         expect([...panel.querySelectorAll('.strata-action')].map((node) => node.textContent)).toEqual(['Open on Discogs', 'Sync now', 'Record an observation']);
-        // Two copies: the earliest acquired comes first, and that is the one observed.
+        // Two copies require explicit selection; choose the second without merging evidence.
         expect(strata.byId.get('r:300141').ownedCopyIds).toEqual(['copy-300141-a', 'copy-300141-b']);
-        await strata.recordObservation(strata.byId.get('r:300141'), { kind: 'note', value: 'first copy' });
-        expect(api.createObservation).toHaveBeenLastCalledWith('jwt', 'copy-300141-a', { kind: 'note', value: 'first copy', source: 'user' });
+        expect(await strata.recordObservation(strata.byId.get('r:300141'), { kind: 'note', value: 'unselected' })).toBe(false);
+        await strata.copyEvidence.selectCopy('copy-300141-b');
+        await strata.recordObservation(strata.byId.get('r:300141'), { kind: 'note', value: 'second copy' });
+        expect(api.createObservation).toHaveBeenLastCalledWith('jwt', 'copy-300141-b', { kind: 'note', value: 'second copy', source: 'user' });
         expect(api.getUserCollection).not.toHaveBeenCalled();
     });
 
@@ -697,11 +730,12 @@ describe('StrataExplore', () => {
         await open();
         strata.selectNode('r:300083');
         const node = strata.byId.get('r:300083');
+        await strata.copyEvidence.selectCopy('copy-300083-a');
         expect(await strata.recordObservation(node, { kind: 'note', value: ' ' })).toBe(false);
         expect($('strataActionStatus').textContent).toMatch(/Write what you observed/);
         api.createObservation.mockResolvedValueOnce({ ok: false, status: 422, body: { detail: 'bad source' } });
         expect(await strata.recordObservation(node, { kind: 'note', value: 'x' })).toBe(false);
-        expect($('strataActionStatus').textContent).toBe('bad source');
+        expect($('strataActionStatus').textContent).toBe('The observation could not be recorded.');
         api.triggerSync.mockResolvedValueOnce({ ok: false, status: 429, body: null });
         await strata.syncNow();
         expect($('strataActionStatus').textContent).toMatch(/less than a minute/);
@@ -870,6 +904,7 @@ describe('StrataExplore table view', () => {
     const renderers = [];
 
     beforeEach(() => {
+        loadScript('copy-evidence.js');
         mountMarkup();
         api = fakeApi();
         strata = new StrataExplore({
@@ -1151,6 +1186,7 @@ describe('initStrata', () => {
 
     it('attaches the view to the app when the page has one, and toggles the shared scrubber', () => {
         expect(initStrata({ app: {} })).toBeNull();
+        loadScript('copy-evidence.js');
         mountMarkup();
         const app = { timeline: { toggle: vi.fn() } };
         const strata = initStrata({ app });

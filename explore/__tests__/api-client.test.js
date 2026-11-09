@@ -93,6 +93,77 @@ describe('ApiClient', () => {
         });
     });
 
+    describe('Missing and owned-copy reads', () => {
+        it('posts only the provider target and bounded limit, retaining incomplete preview evidence', async () => {
+            const preview = {
+                preview: { denominator_complete: false, completion_fraction: null, missing: [{ item_id: 'native-1' }] },
+                sources: { catalog: { truncated: true }, aliases: { version: null }, ownership: { status: 'partial' } },
+            };
+            let captured;
+            vi.stubGlobal('fetch', async (url, options) => {
+                captured = { url, options };
+                return { ok: true, status: 200, json: async () => preview };
+            });
+
+            const result = await window.apiClient.previewMissing('jwt', 'artist', 9);
+            expect(captured.url).toBe('/api/user/missing/preview');
+            expect(captured.options.method).toBe('POST');
+            expect(captured.options.headers.Authorization).toBe('Bearer jwt');
+            expect(JSON.parse(captured.options.body)).toEqual({ target_kind: 'artist', target_id: '9', limit: 100 });
+            expect(result).toEqual({ ok: true, status: 200, body: preview });
+            expect(result.body.preview.denominator_complete).toBe(false);
+            expect(await window.apiClient.previewMissing(null, 'artist', 9)).toEqual({ ok: false, status: 0, body: null });
+        });
+
+        it('preserves authenticated unavailable/error responses instead of returning an empty result', async () => {
+            const error = { error: 'preview unavailable' };
+            vi.stubGlobal('fetch', async () => ({ ok: false, status: 503, json: async () => error }));
+            expect(await window.apiClient.previewMissing('jwt', 'label', '27', 1)).toEqual({ ok: false, status: 503, body: error });
+            vi.stubGlobal('fetch', async () => ({ ok: false, status: 401, json: async () => ({ error: 'unauthorized' }) }));
+            expect(await window.apiClient.previewMissing('expired', 'artist', '9')).toMatchObject({ ok: false, status: 401 });
+        });
+
+        it('lists bounded copies by native item id and reads observations by selected copy id', async () => {
+            const calls = [];
+            const copies = { item_id: 'native/item', copies: [{ id: 'copy/1' }], truncated: true };
+            const observations = { observations: [{ id: 'obs-1' }] };
+            vi.stubGlobal('fetch', async (url, options) => {
+                calls.push({ url, options });
+                return { ok: true, status: 200, json: async () => calls.length === 1 ? copies : observations };
+            });
+
+            const copyResult = await window.apiClient.getOwnedCopies('jwt', 'native/item');
+            const observationResult = await window.apiClient.getCopyObservations('jwt', 'copy/1');
+            expect(calls[0].url).toBe('/api/user/items/native%2Fitem/copies?limit=50');
+            expect(calls[0].options.headers.Authorization).toBe('Bearer jwt');
+            expect(calls[0].options.method).toBeUndefined();
+            expect(copyResult).toEqual({ ok: true, status: 200, body: copies });
+            expect(copyResult.body.truncated).toBe(true);
+            expect(calls[1].url).toBe('/api/user/copies/copy%2F1/observations');
+            expect(calls[1].options.headers.Authorization).toBe('Bearer jwt');
+            expect(observationResult).toEqual({ ok: true, status: 200, body: observations });
+            expect(await window.apiClient.getOwnedCopies(null, 'native')).toEqual({ ok: false, status: 0, body: null });
+            expect(await window.apiClient.getCopyObservations('jwt', null)).toEqual({ ok: false, status: 0, body: null });
+        });
+
+        it('keeps query parameters within the published copies contract and retains malformed error bodies as null', async () => {
+            let capturedUrl;
+            vi.stubGlobal('fetch', async url => {
+                capturedUrl = url;
+                return { ok: false, status: 404, json: async () => { throw new Error('not json'); } };
+            });
+            expect(await window.apiClient.getOwnedCopies('jwt', 'native-1', 100)).toEqual({ ok: false, status: 404, body: null });
+            expect(capturedUrl).toBe('/api/user/items/native-1/copies?limit=100');
+            expect([...new URLSearchParams(capturedUrl.split('?')[1]).keys()]).toEqual(['limit']);
+        });
+
+        it('preserves the producer validation response for an out-of-range copy limit', async () => {
+            const error = { error: 'limit must be between 1 and 100' };
+            vi.stubGlobal('fetch', async () => ({ ok: false, status: 422, json: async () => error }));
+            expect(await window.apiClient.getOwnedCopies('jwt', 'native-1', 101)).toEqual({ ok: false, status: 422, body: error });
+        });
+    });
+
     describe('explore', () => {
         it('should return explore data on success', async () => {
             const exploreData = { center: { id: 'Radiohead', type: 'artist' }, categories: [] };

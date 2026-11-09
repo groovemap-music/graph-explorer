@@ -549,6 +549,27 @@ describe('reduced motion', () => {
 });
 
 describe('vertical links and level of detail', () => {
+    it('clears an owner layout without sending null through setLayout', () => {
+        const layout = realLayout();
+        const { renderer } = mount({ layout, reduce: true });
+        renderer.render();
+        expect(renderer.links.main.geometry.getAttribute('position').count).toBeGreaterThan(0);
+        renderer.select(layout.nodes.find((node) => node.level === 2).id);
+        expect(renderer.byId.size).toBeGreaterThan(0);
+        expect(renderer.planeLabels.some(({ count }) => count.textContent !== '0')).toBe(true);
+
+        renderer.resetLayout();
+
+        expect(renderer.layout).toBeNull();
+        expect(renderer.byId.size).toBe(0);
+        expect(renderer.selected).toBeNull();
+        expect(renderer.instanced).toEqual([]);
+        expect(renderer.planeLabels.map(({ count }) => count.textContent)).toEqual(['0', '0', '0']);
+        renderer.render();
+        expect(renderer.links.main.geometry.getAttribute('position').count).toBe(0);
+        expect(renderer.links.lit.geometry.getAttribute('position').count).toBe(0);
+    });
+
     it('rebuilds vertical links only when the layout, solo, or selection changes', () => {
         const layout = realLayout();
         const { renderer } = mount({ layout, reduce: true });

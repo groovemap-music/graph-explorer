@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { loadScript, createMockFetch } from './helpers.js';
 
 describe('AuthManager', () => {
+    const deferred = () => {
+        let resolve;
+        let reject;
+        const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+        return { promise, resolve, reject };
+    };
     beforeEach(() => {
         localStorage.clear();
         delete globalThis.window;
@@ -215,6 +221,52 @@ describe('AuthManager', () => {
 
             expect(result).toBe(false);
             expect(window.authManager.isLoggedIn()).toBe(false);
+        });
+
+        it('does not let a late init response for account A overwrite account B', async () => {
+            localStorage.setItem('auth_token', 'token-a');
+            loadScript('auth.js');
+            const replyA = deferred();
+            window.apiClient = {
+                getMe: vi.fn().mockReturnValue(replyA.promise),
+                getDiscogsStatus: vi.fn(),
+            };
+            const initA = window.authManager.init();
+            window.authManager.setToken('token-b');
+            replyA.resolve({ id: 'user-a', email: 'a@example.test' });
+
+            expect(await initA).toBe(false);
+            expect(window.authManager.getToken()).toBe('token-b');
+            expect(window.authManager.getUser()).toBeNull();
+        });
+
+        it('does not let a late init rejection for account A clear account B', async () => {
+            localStorage.setItem('auth_token', 'token-a');
+            loadScript('auth.js');
+            const replyA = deferred();
+            window.apiClient = { getMe: vi.fn().mockReturnValue(replyA.promise) };
+            const initA = window.authManager.init();
+            window.authManager.setToken('token-b');
+            replyA.reject(new Error('late A failure'));
+
+            expect(await initA).toBe(false);
+            expect(window.authManager.getToken()).toBe('token-b');
+            expect(window.authManager.isLoggedIn()).toBe(true);
+        });
+
+        it('invalidates init across logout and same-token re-login', async () => {
+            localStorage.setItem('auth_token', 'token-a');
+            loadScript('auth.js');
+            const replyA = deferred();
+            window.apiClient = { getMe: vi.fn().mockReturnValue(replyA.promise) };
+            const initA = window.authManager.init();
+            window.authManager.clear();
+            window.authManager.setToken('token-a');
+            replyA.resolve({ id: 'old-user', email: 'old@example.test' });
+
+            expect(await initA).toBe(false);
+            expect(window.authManager.getToken()).toBe('token-a');
+            expect(window.authManager.getUser()).toBeNull();
         });
     });
 

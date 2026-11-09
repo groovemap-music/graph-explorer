@@ -502,6 +502,68 @@ class ApiClient {
         return { ok: response.ok, status: response.status, body };
     }
 
+    /**
+     * Preview a bounded, transient Missing scope for a Discogs artist or label.
+     * The authenticated session identifies the owner; the request contains no owner id,
+     * facts, or native-id mapping. Preserve the full response so callers can explain partial
+     * evidence and unknown denominators without turning them into complete results.
+     *
+     * @param {string} token - First-party session JWT
+     * @param {'artist'|'label'} targetKind - Provider target kind
+     * @param {string|number} targetId - Discogs provider id, not a native UUID
+     * @param {number} limit - Maximum observed projection size (1–200)
+     * @returns {Promise<{ok: boolean, status: number, body: Object|null}>}
+     */
+    async previewMissing(token, targetKind, targetId, limit = 100) {
+        if (!token || !targetKind || !targetId) return { ok: false, status: 0, body: null };
+        const response = await this._transport.fetch('/api/user/missing/preview', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ target_kind: targetKind, target_id: String(targetId), limit }),
+        });
+        this._checkAuthResponse(response);
+        const body = await this._transport.readJson(response).catch(() => null);
+        return { ok: response.ok, status: response.status, body };
+    }
+
+    /**
+     * List the caller's bounded physical copies of one native catalog item.
+     * `nativeItemId` names the catalog item; each returned copy has its own id.
+     *
+     * @param {string} token - First-party session JWT
+     * @param {string} nativeItemId - Native catalog UUID
+     * @param {number} limit - Maximum copies (1–100, default 50)
+     * @returns {Promise<{ok: boolean, status: number, body: Object|null}>}
+     */
+    async getOwnedCopies(token, nativeItemId, limit = 50) {
+        if (!token || !nativeItemId) return { ok: false, status: 0, body: null };
+        const params = new URLSearchParams({ limit: String(limit) });
+        const response = await this._transport.fetch(`/api/user/items/${encodeURIComponent(nativeItemId)}/copies?${params}`, {
+            headers: { 'Authorization': `Bearer ${token}` },
+        });
+        this._checkAuthResponse(response);
+        const body = await this._transport.readJson(response).catch(() => null);
+        return { ok: response.ok, status: response.status, body };
+    }
+
+    /**
+     * Read the owner-scoped observation timeline for one selected physical copy.
+     * The caller passes the copy id returned by getOwnedCopies; it is not a native item id.
+     *
+     * @param {string} token - First-party session JWT
+     * @param {string} copyId - Selected physical copy UUID
+     * @returns {Promise<{ok: boolean, status: number, body: Object|null}>}
+     */
+    async getCopyObservations(token, copyId) {
+        if (!token || !copyId) return { ok: false, status: 0, body: null };
+        const response = await this._transport.fetch(`/api/user/copies/${encodeURIComponent(copyId)}/observations`, {
+            headers: { 'Authorization': `Bearer ${token}` },
+        });
+        this._checkAuthResponse(response);
+        const body = await this._transport.readJson(response).catch(() => null);
+        return { ok: response.ok, status: response.status, body };
+    }
+
     async getUserWantlist(token, limit = 50, offset = 0) {
         if (!token) return null;
         const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });

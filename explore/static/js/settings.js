@@ -35,6 +35,7 @@ class SettingsPane {
         this._state = new window.SettingsState();
         this._state.exposeOn(this);
         this._events = new window.AbortController();
+        this._ownerGeneration = 0;
     }
 
     init() {
@@ -57,7 +58,14 @@ class SettingsPane {
 
     _loadProfile() {
         const user = window.authManager.getUser();
-        if (!user) return;
+        if (!user || !window.authManager.getToken()) {
+            for (const id of ['settingsEmail', 'settingsCreatedAt', 'settingsDiscogsStatus']) {
+                const el = document.getElementById(id);
+                if (el) el.replaceChildren();
+            }
+            if (!window.authManager.getToken()) this._twoFaState = 'disabled';
+            return;
+        }
 
         const emailEl = document.getElementById('settingsEmail');
         if (emailEl) emailEl.textContent = user.email || '';
@@ -120,6 +128,41 @@ class SettingsPane {
         this._initialized = false;
     }
 
+    _isCurrentOwnerRequest(token, generation) {
+        return token === window.authManager?.getToken?.() && generation === this._ownerGeneration;
+    }
+
+    resetForAccountChange(account = {}) {
+        if (account.token) this.clearErasureReceipt();
+        this._ownerGeneration += 1;
+        this._state.resetForAccountChange();
+        for (const id of [
+            'settingsEmail', 'settingsCreatedAt', 'settingsDiscogsStatus', 'twoFactorContent',
+            'appTokensContent', 'privacyContent', 'exportContent', 'deleteAccountContent',
+            'passwordChangeError', 'passwordChangeSuccess', 'appTokenMintError',
+        ]) document.getElementById(id)?.replaceChildren();
+        for (const id of ['settingsCurrentPassword', 'settingsNewPassword', 'settingsConfirmPassword']) {
+            const input = document.getElementById(id);
+            if (input) input.value = '';
+        }
+        document.querySelectorAll('[data-setup-totp], [data-disable-totp], [data-erasure-totp]').forEach((input) => { input.value = ''; });
+        this._loadProfile();
+        this._renderTwoFaState();
+        this._loadAppTokens();
+        this._loadConsent();
+        this._renderExportCard();
+        this._renderDeleteAccountCard();
+    }
+
+    clearErasureReceipt() {
+        pendingErasureReceipt = null;
+        const banner = document.getElementById('erasureReceiptBanner');
+        if (banner) {
+            this._clearContainer(banner);
+            banner.hidden = true;
+        }
+    }
+
     // ------------------------------------------------------------------ //
     // Change password
     // ------------------------------------------------------------------ //
@@ -145,12 +188,14 @@ class SettingsPane {
 
         const token = window.authManager.getToken();
         if (!token) { errorEl.textContent = 'Not authenticated'; return; }
+        const ownerGeneration = this._ownerGeneration;
 
         const btn = document.getElementById('changePasswordBtn');
         btn.disabled = true;
 
         try {
             const response = await window.apiClient.changePassword(token, current, next);
+            if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
             if (response.ok) {
                 successEl.textContent = 'Password changed successfully';
                 successEl.classList.remove('hidden');
@@ -159,12 +204,13 @@ class SettingsPane {
                 confirmPw.value = '';
             } else {
                 const data = await response.json().catch(() => ({}));
+                if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
                 errorEl.textContent = data.detail || 'Failed to change password';
             }
         } catch {
-            errorEl.textContent = 'Network error — please try again';
+            if (this._isCurrentOwnerRequest(token, ownerGeneration)) errorEl.textContent = 'Network error — please try again';
         } finally {
-            btn.disabled = false;
+            if (this._isCurrentOwnerRequest(token, ownerGeneration)) btn.disabled = false;
         }
     }
 
@@ -493,15 +539,20 @@ class SettingsPane {
     async _startSetup() {
         const token = window.authManager.getToken();
         if (!token) return;
+        const ownerGeneration = this._ownerGeneration;
 
         try {
             const response = await window.apiClient.twoFactorSetup(token);
+            if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
             if (response.ok) {
-                this._setupData = await response.json();
+                const setupData = await response.json();
+                if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
+                this._setupData = setupData;
                 this._twoFaState = 'setup';
                 this._renderTwoFaState();
             } else {
                 const data = await response.json().catch(() => ({}));
+                if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
                 // Show a temporary error in the container
                 const container = document.getElementById('twoFactorContent');
                 if (container) {
@@ -529,11 +580,14 @@ class SettingsPane {
 
         const token = window.authManager.getToken();
         if (!token) { errorEl.textContent = 'Not authenticated'; return; }
+        const ownerGeneration = this._ownerGeneration;
 
         try {
             const response = await window.apiClient.twoFactorConfirm(token, code);
+            if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
             if (response.ok) {
                 await response.json().catch(() => ({}));
+                if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
                 // Recovery codes were returned by /api/auth/2fa/setup, not /confirm.
                 this._recoveryCodes = this._setupData?.recovery_codes || [];
                 window.authManager.updateTotpEnabled(true);
@@ -541,11 +595,12 @@ class SettingsPane {
                 this._renderTwoFaState();
             } else {
                 const data = await response.json().catch(() => ({}));
+                if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
                 errorEl.textContent = data.detail || 'Invalid code';
                 this._clearTotpInputs('setupTotp');
             }
         } catch {
-            errorEl.textContent = 'Network error — please try again';
+            if (this._isCurrentOwnerRequest(token, ownerGeneration)) errorEl.textContent = 'Network error — please try again';
         }
     }
 
@@ -567,20 +622,23 @@ class SettingsPane {
 
         const token = window.authManager.getToken();
         if (!token) { errorEl.textContent = 'Not authenticated'; return; }
+        const ownerGeneration = this._ownerGeneration;
 
         try {
             const response = await window.apiClient.twoFactorDisable(token, code, password);
+            if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
             if (response.ok) {
                 window.authManager.updateTotpEnabled(false);
                 this._twoFaState = 'disabled';
                 this._renderTwoFaState();
             } else {
                 const data = await response.json().catch(() => ({}));
+                if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
                 errorEl.textContent = data.detail || 'Failed to disable 2FA';
                 this._clearTotpInputs('disableTotp');
             }
         } catch {
-            errorEl.textContent = 'Network error — please try again';
+            if (this._isCurrentOwnerRequest(token, ownerGeneration)) errorEl.textContent = 'Network error — please try again';
         }
     }
 
@@ -654,12 +712,14 @@ class SettingsPane {
             container.appendChild(msg);
             return;
         }
+        const ownerGeneration = this._ownerGeneration;
         let res = null;
         try {
             res = await window.apiClient.listAppTokens(token);
         } catch {
             res = null;
         }
+        if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
         this._activeTokens = (res && Array.isArray(res.active)) ? res.active : [];
         this._revokedTokens = (res && Array.isArray(res.revoked)) ? res.revoked : [];
         if (this._appTokensView === 'minting') {
@@ -1003,6 +1063,7 @@ class SettingsPane {
             if (errorEl) errorEl.textContent = 'You are not signed in';
             return;
         }
+        const ownerGeneration = this._ownerGeneration;
 
         let res;
         try {
@@ -1011,9 +1072,10 @@ class SettingsPane {
             // A network-level fetch rejection — mirror the other settings
             // handlers (_handleChangePassword, _confirmSetup, _handleDisable)
             // instead of letting the rejection propagate unhandled.
-            if (errorEl) errorEl.textContent = 'Network error — please try again';
+            if (this._isCurrentOwnerRequest(token, ownerGeneration) && errorEl) errorEl.textContent = 'Network error — please try again';
             return;
         }
+        if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
         if (!res || !res.ok || !res.body || !res.body.token) {
             const detail = (res && res.body && res.body.detail) ? res.body.detail : 'Failed to mint token';
             if (errorEl) errorEl.textContent = detail;
@@ -1056,6 +1118,7 @@ class SettingsPane {
 
         const token = window.authManager && window.authManager.getToken && window.authManager.getToken();
         if (!token) return;
+        const ownerGeneration = this._ownerGeneration;
 
         let ok;
         try {
@@ -1063,10 +1126,12 @@ class SettingsPane {
         } catch {
             // A network-level fetch rejection — still surface feedback and
             // refresh the list, matching the non-ok failure path below.
+            if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
             window.alert('Failed to revoke token. It may have already been revoked.');
             this._loadAppTokens();
             return;
         }
+        if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
         if (!ok) {
             window.alert('Failed to revoke token. It may have already been revoked.');
         }
@@ -1100,6 +1165,7 @@ class SettingsPane {
             this._renderConsentCard();
             return;
         }
+        const ownerGeneration = this._ownerGeneration;
 
         let res = null;
         try {
@@ -1107,6 +1173,7 @@ class SettingsPane {
         } catch {
             res = null;
         }
+        if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
         if (res && Array.isArray(res.purposes)) {
             this._consentPurposes = res.purposes;
             this._consentError = '';
@@ -1191,6 +1258,7 @@ class SettingsPane {
     async _handleConsentToggle(purpose, granted) {
         const token = window.authManager && window.authManager.getToken && window.authManager.getToken();
         if (!token) return;
+        const ownerGeneration = this._ownerGeneration;
 
         this._consentPending = purpose;
         this._consentError = '';
@@ -1207,6 +1275,7 @@ class SettingsPane {
         } catch {
             res = null;
         }
+        if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
         this._consentPending = null;
 
         if (res && typeof res.granted === 'boolean') {
@@ -1289,6 +1358,7 @@ class SettingsPane {
     async _handleExport() {
         const token = window.authManager && window.authManager.getToken && window.authManager.getToken();
         if (!token) return;
+        const ownerGeneration = this._ownerGeneration;
 
         this._exportState = 'working';
         this._exportError = '';
@@ -1300,6 +1370,7 @@ class SettingsPane {
         } catch {
             blob = null;
         }
+        if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
 
         if (!blob) {
             this._exportState = 'error';
@@ -1574,6 +1645,7 @@ class SettingsPane {
 
         const token = window.authManager && window.authManager.getToken && window.authManager.getToken();
         if (!token) { errorEl.textContent = 'Not authenticated'; return; }
+        const ownerGeneration = this._ownerGeneration;
 
         // Disable in place rather than re-rendering: a re-render would drop the
         // password the user just typed, which the retry path still needs.
@@ -1588,6 +1660,7 @@ class SettingsPane {
         } catch {
             res = null;
         }
+        if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
 
         if (!res || !res.ok) {
             // The panel stays in the confirm state with the detail inline so the

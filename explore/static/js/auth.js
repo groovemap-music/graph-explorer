@@ -8,6 +8,8 @@ class AuthManager {
         this._user = null;
         this._discogsStatus = null;
         this._listeners = [];
+        this._accountListeners = [];
+        this._accountGeneration = 0;
         this._challengeToken = null;
 
         // Sync auth state across tabs: a logout (or token change) in one tab
@@ -26,11 +28,11 @@ class AuthManager {
     _onStorageEvent(e) {
         if (e.key !== 'auth_token') return;
         if (e.newValue === this._token) return;
+        const previousToken = this._token;
         this._token = e.newValue || null;
-        if (!this._token) {
-            this._user = null;
-            this._discogsStatus = null;
-        }
+        this._user = null;
+        this._discogsStatus = null;
+        this._accountChanged(previousToken, this._token);
         this.notify();
     }
 
@@ -42,6 +44,10 @@ class AuthManager {
     /** Current JWT token or null. */
     getToken() {
         return this._token;
+    }
+
+    getAccountGeneration() {
+        return this._accountGeneration;
     }
 
     /** Current user object {id, email} or null. */
@@ -56,7 +62,13 @@ class AuthManager {
 
     /** Persist token and notify listeners. */
     setToken(token) {
+        const previousToken = this._token;
         this._token = token;
+        if (previousToken !== token) {
+            this._user = null;
+            this._discogsStatus = null;
+            this._accountChanged(previousToken, token);
+        }
         if (token) {
             localStorage.setItem('auth_token', token);
         } else {
@@ -66,7 +78,10 @@ class AuthManager {
 
     /** Store user info. */
     setUser(user) {
+        const previousPrincipal = this._user?.id ?? null;
         this._user = user;
+        const nextPrincipal = user?.id ?? null;
+        if (previousPrincipal !== nextPrincipal) this._accountChanged(this._token, this._token);
     }
 
     /** Store Discogs status. */
@@ -80,10 +95,12 @@ class AuthManager {
 
     /** Clear all auth state (logout). */
     clear() {
+        const previousToken = this._token;
         this._token = null;
         this._user = null;
         this._discogsStatus = null;
         localStorage.removeItem('auth_token');
+        if (previousToken !== null) this._accountChanged(previousToken, null);
     }
 
     /** Register a listener for auth state changes. Callback receives (isLoggedIn). */
@@ -93,6 +110,21 @@ class AuthManager {
             const index = this._listeners.indexOf(callback);
             if (index !== -1) this._listeners.splice(index, 1);
         };
+    }
+
+    onAccountChange(callback) {
+        this._accountListeners.push(callback);
+        return () => {
+            const index = this._accountListeners.indexOf(callback);
+            if (index !== -1) this._accountListeners.splice(index, 1);
+        };
+    }
+
+    _accountChanged(previousToken, nextToken) {
+        this._accountGeneration += 1;
+        for (const callback of [...this._accountListeners]) {
+            callback({ generation: this._accountGeneration, previousToken, token: nextToken, user: this._user });
+        }
     }
 
     /** Notify all listeners of state change. */
@@ -112,15 +144,20 @@ class AuthManager {
      * Returns true if the session is valid.
      */
     async init() {
-        if (!this._token) return false;
+        const token = this._token;
+        if (!token) return false;
+        let generation = this._accountGeneration;
         try {
-            const user = await window.apiClient.getMe(this._token);
+            const user = await window.apiClient.getMe(token);
+            if (this._token !== token || this._accountGeneration !== generation) return false;
             if (!user) {
                 this.clear();
                 return false;
             }
-            this._user = user;
-            const discogsStatus = await window.apiClient.getDiscogsStatus(this._token);
+            this.setUser(user);
+            generation = this._accountGeneration;
+            const discogsStatus = await window.apiClient.getDiscogsStatus(token);
+            if (this._token !== token || this._accountGeneration !== generation) return false;
             this._discogsStatus = discogsStatus;
             return true;
         } catch {
@@ -130,7 +167,7 @@ class AuthManager {
             // would otherwise escape init() uncaught, aborting page-load auth
             // restore (migration-regression-ponr). Treat it like an invalid session
             // rather than letting the caller's page-load chain reject.
-            this.clear();
+            if (this._token === token && this._accountGeneration === generation) this.clear();
             return false;
         }
     }

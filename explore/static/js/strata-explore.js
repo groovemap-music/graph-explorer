@@ -40,13 +40,6 @@ export { BLOCKED_REASON, blockedReason };
 export const DEFAULT_BUDGET = '3/12/16';
 /** The route refuses a root above this many releases with a 422 (catalog-api api/README.md). */
 export const MAX_ROOT_RELEASES = 134051;
-/** Observation kinds the panel offers. The route takes any kind; these are the ones ADR 0009 names. */
-export const OBSERVATION_KINDS = Object.freeze([
-    Object.freeze({ id: 'matrix', label: 'Matrix / runout' }),
-    Object.freeze({ id: 'grading', label: 'Grading' }),
-    Object.freeze({ id: 'purchase_price', label: 'Purchase price' }),
-    Object.freeze({ id: 'note', label: 'Note' }),
-]);
 const PLANE_NAMES = Object.freeze(['Credit', 'Master', 'Release']);
 const DISCOGS = 'https://www.discogs.com';
 const DAY_MS = 86_400_000;
@@ -247,10 +240,9 @@ export function discogsLinks(node) {
     }));
 }
 
-/** The copy an observation is recorded against: the caller's earliest-acquired copy, or null. */
-export function copyIdOf(node) {
-    const [first] = node?.ownedCopyIds || [];
-    return first ?? null;
+/** Only an explicitly selected copy returned on this node may receive evidence. */
+export function copyIdOf(node, selectedCopyId = null) {
+    return selectedCopyId && node?.ownedCopyIds?.includes(selectedCopyId) ? selectedCopyId : null;
 }
 
 /**
@@ -262,7 +254,7 @@ export function copyIdOf(node) {
  * @returns {Array<{id: string, label: string, enabled: boolean, reason?: string, href?: string,
  *                  cursor?: string}>}
  */
-export function nodeActions(node, { signedIn = false, past = false } = {}) {
+export function nodeActions(node, { signedIn = false, past = false, selectedCopyId = null } = {}) {
     if (!node) return [];
     const actions = [];
     if (node.cursor) {
@@ -277,10 +269,11 @@ export function nodeActions(node, { signedIn = false, past = false } = {}) {
     if (canPerform(node.state, CollectorAction.SYNC_NOW)) actions.push({ id: CollectorAction.SYNC_NOW, label: 'Sync now', enabled: true });
     if (canPerform(node.state, CollectorAction.RECORD_OBSERVATION)) {
         const record = { id: CollectorAction.RECORD_OBSERVATION, label: 'Record an observation' };
-        // The route names the copy on the node (earliest acquired first). Without the list there is
-        // nothing to record against, and the collection is never scanned to find one.
+        // Only a returned copy explicitly chosen in the selector may receive evidence.
+        // The collection is never scanned to find one.
         if (past) actions.push({ ...record, enabled: false, reason: PAST_REASON });
-        else if (!copyIdOf(node)) actions.push({ ...record, enabled: false, reason: node.ownedCopyIds ? NO_COPY_REASON : COPY_UNREAD_REASON });
+        else if (!node.ownedCopyIds?.length) actions.push({ ...record, enabled: false, reason: node.ownedCopyIds ? NO_COPY_REASON : COPY_UNREAD_REASON });
+        else if (!copyIdOf(node, selectedCopyId)) actions.push({ ...record, enabled: false, reason: 'Choose a physical copy first.' });
         else actions.push({ ...record, enabled: true });
     }
     return actions;
@@ -486,6 +479,7 @@ export class StrataExplore {
         this.message = null;
         this.active = false;
         this.requestId = 0;
+        this.ownerGeneration = 0;
         this.bind();
         if (observeTheme && typeof MutationObserver === 'function') {
             this.themeObserver = new MutationObserver(() => this.refreshColors());
@@ -521,6 +515,7 @@ export class StrataExplore {
     setArtist(artist) {
         const next = artist && artist.id != null ? { id: String(artist.id), name: artist.name || null } : null;
         if (next?.id === this.artist?.id) return;
+        this.copyEvidence?.destroy();
         this.artist = next;
         this.cursor = { focus: null, page: 0 };
         this.trail = [];
@@ -529,6 +524,35 @@ export class StrataExplore {
         this.axisHint = null;
         this.recordedAsOf = null;
         if (this.active && next) this.load();
+    }
+
+    /** Drop graph facts tied to the prior principal, then read the current public/owner view. */
+    resetForAccountChange() {
+        this.copyEvidence?.destroy();
+        this.ownerGeneration += 1;
+        this.requestId += 1;
+        this.graph = null;
+        this.view = null;
+        this.layout = null;
+        this.selected = null;
+        this.cursor = { focus: null, page: 0 };
+        this.trail = [];
+        this.onlyCollected = false;
+        this.recordedAsOf = null;
+        this.axisHint = null;
+        this.rows = [];
+        this.rowById.clear();
+        this.byId = new Map();
+        this.table?.setRows([], { selected: null });
+        this.ui.selection?.replaceChildren();
+        this.ui.summary?.replaceChildren();
+        this.ui.trail?.replaceChildren();
+        if (this.ui.tableStatus) this.ui.tableStatus.textContent = '';
+        this.showMessage(null);
+        this.renderer?.resetLayout?.();
+        this.renderControls();
+        if (this.active && this.artist) this.load();
+        else this.setLoading(false);
     }
 
     /**
@@ -605,6 +629,7 @@ export class StrataExplore {
     }
 
     dispose() {
+        this.copyEvidence?.destroy();
         this.themeObserver?.disconnect();
         this.renderer?.dispose();
         this.renderer = null;
@@ -737,7 +762,7 @@ export class StrataExplore {
 
     renderControls() {
         const { ui, graph } = this;
-        const signedIn = graph.signedIn;
+        const signedIn = !!graph?.signedIn;
         if (ui.onlyCollected) {
             ui.onlyCollected.disabled = !signedIn;
             ui.onlyCollected.title = signedIn ? '' : 'Sign in to see what you collect';
@@ -805,6 +830,8 @@ export class StrataExplore {
     }
 
     renderSelection() {
+        this.copyEvidence?.destroy();
+        this.copyEvidence = null;
         const { doc } = this;
         const box = this.ui.selection;
         if (!box || !this.layout) return;
@@ -865,6 +892,24 @@ export class StrataExplore {
         status.id = 'strataActionStatus';
         parts.push(status);
         box.replaceChildren(...parts);
+        if (node.level === 2 && !node.agg && node.state && hasOwn(node.state) && this.graph.signedIn) {
+            const container = el(doc, 'section', 'strata-copy-detail');
+            box.append(container);
+            const ownerGeneration = this.ownerGeneration;
+            const selected = this.selected;
+            const evidence = new window.CopyEvidence({ container, api: this.api, auth: this.auth,
+                isCurrent: () => ownerGeneration === this.ownerGeneration && selected === this.selected,
+                readOnly: this.view.past,
+                onStatus: text => this.setStatus(text),
+                onSelection: copy => {
+                    const button = actions.querySelector('[data-action="record-observation"]');
+                    if (button) { button.disabled = this.view.past || !copy; button.title = this.view.past ? PAST_REASON : copy ? '' : !node.ownedCopyIds ? COPY_UNREAD_REASON : !node.ownedCopyIds.length ? NO_COPY_REASON : 'Choose a physical copy first.'; }
+                    actions.querySelectorAll('.strata-blocked').forEach(hint => { if (hint.textContent === 'Choose a physical copy first.') hint.hidden = !!copy; });
+                },
+            });
+            this.copyEvidence = evidence;
+            evidence.showCopies(node.ownedCopyIds?.map(id => ({ id })), { complete: false });
+        }
     }
 
     legend() {
@@ -958,65 +1003,27 @@ export class StrataExplore {
 
     async syncNow() {
         const token = this.auth?.getToken?.();
+        const ownerGeneration = this.ownerGeneration;
         this.setStatus('Starting a Discogs sync…');
         const result = await this.api.triggerSync(token);
+        if (ownerGeneration !== this.ownerGeneration || token !== this.auth?.getToken?.()) return;
         if (result?.ok) this.setStatus('Sync started. States change only when Discogs reports them; reopen the view when it finishes.');
         else if (result?.status === 429) this.setStatus('A sync started less than a minute ago. Try again shortly.');
         else this.setStatus(result?.body?.error || result?.body?.detail || 'The sync could not be started. Is Discogs connected?');
     }
 
     openObservationForm(node) {
-        const { doc } = this;
-        const form = el(doc, 'form', 'strata-observation');
-        form.setAttribute('aria-label', 'Record an observation about your copy');
-        const kindLabel = el(doc, 'label', 'strata-field', 'What');
-        const kind = el(doc, 'select', 'form-input-dark');
-        kind.name = 'kind';
-        for (const option of OBSERVATION_KINDS) {
-            const item = el(doc, 'option', null, option.label);
-            item.value = option.id;
-            kind.append(item);
-        }
-        kindLabel.append(kind);
-        const valueLabel = el(doc, 'label', 'strata-field', 'Observed');
-        const value = el(doc, 'input', 'form-input-dark');
-        value.name = 'value';
-        value.required = true;
-        valueLabel.append(value);
-        const save = el(doc, 'button', 'strata-action', 'Save observation');
-        save.type = 'submit';
-        form.append(kindLabel, valueLabel, save);
-        form.addEventListener('submit', async (event) => {
-            event.preventDefault();
-            save.disabled = true;
-            await this.recordObservation(node, { kind: kind.value, value: value.value });
-            save.disabled = false;
-        });
-        this.ui.selection?.querySelector('.strata-observation')?.remove();
-        this.ui.selection?.querySelector('.strata-actions')?.after(form);
-        value.focus?.();
-        return form;
+        if (this.view?.past || node?.id !== this.selected) return null;
+        return this.copyEvidence?.openForm() || null;
     }
 
-    /**
-     * Record an observation about the caller's own copy: the earliest-acquired copy the route
-     * named on the release node. The collection is never read to find it.
-     */
     async recordObservation(node, { kind, value }) {
-        const text = String(value || '').trim();
-        if (!text) {
-            this.setStatus('Write what you observed first.');
+        if (this.view?.past) { this.setStatus(PAST_REASON); return false; }
+        if (!copyIdOf(node, this.copyEvidence?.selectedCopyId) || node?.id !== this.selected) {
+            this.setStatus(!node?.ownedCopyIds ? COPY_UNREAD_REASON : !node.ownedCopyIds.length ? NO_COPY_REASON : 'Choose a physical copy first.');
             return false;
         }
-        const copyId = copyIdOf(node);
-        if (!copyId) {
-            this.setStatus(node.ownedCopyIds ? NO_COPY_REASON : COPY_UNREAD_REASON);
-            return false;
-        }
-        const token = this.auth?.getToken?.();
-        const result = await this.api.createObservation(token, copyId, { kind, value: text, source: 'user' });
-        this.setStatus(result?.ok ? 'Observation recorded.' : result?.body?.detail || result?.body?.error || 'The observation could not be recorded.');
-        return !!result?.ok;
+        return this.copyEvidence.record({ kind, value });
     }
 
     /**

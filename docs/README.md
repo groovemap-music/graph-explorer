@@ -6,6 +6,7 @@ configuration; contributors with architecture and release compliance.
 - [Architecture](architecture.md)
 - [Configuration](configuration.md)
 - [User guide and accessibility](user-guide.md)
+- [Transient Missing and physical-copy evidence](missing-and-copy-evidence.md)
 - [Discography Strata](discography-strata.md)
 - [Genre Atlas](genre-atlas.md)
 - [Strata renderer](strata-renderer.md)

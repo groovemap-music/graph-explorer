@@ -18,6 +18,7 @@ class UserPanes {
     }
 
     destroy() {
+        this._copyEvidence?.destroy();
         this._state.invalidateRequests();
         if (this._discogsOAuthMessageHandler) {
             window.removeEventListener('message', this._discogsOAuthMessageHandler);
@@ -28,6 +29,26 @@ class UserPanes {
         this._tasteLoading = false;
     }
 
+    resetForAccountChange() {
+        this._copyEvidence?.destroy();
+        this._state.resetForAccountChange();
+        if (this._discogsOAuthMessageHandler) {
+            window.removeEventListener('message', this._discogsOAuthMessageHandler);
+            this._discogsOAuthMessageHandler = null;
+        }
+        for (const id of ['collectionBody', 'wantlistBody', 'recommendationsBody', 'collectionStats', 'tasteStrip', 'gapsBody', 'missingPreview']) {
+            document.getElementById(id)?.replaceChildren();
+        }
+        for (const id of ['collectionLoading', 'wantlistLoading', 'recommendationsLoading', 'gapsLoading']) {
+            document.getElementById(id)?.classList.remove('active');
+        }
+        document.getElementById('navGaps')?.classList.add('hidden');
+    }
+
+    _isCurrentOwnerRequest(token, generation) {
+        return token === window.authManager?.getToken?.() && generation === this._ownerGeneration;
+    }
+
     // ------------------------------------------------------------------ //
     // Collection pane
     // ------------------------------------------------------------------ //
@@ -35,6 +56,7 @@ class UserPanes {
     async loadCollection(reset = false) {
         const token = window.authManager.getToken();
         if (!token) return;
+        this._copyEvidence?.destroy();
         if (reset) this._collectionOffset = 0;
 
         const loading = document.getElementById('collectionLoading');
@@ -42,11 +64,12 @@ class UserPanes {
         if (loading) loading.classList.add('active');
 
         const requestId = ++this._collectionReqId;
+        const ownerGeneration = this._ownerGeneration;
         const requestOffset = this._collectionOffset;
         try {
             const data = await window.apiClient.getUserCollection(token, this._pageSize, requestOffset);
             // A newer request has since been issued — discard this stale response.
-            if (requestId !== this._collectionReqId) return;
+            if (requestId !== this._collectionReqId || !this._isCurrentOwnerRequest(token, ownerGeneration)) return;
             if (!data) {
                 this._renderCollectionEmpty(body, 'Failed to load collection.');
                 return;
@@ -57,9 +80,9 @@ class UserPanes {
             // A network-level fetch rejection (offline, DNS, CORS) — not an
             // HTTP error status — still needs to surface the same failure
             // state instead of leaving the pane blank/stale.
-            if (requestId === this._collectionReqId) this._renderCollectionEmpty(body, 'Failed to load collection.');
+            if (requestId === this._collectionReqId && this._isCurrentOwnerRequest(token, ownerGeneration)) this._renderCollectionEmpty(body, 'Failed to load collection.');
         } finally {
-            if (requestId === this._collectionReqId && loading) loading.classList.remove('active');
+            if (requestId === this._collectionReqId && this._isCurrentOwnerRequest(token, ownerGeneration) && loading) loading.classList.remove('active');
         }
     }
 
@@ -116,11 +139,12 @@ class UserPanes {
         if (loading) loading.classList.add('active');
 
         const requestId = ++this._wantlistReqId;
+        const ownerGeneration = this._ownerGeneration;
         const requestOffset = this._wantlistOffset;
         try {
             const data = await window.apiClient.getUserWantlist(token, this._pageSize, requestOffset);
             // A newer request has since been issued — discard this stale response.
-            if (requestId !== this._wantlistReqId) return;
+            if (requestId !== this._wantlistReqId || !this._isCurrentOwnerRequest(token, ownerGeneration)) return;
             if (!data) {
                 this._renderWantlistEmpty(body, 'Failed to load wantlist.');
                 return;
@@ -131,9 +155,9 @@ class UserPanes {
             // A network-level fetch rejection (offline, DNS, CORS) — not an
             // HTTP error status — still needs to surface the same failure
             // state instead of leaving the pane blank/stale.
-            if (requestId === this._wantlistReqId) this._renderWantlistEmpty(body, 'Failed to load wantlist.');
+            if (requestId === this._wantlistReqId && this._isCurrentOwnerRequest(token, ownerGeneration)) this._renderWantlistEmpty(body, 'Failed to load wantlist.');
         } finally {
-            if (requestId === this._wantlistReqId && loading) loading.classList.remove('active');
+            if (requestId === this._wantlistReqId && this._isCurrentOwnerRequest(token, ownerGeneration) && loading) loading.classList.remove('active');
         }
     }
 
@@ -188,15 +212,19 @@ class UserPanes {
         const body = document.getElementById('recommendationsBody');
         if (loading) loading.classList.add('active');
 
+        const requestId = ++this._recommendationsReqId;
+        const ownerGeneration = this._ownerGeneration;
+
         try {
             const data = await window.apiClient.getUserRecommendations(token, 50);
+            if (requestId !== this._recommendationsReqId || !this._isCurrentOwnerRequest(token, ownerGeneration)) return;
             this._renderRecommendations(body, data);
         } catch {
             // A network-level fetch rejection — _renderRecommendations already
             // renders the "failed to load" state for a null/falsy data value.
-            this._renderRecommendations(body, null);
+            if (requestId === this._recommendationsReqId && this._isCurrentOwnerRequest(token, ownerGeneration)) this._renderRecommendations(body, null);
         } finally {
-            if (loading) loading.classList.remove('active');
+            if (requestId === this._recommendationsReqId && this._isCurrentOwnerRequest(token, ownerGeneration) && loading) loading.classList.remove('active');
         }
     }
 
@@ -419,13 +447,16 @@ class UserPanes {
     async loadCollectionStats() {
         const token = window.authManager.getToken();
         if (!token) return;
+        const requestId = ++this._statsReqId;
+        const ownerGeneration = this._ownerGeneration;
         try {
             const stats = await window.apiClient.getUserCollectionStats(token);
+            if (requestId !== this._statsReqId || !this._isCurrentOwnerRequest(token, ownerGeneration)) return;
             this._renderCollectionStats(stats);
         } catch {
             // A network-level fetch rejection — _renderCollectionStats already
             // no-ops on a falsy stats value, leaving whatever was last rendered.
-            this._renderCollectionStats(null);
+            if (requestId === this._statsReqId && this._isCurrentOwnerRequest(token, ownerGeneration)) this._renderCollectionStats(null);
         }
     }
 
@@ -474,8 +505,10 @@ class UserPanes {
     async startDiscogsOAuth() {
         const token = window.authManager.getToken();
         if (!token) return;
+        const ownerGeneration = this._ownerGeneration;
 
         const data = await window.apiClient.authorizeDiscogs(token);
+        if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
         if (!data || !data.authorize_url) {
             alert('Could not start Discogs authorization. Please try again.');
             return;
@@ -496,13 +529,13 @@ class UserPanes {
         );
 
         if (useCallback) {
-            this._registerDiscogsOAuthMessageListener(popup);
+            this._registerDiscogsOAuthMessageListener(popup, ownerGeneration);
         } else {
             Alpine.store('modals').discogsOpen = true;
         }
     }
 
-    _registerDiscogsOAuthMessageListener(popup) {
+    _registerDiscogsOAuthMessageListener(popup, ownerGeneration) {
         // Tear down any previous listener so repeated attempts don't stack up
         if (this._discogsOAuthMessageHandler) {
             window.removeEventListener('message', this._discogsOAuthMessageHandler);
@@ -527,12 +560,13 @@ class UserPanes {
             }
 
             const token = window.authManager.getToken();
-            if (!token || data.oauth_token !== this._discogsOAuthState) {
+            if (!token || !this._isCurrentOwnerRequest(token, ownerGeneration) || data.oauth_token !== this._discogsOAuthState) {
                 this._discogsOAuthState = null;
                 return;
             }
 
             const result = await window.apiClient.verifyDiscogs(token, data.oauth_token, data.oauth_verifier);
+            if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
             if (!result || !result.connected) {
                 this._discogsOAuthState = null;
                 alert('Discogs verification failed. Please try again.');
@@ -540,6 +574,7 @@ class UserPanes {
             }
 
             const status = await window.apiClient.getDiscogsStatus(token);
+            if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
             window.authManager.setDiscogsStatus(status);
             this._discogsOAuthState = null;
             window.authManager.notify();
@@ -551,6 +586,7 @@ class UserPanes {
 
     async submitDiscogsVerifier() {
         const token = window.authManager.getToken();
+        const ownerGeneration = this._ownerGeneration;
         const verifier = document.getElementById('discogsVerifierInput')?.value?.trim();
         const errorEl = document.getElementById('discogsVerifierError');
 
@@ -567,6 +603,7 @@ class UserPanes {
         if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Connecting...'; }
 
         const result = await window.apiClient.verifyDiscogs(token, this._discogsOAuthState, verifier);
+        if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
         if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Connect'; }
 
         if (!result || !result.connected) {
@@ -576,6 +613,7 @@ class UserPanes {
 
         // Update auth manager with new Discogs status
         const status = await window.apiClient.getDiscogsStatus(token);
+        if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
         window.authManager.setDiscogsStatus(status);
 
         // Close modal and notify
@@ -590,9 +628,11 @@ class UserPanes {
     async disconnectDiscogs() {
         const token = window.authManager.getToken();
         if (!token) return;
+        const ownerGeneration = this._ownerGeneration;
         if (!confirm('Disconnect your Discogs account?')) return;
 
         await window.apiClient.revokeDiscogs(token);
+        if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
         window.authManager.setDiscogsStatus({ connected: false });
         this.clearTasteCache();
         window.authManager.notify();
@@ -605,15 +645,18 @@ class UserPanes {
     async triggerSync() {
         const token = window.authManager.getToken();
         if (!token) return;
+        const ownerGeneration = this._ownerGeneration;
 
         const btn = document.getElementById('syncBtn');
         if (btn) { btn.classList.add('syncing'); btn.disabled = true; }
 
         try {
             const result = await window.apiClient.triggerSync(token);
+            if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
             if (result.ok) {
                 // Reload panes after a short delay to allow sync to start
                 setTimeout(() => {
+                    if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
                     this.loadCollection(true);
                     this.loadWantlist(true);
                     this.clearTasteCache();
@@ -640,6 +683,7 @@ class UserPanes {
     async loadTasteFingerprint() {
         const token = window.authManager.getToken();
         if (!token) return;
+        const ownerGeneration = this._ownerGeneration;
         const discogsStatus = window.authManager.getDiscogsStatus();
         if (!discogsStatus?.connected) return;
 
@@ -655,6 +699,7 @@ class UserPanes {
         // Guard against concurrent fetches
         if (this._tasteLoading) return;
         this._tasteLoading = true;
+        const requestId = ++this._tasteReqId;
 
         // Show loading placeholder
         strip.replaceChildren();
@@ -664,6 +709,7 @@ class UserPanes {
 
         try {
             const data = await window.apiClient.getTasteFingerprint(token);
+            if (requestId !== this._tasteReqId || !this._isCurrentOwnerRequest(token, ownerGeneration)) return;
             if (!data) {
                 // 422 (< 10 items), 503, or error — hide strip
                 strip.replaceChildren();
@@ -672,9 +718,9 @@ class UserPanes {
             this._tasteCache = data;
             this._renderTasteStrip(data);
         } catch {
-            strip.replaceChildren();
+            if (requestId === this._tasteReqId && this._isCurrentOwnerRequest(token, ownerGeneration)) strip.replaceChildren();
         } finally {
-            this._tasteLoading = false;
+            if (requestId === this._tasteReqId) this._tasteLoading = false;
         }
     }
 
@@ -917,6 +963,7 @@ class UserPanes {
     async _downloadTasteCard(btn) {
         const token = window.authManager.getToken();
         if (!token) return;
+        const ownerGeneration = this._ownerGeneration;
 
         const resetBtn = () => {
             btn.disabled = false;
@@ -938,6 +985,7 @@ class UserPanes {
             // null-return failure path below so the button always recovers.
             blob = null;
         }
+        if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
         if (!blob) {
             btn.textContent = 'Download failed';
             setTimeout(resetBtn, 2000);
@@ -983,6 +1031,8 @@ class UserPanes {
         this._gapEntityId = entityId;
         if (reset) this._gapOffset = 0;
 
+        const previewRequest = this._loadMissingPreview(entityType, entityId, token);
+
         // Switch to the gaps pane
         const paneLinks = document.querySelectorAll('.nav-link');
         paneLinks.forEach(l => l.classList.remove('active'));
@@ -1001,11 +1051,13 @@ class UserPanes {
         if (loading) loading.classList.add('active');
 
         const requestId = ++this._gapReqId;
+        const ownerGeneration = this._ownerGeneration;
         const requestOffset = this._gapOffset;
         try {
             // Load the collection's media taxonomy for the filter (once)
             if (!this._gapMediaTaxonomy) {
                 const mediaData = await window.apiClient.getCollectionMedia(token);
+                if (requestId !== this._gapReqId || !this._isCurrentOwnerRequest(token, ownerGeneration)) return;
                 this._gapMediaTaxonomy = {
                     families: mediaData?.families || [],
                     mediums: mediaData?.mediums || [],
@@ -1018,6 +1070,7 @@ class UserPanes {
                 media: this._gapMedia,
                 excludeWantlist: this._gapExcludeWantlist,
             });
+            if (requestId !== this._gapReqId || !this._isCurrentOwnerRequest(token, ownerGeneration)) return;
             // A newer request has since been issued — discard this stale response.
             if (requestId !== this._gapReqId) return;
             if (!data) {
@@ -1030,9 +1083,77 @@ class UserPanes {
             // A network-level fetch rejection (offline, DNS, CORS) — not an
             // HTTP error status — still needs to surface the same failure
             // state instead of leaving the pane blank/stale.
-            if (requestId === this._gapReqId) this._renderGapsEmpty(body, 'Failed to load gap analysis.');
+            if (requestId === this._gapReqId && this._isCurrentOwnerRequest(token, ownerGeneration)) this._renderGapsEmpty(body, 'Failed to load gap analysis.');
         } finally {
-            if (requestId === this._gapReqId && loading) loading.classList.remove('active');
+            if (requestId === this._gapReqId && this._isCurrentOwnerRequest(token, ownerGeneration) && loading) loading.classList.remove('active');
+            await previewRequest;
+        }
+    }
+
+    async _loadMissingPreview(kind, target, token) {
+        let container = document.getElementById('missingPreview');
+        if (!container) {
+            container = document.createElement('section');
+            container.id = 'missingPreview';
+            document.getElementById('gapsBody')?.before(container);
+        }
+        container.setAttribute('aria-label', 'Transient Missing preview');
+        container.setAttribute('aria-live', 'polite');
+        container.setAttribute('role', 'status');
+        const requestId = ++this._previewReqId;
+        const generation = this._ownerGeneration;
+        const current = () => requestId === this._previewReqId && this._isCurrentOwnerRequest(token, generation);
+        container.textContent = 'Loading scoped preview…';
+        if (!['artist', 'label'].includes(kind)) {
+            container.textContent = 'Scoped preview is unavailable for this target. Artist and label targets are supported.';
+            return;
+        }
+        try {
+            const result = await window.apiClient.previewMissing(token, kind, target);
+            if (!current()) return;
+            if (!result?.ok || !result.body?.preview) {
+                container.textContent = [401, 403].includes(result?.status)
+                    ? 'Scoped preview access denied. Sign in with an authorized session.'
+                    : result?.status === 503 ? 'Scoped preview sources are unavailable.' : 'Scoped preview could not be loaded. Try again.';
+                return;
+            }
+            this._renderMissingPreview(container, result.body, kind, target);
+        } catch {
+            if (current()) container.textContent = 'Scoped preview could not be loaded. Try again.';
+        }
+    }
+
+    _renderMissingPreview(container, data, kind, target) {
+        container.replaceChildren();
+        const add = (tag, value) => {
+            const element = document.createElement(tag);
+            element.textContent = value;
+            container.appendChild(element);
+        };
+        const preview = data.preview;
+        const counts = preview.denominator_evidence || {};
+        const sources = data.sources || {};
+        const complete = counts.denominator_complete === true && counts.ownership_complete === true
+            && Number.isInteger(counts.denominator) && counts.denominator > 0
+            && Number.isInteger(counts.owned) && counts.owned >= 0
+            && Number.isInteger(counts.missing) && counts.missing >= 0
+            && counts.owned + counts.missing === counts.denominator
+            && Number.isFinite(counts.completion_fraction) && counts.completion_fraction >= 0 && counts.completion_fraction <= 1
+            && Math.abs(counts.completion_fraction - counts.owned / counts.denominator) < 1e-9
+            && ['ownership_review', 'needs_review', 'unknown_excluded'].every(name => counts[name] === 0)
+            && ['catalog', 'aliases', 'ownership'].every(name => sources[name]?.status === 'observed'
+                && sources[name]?.truncated === false && sources[name]?.version != null);
+        add('h4', 'Transient scoped preview');
+        add('p', `Discogs ${kind} ${target} · native edition units, not physical copies. Unfiltered artist/label scope; media, year, country, label ancestry and work controls are unsupported. Wantlist hiding applies only to the gap list.`);
+        add('p', complete ? 'Complete declared scope.' : 'Partial or unknown scope. Whole-catalog completion is unknown.');
+        add('p', `Known eligible native editions: ${counts.denominator ?? 'unknown'} · Owned: ${counts.owned ?? 'unknown'} · Missing: ${counts.missing ?? 'unknown'} · Ownership review: ${counts.ownership_review ?? 'unknown'} · Needs review: ${counts.needs_review ?? 'unknown'} · Excluded: ${counts.excluded ?? 'unknown'}`);
+        if (counts.denominator === 0) add('p', 'No eligible editions observed in this projection. This does not establish that nothing is missing.');
+        if (complete) add('p', `Completion: ${Math.round(counts.completion_fraction * 100)}%`);
+        add('p', `Scope basis: ${data.scope_basis || 'unknown'} · Consistency: ${data.consistency || 'unknown'} · Co-release policy: ${data.co_release_policy || 'unknown'}`);
+        add('p', `Catalog read reference: ${preview.catalog_snapshot_id || 'unknown'} · Collection read reference: ${preview.collection_snapshot_id || 'unknown'}. Read windows are independent, not a shared snapshot.`);
+        for (const name of ['catalog', 'aliases', 'ownership']) {
+            const source = sources[name] || {};
+            add('p', `${name}: ${source.status || 'unknown'} · version: ${source.version ?? 'unknown'} · read window: ${source.started_at || 'unknown'} to ${source.finished_at || 'unknown'} · truncation: ${source.truncated === true ? 'yes' : source.truncated === false ? 'no' : 'unknown'}${source.limit != null ? ` · limit: ${source.limit}` : ''}`);
         }
     }
 
@@ -1059,9 +1180,9 @@ class UserPanes {
         statsRow.className = 'stats-row gap-stats-row';
 
         const fields = [
-            { label: 'Total', value: data.summary?.total || 0 },
-            { label: 'Owned', value: data.summary?.owned || 0 },
-            { label: 'Missing', value: data.summary?.missing || 0 },
+            { label: 'List projection total', value: data.summary?.total || 0 },
+            { label: 'List projection owned', value: data.summary?.owned || 0 },
+            { label: 'List projection missing', value: data.summary?.missing || 0 },
         ];
         fields.forEach(f => {
             const card = document.createElement('div');
@@ -1078,6 +1199,10 @@ class UserPanes {
 
         summary.append(entityInfo, statsRow);
         container.appendChild(summary);
+
+        const listScope = document.createElement('p');
+        listScope.textContent = 'Gap list projection: the filters below affect this list only, not preview eligibility or counts.';
+        container.appendChild(listScope);
 
         // Filters bar
         const filtersBar = document.createElement('div');
@@ -1112,7 +1237,7 @@ class UserPanes {
         // rather than routing through _renderGapsEmpty, which clears the
         // whole container.
         if (!data.results || data.results.length === 0) {
-            container.appendChild(this._buildEmptyNotice('No missing releases found. You have them all!'));
+            container.appendChild(this._buildEmptyNotice('No missing releases in this list projection with the current filters. Catalog and ownership completeness are not established.'));
             return;
         }
 
@@ -1402,6 +1527,33 @@ class UserPanes {
     // Shared table builder
     // ------------------------------------------------------------------ //
 
+    async _openCollectionCopies(release, wrap) {
+        this._copyEvidence?.destroy();
+        wrap.querySelector('.collection-copy-detail')?.remove();
+        const container = document.createElement('section');
+        container.className = 'collection-copy-detail';
+        wrap.appendChild(container);
+        if (!release.gm_item_id) {
+            container.textContent = 'Physical copies unavailable. Native item identity is unknown.';
+            return;
+        }
+        const generation = this._ownerGeneration;
+        const token = window.authManager.getToken();
+        const evidence = new window.CopyEvidence({ container, api: window.apiClient, auth: window.authManager,
+            isCurrent: () => this._isCurrentOwnerRequest(token, generation),
+            onSelection: copy => {
+                container.querySelector('.copy-record')?.remove();
+                if (!copy) return;
+                const record = document.createElement('button');
+                record.type = 'button'; record.className = 'copy-record'; record.textContent = 'Record an observation';
+                record.addEventListener('click', () => evidence.openForm());
+                container.appendChild(record);
+            },
+        });
+        this._copyEvidence = evidence;
+        await evidence.loadItem(release.gm_item_id);
+    }
+
     _buildReleaseTable(title, iconClass, releases, total, offset, refreshBtnId, onPageChange, hasMore) {
         const currentPage = Math.floor(offset / this._pageSize);
         const totalPages = Math.ceil(total / this._pageSize);
@@ -1494,6 +1646,15 @@ class UserPanes {
             const tdTitle = document.createElement('td');
             tdTitle.className = 'release-list-title';
             tdTitle.textContent = r.title || '(Unknown title)';
+            if (refreshBtnId === 'collectionRefreshBtn') {
+                const detail = document.createElement('button');
+                detail.type = 'button';
+                detail.className = 'collection-copy-open';
+                detail.textContent = 'Physical copies';
+                detail.setAttribute('aria-label', `Physical copies of ${r.title || 'this release'}`);
+                detail.addEventListener('click', () => this._openCollectionCopies(r, wrap));
+                tdTitle.appendChild(detail);
+            }
 
             const tdLabel = document.createElement('td');
             tdLabel.textContent = r.label || '';
