@@ -42,7 +42,7 @@ not a shared snapshot. Missing identity, failed reads and reverse-lookup truncat
 unknown/review evidence. A bounded Neo4j projection never proves the provider universe:
 the real adapter always returns `denominator_complete=false` and a null completion fraction.
 No percentage is shown for incomplete, unavailable, unknown-version or truncated sources,
-review counts, or an invalid completion fraction. Complete examples exist only in tests.
+review counts, zero/contradictory denominators, or a completion fraction inconsistent with the supplied owned count. Complete examples exist only in tests.
 
 The existing gap list retains media filters, pagination and Hide wantlisted, including on
 empty results. Its summary is explicitly scoped to its list projection. These controls do

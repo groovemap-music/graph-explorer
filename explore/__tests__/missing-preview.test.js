@@ -35,6 +35,23 @@ describe('transient Missing preview', () => {
             const data = fixture(true); mutate(data); panes._renderMissingPreview(view, data, 'label', '5'); expect(view.textContent).not.toContain('%');
         }
     });
+    it.each([
+        { denominator: 0, owned: 0, missing: 0, completion_fraction: 0 },
+        { owned: 2, missing: 3 },
+        { owned: -1, missing: 5 },
+        { denominator: 4.5, missing: 3.5 },
+        { owned: 1.5, missing: 2.5, completion_fraction: 0.375 },
+        { completion_fraction: 0.5 },
+        { completion_fraction: -0.1 },
+    ])('rejects contradictory complete denominator evidence %j', invalid => {
+        const data = fixture(true);
+        Object.assign(data.preview.denominator_evidence, invalid);
+        const view = document.getElementById('gapsBody');
+        panes._renderMissingPreview(view, data, 'artist', '9');
+        expect(view.textContent).not.toContain('%');
+        expect(view.textContent).not.toContain('Complete declared scope');
+        expect(view.textContent).toContain('Whole-catalog completion is unknown');
+    });
     it('explains empty and unknown evidence without turning it into completion', () => {
         const data = fixture(); data.preview.denominator_evidence = { denominator: 0 }; data.sources = {};
         panes._renderMissingPreview(document.getElementById('gapsBody'), data, 'artist', '9');

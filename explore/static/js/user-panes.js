@@ -1134,6 +1134,12 @@ class UserPanes {
         const counts = preview.denominator_evidence || {};
         const sources = data.sources || {};
         const complete = counts.denominator_complete === true && counts.ownership_complete === true
+            && Number.isInteger(counts.denominator) && counts.denominator > 0
+            && Number.isInteger(counts.owned) && counts.owned >= 0
+            && Number.isInteger(counts.missing) && counts.missing >= 0
+            && counts.owned + counts.missing === counts.denominator
+            && Number.isFinite(counts.completion_fraction) && counts.completion_fraction >= 0 && counts.completion_fraction <= 1
+            && Math.abs(counts.completion_fraction - counts.owned / counts.denominator) < 1e-9
             && ['ownership_review', 'needs_review', 'unknown_excluded'].every(name => counts[name] === 0)
             && ['catalog', 'aliases', 'ownership'].every(name => sources[name]?.status === 'observed'
                 && sources[name]?.truncated === false && sources[name]?.version != null);
@@ -1142,7 +1148,7 @@ class UserPanes {
         add('p', complete ? 'Complete declared scope.' : 'Partial or unknown scope. Whole-catalog completion is unknown.');
         add('p', `Known eligible native editions: ${counts.denominator ?? 'unknown'} · Owned: ${counts.owned ?? 'unknown'} · Missing: ${counts.missing ?? 'unknown'} · Ownership review: ${counts.ownership_review ?? 'unknown'} · Needs review: ${counts.needs_review ?? 'unknown'} · Excluded: ${counts.excluded ?? 'unknown'}`);
         if (counts.denominator === 0) add('p', 'No eligible editions observed in this projection. This does not establish that nothing is missing.');
-        if (complete && Number.isFinite(counts.completion_fraction) && counts.completion_fraction >= 0 && counts.completion_fraction <= 1) add('p', `Completion: ${Math.round(counts.completion_fraction * 100)}%`);
+        if (complete) add('p', `Completion: ${Math.round(counts.completion_fraction * 100)}%`);
         add('p', `Scope basis: ${data.scope_basis || 'unknown'} · Consistency: ${data.consistency || 'unknown'} · Co-release policy: ${data.co_release_policy || 'unknown'}`);
         add('p', `Catalog read reference: ${preview.catalog_snapshot_id || 'unknown'} · Collection read reference: ${preview.collection_snapshot_id || 'unknown'}. Read windows are independent, not a shared snapshot.`);
         for (const name of ['catalog', 'aliases', 'ownership']) {
