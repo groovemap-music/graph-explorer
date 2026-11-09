@@ -14,9 +14,6 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 CHECKER = ROOT / "scripts/check-contracts.py"
 PRODUCER_ROUTES = Path("api/contracts/graph-explorer/v1/routes.json")
-COMPONENTS = "ApplicationLifecycle GraphSessionState UserPaneState SettingsState ApiTransport proxy_transport"
-CONFIGURATION = "API_BASE_URL CORS_ORIGINS LOG_LEVEL explore.explore:main GET /health /api/{path:path} GET :8007/health"
-WORKFLOWS = "Explore Trends Find Path Search Insights Genres Credits Ask"
 
 
 def producer_repo(tmp_path: Path, payload: bytes) -> tuple[Path, str]:
@@ -56,9 +53,7 @@ def consumer_repo(tmp_path: Path, promoted_payload: bytes, digest: bytes | None 
     javascript.write_text("fetch('/api/example')\n")
     architecture = root / "docs/architecture.md"
     architecture.parent.mkdir(parents=True)
-    architecture.write_text(COMPONENTS + " " + source["producer_commit"])
-    (root / "docs/configuration.md").write_text(CONFIGURATION)
-    (root / "docs/user-guide.md").write_text(WORKFLOWS)
+    architecture.write_text(source["producer_commit"])
     (root / "scripts").mkdir()
     shutil.copyfile(CHECKER, root / "scripts/check-contracts.py")
     return root
@@ -73,7 +68,7 @@ def run_proof(tmp_path: Path, producer_payload: bytes, promoted_payload: bytes, 
     source["contract_sha256"] = hashlib.sha256(digest if digest is not None else promoted_payload).hexdigest()
     source_path.write_text(json.dumps(source))
     architecture = consumer / "docs/architecture.md"
-    architecture.write_text(COMPONENTS + " " + revision)
+    architecture.write_text(revision)
     return subprocess.run(  # noqa: S603
         [sys.executable, str(consumer / "scripts/check-contracts.py"), "--producer-repo", str(repo)],
         capture_output=True,

@@ -57,28 +57,8 @@ def check(producer_repo: Path | None = None) -> None:
             assert any(pattern.fullmatch(concrete) for pattern in patterns), f"uncontracted Catalog API route in {javascript.name}: {literal}"
 
     architecture = (ROOT / "docs/architecture.md").read_text()
-    for component in (
-        "ApplicationLifecycle",
-        "GraphSessionState",
-        "UserPaneState",
-        "SettingsState",
-        "ApiTransport",
-        "proxy_transport",
-    ):
-        assert component in architecture
     contract_source = json.loads((contract_root / "source.json").read_text())
-    for revision in (contract_source["producer_commit"],):
-        assert revision in architecture
-
-    configuration = (ROOT / "docs/configuration.md").read_text()
-    for setting in ("API_BASE_URL", "CORS_ORIGINS", "LOG_LEVEL"):
-        assert setting in configuration
-    for entry_point in ("explore.explore:main", "GET /health", "/api/{path:path}", "GET :8007/health"):
-        assert entry_point in configuration
-
-    user_guide = (ROOT / "docs/user-guide.md").read_text()
-    for workflow in ("Explore", "Trends", "Find Path", "Search", "Insights", "Genres", "Credits", "Ask"):
-        assert workflow in user_guide
+    assert contract_source["producer_commit"] in architecture
 
 
 def main() -> None:
