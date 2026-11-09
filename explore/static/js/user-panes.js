@@ -34,7 +34,7 @@ class UserPanes {
             window.removeEventListener('message', this._discogsOAuthMessageHandler);
             this._discogsOAuthMessageHandler = null;
         }
-        for (const id of ['collectionBody', 'wantlistBody', 'recommendationsBody', 'collectionStats', 'tasteStrip', 'gapsBody']) {
+        for (const id of ['collectionBody', 'wantlistBody', 'recommendationsBody', 'collectionStats', 'tasteStrip', 'gapsBody', 'missingPreview']) {
             document.getElementById(id)?.replaceChildren();
         }
         for (const id of ['collectionLoading', 'wantlistLoading', 'recommendationsLoading', 'gapsLoading']) {
@@ -1028,6 +1028,8 @@ class UserPanes {
         this._gapEntityId = entityId;
         if (reset) this._gapOffset = 0;
 
+        const previewRequest = this._loadMissingPreview(entityType, entityId, token);
+
         // Switch to the gaps pane
         const paneLinks = document.querySelectorAll('.nav-link');
         paneLinks.forEach(l => l.classList.remove('active'));
@@ -1081,6 +1083,67 @@ class UserPanes {
             if (requestId === this._gapReqId && this._isCurrentOwnerRequest(token, ownerGeneration)) this._renderGapsEmpty(body, 'Failed to load gap analysis.');
         } finally {
             if (requestId === this._gapReqId && this._isCurrentOwnerRequest(token, ownerGeneration) && loading) loading.classList.remove('active');
+            await previewRequest;
+        }
+    }
+
+    async _loadMissingPreview(kind, target, token) {
+        let container = document.getElementById('missingPreview');
+        if (!container) {
+            container = document.createElement('section');
+            container.id = 'missingPreview';
+            document.getElementById('gapsBody')?.before(container);
+        }
+        container.setAttribute('aria-label', 'Transient Missing preview');
+        container.setAttribute('aria-live', 'polite');
+        container.setAttribute('role', 'status');
+        const requestId = ++this._previewReqId;
+        const generation = this._ownerGeneration;
+        const current = () => requestId === this._previewReqId && this._isCurrentOwnerRequest(token, generation);
+        container.textContent = 'Loading scoped preview…';
+        if (!['artist', 'label'].includes(kind)) {
+            container.textContent = 'Scoped preview is unavailable for this target. Artist and label targets are supported.';
+            return;
+        }
+        try {
+            const result = await window.apiClient.previewMissing(token, kind, target);
+            if (!current()) return;
+            if (!result?.ok || !result.body?.preview) {
+                container.textContent = [401, 403].includes(result?.status)
+                    ? 'Scoped preview access denied. Sign in with an authorized session.'
+                    : result?.status === 503 ? 'Scoped preview sources are unavailable.' : 'Scoped preview could not be loaded. Try again.';
+                return;
+            }
+            this._renderMissingPreview(container, result.body, kind, target);
+        } catch {
+            if (current()) container.textContent = 'Scoped preview could not be loaded. Try again.';
+        }
+    }
+
+    _renderMissingPreview(container, data, kind, target) {
+        container.replaceChildren();
+        const add = (tag, value) => {
+            const element = document.createElement(tag);
+            element.textContent = value;
+            container.appendChild(element);
+        };
+        const preview = data.preview;
+        const counts = preview.denominator_evidence || {};
+        const sources = data.sources || {};
+        const complete = counts.denominator_complete === true && counts.ownership_complete === true
+            && ['catalog', 'aliases', 'ownership'].every(name => sources[name]?.status === 'observed'
+                && sources[name]?.truncated === false && sources[name]?.version != null);
+        add('h4', 'Transient scoped preview');
+        add('p', `Discogs ${kind} ${target} · native edition units, not physical copies. Unfiltered artist/label scope; media, year, country, label ancestry and work controls are unsupported. Wantlist hiding applies only to the gap list.`);
+        add('p', complete ? 'Complete declared scope.' : 'Partial or unknown scope. Whole-catalog completion is unknown.');
+        add('p', `Known eligible native editions: ${counts.denominator ?? 'unknown'} · Owned: ${counts.owned ?? 'unknown'} · Missing: ${counts.missing ?? 'unknown'} · Ownership review: ${counts.ownership_review ?? 'unknown'} · Needs review: ${counts.needs_review ?? 'unknown'} · Excluded: ${counts.excluded ?? 'unknown'}`);
+        if (counts.denominator === 0) add('p', 'No eligible editions observed in this projection. This does not establish that nothing is missing.');
+        if (complete && Number.isFinite(counts.completion_fraction)) add('p', `Completion: ${Math.round(counts.completion_fraction * 100)}%`);
+        add('p', `Scope basis: ${data.scope_basis || 'unknown'} · Consistency: ${data.consistency || 'unknown'} · Co-release policy: ${data.co_release_policy || 'unknown'}`);
+        add('p', `Catalog read reference: ${preview.catalog_snapshot_id || 'unknown'} · Collection read reference: ${preview.collection_snapshot_id || 'unknown'}. Read windows are independent, not a shared snapshot.`);
+        for (const name of ['catalog', 'aliases', 'ownership']) {
+            const source = sources[name] || {};
+            add('p', `${name}: ${source.status || 'unknown'} · version: ${source.version ?? 'unknown'} · read window: ${source.started_at || 'unknown'} to ${source.finished_at || 'unknown'} · truncation: ${source.truncated === true ? 'yes' : source.truncated === false ? 'no' : 'unknown'}${source.limit != null ? ` · limit: ${source.limit}` : ''}`);
         }
     }
 
@@ -1107,9 +1170,9 @@ class UserPanes {
         statsRow.className = 'stats-row gap-stats-row';
 
         const fields = [
-            { label: 'Total', value: data.summary?.total || 0 },
-            { label: 'Owned', value: data.summary?.owned || 0 },
-            { label: 'Missing', value: data.summary?.missing || 0 },
+            { label: 'List projection total', value: data.summary?.total || 0 },
+            { label: 'List projection owned', value: data.summary?.owned || 0 },
+            { label: 'List projection missing', value: data.summary?.missing || 0 },
         ];
         fields.forEach(f => {
             const card = document.createElement('div');
@@ -1126,6 +1189,10 @@ class UserPanes {
 
         summary.append(entityInfo, statsRow);
         container.appendChild(summary);
+
+        const listScope = document.createElement('p');
+        listScope.textContent = 'Gap list projection: the filters below affect this list only, not preview eligibility or counts.';
+        container.appendChild(listScope);
 
         // Filters bar
         const filtersBar = document.createElement('div');
@@ -1160,7 +1227,7 @@ class UserPanes {
         // rather than routing through _renderGapsEmpty, which clears the
         // whole container.
         if (!data.results || data.results.length === 0) {
-            container.appendChild(this._buildEmptyNotice('No missing releases found. You have them all!'));
+            container.appendChild(this._buildEmptyNotice('No missing releases in this list projection with the current filters. Catalog and ownership completeness are not established.'));
             return;
         }
 
