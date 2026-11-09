@@ -94,6 +94,12 @@ function anonymous() {
 
 describe('FitPane', () => {
     let pane;
+    const deferred = () => {
+        let resolve;
+        let reject;
+        const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+        return { promise, resolve, reject };
+    };
 
     beforeEach(() => {
         globalThis.window = globalThis;
@@ -367,6 +373,36 @@ describe('FitPane', () => {
             await pane.loadProfile();
 
             expect(window.apiClient.getFitProfile).not.toHaveBeenCalled();
+        });
+
+        it('clears A landing/profile state and ignores A while B loads the selected release', async () => {
+            let token = 'token-a';
+            window.authManager.getToken.mockImplementation(() => token);
+            window.authManager.isLoggedIn.mockImplementation(() => Boolean(token));
+            const profileA = deferred();
+            const profileB = { ...FULL_PROFILE, release: { ...FULL_PROFILE.release, title: 'B release' } };
+            window.apiClient.getFitProfile.mockReturnValueOnce(profileA.promise).mockResolvedValueOnce(profileB);
+            const setLanding = vi.fn();
+            window.genreAtlas = { setLanding };
+            const pendingA = pane.loadProfile();
+            pane.drawLandingPoint(FULL_PROFILE);
+
+            token = null;
+            pane.resetForAccountChange();
+            expect(document.getElementById('fitBody').textContent).toBe('');
+            expect(pane._selected).toBeNull();
+            expect(pane._profile).toBeNull();
+            expect(setLanding).toHaveBeenLastCalledWith(null);
+
+            token = 'token-b';
+            pane._setCandidates([{ ...RELEASE_HIT, id: '249504' }]);
+            document.querySelector('.fit-candidate').click();
+            await pane.loadProfile();
+            profileA.resolve({ ...FULL_PROFILE, release: { ...FULL_PROFILE.release, title: 'A release' } });
+            await pendingA;
+
+            expect(document.querySelector('.fit-card-title').textContent).toBe('B release');
+            expect(setLanding).toHaveBeenLastCalledWith(profileB);
         });
     });
 

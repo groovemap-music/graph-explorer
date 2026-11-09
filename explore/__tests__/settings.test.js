@@ -40,6 +40,11 @@ function setupSettingsDOM() {
     const twoFa = document.createElement('div');
     twoFa.id = 'twoFactorContent';
     document.body.appendChild(twoFa);
+    for (const id of ['appTokensContent', 'privacyContent', 'exportContent', 'deleteAccountContent']) {
+        const el = document.createElement('div');
+        el.id = id;
+        document.body.appendChild(el);
+    }
 }
 
 function setupMocks() {
@@ -67,10 +72,19 @@ function setupMocks() {
             json: async () => ({ message: '2FA has been enabled' }),
         }),
         twoFactorDisable: vi.fn().mockResolvedValue({ ok: true }),
+        listAppTokens: vi.fn().mockResolvedValue({ active: [], revoked: [] }),
+        getConsent: vi.fn().mockResolvedValue({ purposes: [] }),
     };
 }
 
 describe('SettingsPane', () => {
+    const deferred = () => {
+        let resolve;
+        let reject;
+        const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+        return { promise, resolve, reject };
+    };
+
     beforeEach(() => {
         delete globalThis.window;
         globalThis.window = globalThis;
@@ -79,6 +93,72 @@ describe('SettingsPane', () => {
         QRCode.mockClear();
         loadScript('settings-state.js');
         loadScript('settings.js');
+    });
+
+    it('clears A settings secrets and ignores a late A token list while B still loads', async () => {
+        const pane = window.settingsPane;
+        let token = 'token-a';
+        window.authManager.getToken.mockImplementation(() => token);
+        const responseA = deferred();
+        window.apiClient.listAppTokens.mockReturnValueOnce(responseA.promise).mockResolvedValueOnce({
+            active: [{ id: 'b-id', name: 'B application', scopes: ['collection:read'] }],
+            revoked: [],
+        });
+        pane.init();
+        pane._mintedPlaintext = 'secret-token-A';
+        pane._setupData = { secret: 'secret-A', recovery_codes: ['recovery-A'] };
+        pane._recoveryCodes = ['recovery-A'];
+        document.getElementById('settingsEmail').textContent = 'a@example.test';
+
+        token = null;
+        pane.resetForAccountChange();
+        expect(pane._mintedPlaintext).toBeNull();
+        expect(pane._setupData).toBeNull();
+        expect(pane._recoveryCodes).toBeNull();
+        expect(document.getElementById('settingsEmail').textContent).toBe('');
+
+        token = 'token-b';
+        pane.init();
+        await vi.waitFor(() => expect(pane._activeTokens[0]?.name).toBe('B application'));
+        responseA.resolve({ active: [{ id: 'a-id', name: 'A application', scopes: ['collection:read'] }], revoked: [] });
+        await Promise.resolve();
+
+        expect(pane._activeTokens.map(({ name }) => name)).toEqual(['B application']);
+        expect(document.getElementById('appTokensContent').textContent).toContain('B application');
+        expect(document.getElementById('appTokensContent').textContent).not.toContain('A application');
+    });
+
+    it('does not assign a late A 2FA setup payload after the account changes', async () => {
+        const pane = window.settingsPane;
+        const setupJson = deferred();
+        window.apiClient.twoFactorSetup.mockResolvedValue({ ok: true, json: () => setupJson.promise });
+        const pending = pane._startSetup();
+        await vi.waitFor(() => expect(window.apiClient.twoFactorSetup).toHaveBeenCalledOnce());
+
+        window.authManager.getToken.mockReturnValue('token-b');
+        pane.resetForAccountChange();
+        setupJson.resolve({ secret: 'secret-A', recovery_codes: ['A-code'] });
+        await pending;
+
+        expect(pane._setupData).toBeNull();
+        expect(pane._recoveryCodes).toBeNull();
+        expect(document.getElementById('twoFactorContent').textContent).not.toContain('secret-A');
+    });
+
+    it('does not bind duplicate password handlers across account resets', () => {
+        const pane = window.settingsPane;
+        pane.init();
+        pane.resetForAccountChange();
+        pane.init();
+        pane.resetForAccountChange();
+        pane.init();
+        document.getElementById('settingsCurrentPassword').value = 'current';
+        document.getElementById('settingsNewPassword').value = 'long-enough-password';
+        document.getElementById('settingsConfirmPassword').value = 'long-enough-password';
+
+        document.getElementById('changePasswordBtn').click();
+
+        expect(window.apiClient.changePassword).toHaveBeenCalledOnce();
     });
 
     // ------------------------------------------------------------------ //

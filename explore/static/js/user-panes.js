@@ -28,6 +28,25 @@ class UserPanes {
         this._tasteLoading = false;
     }
 
+    resetForAccountChange() {
+        this._state.resetForAccountChange();
+        if (this._discogsOAuthMessageHandler) {
+            window.removeEventListener('message', this._discogsOAuthMessageHandler);
+            this._discogsOAuthMessageHandler = null;
+        }
+        for (const id of ['collectionBody', 'wantlistBody', 'recommendationsBody', 'collectionStats', 'tasteStrip', 'gapsBody']) {
+            document.getElementById(id)?.replaceChildren();
+        }
+        for (const id of ['collectionLoading', 'wantlistLoading', 'recommendationsLoading', 'gapsLoading']) {
+            document.getElementById(id)?.classList.remove('active');
+        }
+        document.getElementById('navGaps')?.classList.add('hidden');
+    }
+
+    _isCurrentOwnerRequest(token, generation) {
+        return token === window.authManager?.getToken?.() && generation === this._ownerGeneration;
+    }
+
     // ------------------------------------------------------------------ //
     // Collection pane
     // ------------------------------------------------------------------ //
@@ -42,11 +61,12 @@ class UserPanes {
         if (loading) loading.classList.add('active');
 
         const requestId = ++this._collectionReqId;
+        const ownerGeneration = this._ownerGeneration;
         const requestOffset = this._collectionOffset;
         try {
             const data = await window.apiClient.getUserCollection(token, this._pageSize, requestOffset);
             // A newer request has since been issued — discard this stale response.
-            if (requestId !== this._collectionReqId) return;
+            if (requestId !== this._collectionReqId || !this._isCurrentOwnerRequest(token, ownerGeneration)) return;
             if (!data) {
                 this._renderCollectionEmpty(body, 'Failed to load collection.');
                 return;
@@ -57,9 +77,9 @@ class UserPanes {
             // A network-level fetch rejection (offline, DNS, CORS) — not an
             // HTTP error status — still needs to surface the same failure
             // state instead of leaving the pane blank/stale.
-            if (requestId === this._collectionReqId) this._renderCollectionEmpty(body, 'Failed to load collection.');
+            if (requestId === this._collectionReqId && this._isCurrentOwnerRequest(token, ownerGeneration)) this._renderCollectionEmpty(body, 'Failed to load collection.');
         } finally {
-            if (requestId === this._collectionReqId && loading) loading.classList.remove('active');
+            if (requestId === this._collectionReqId && this._isCurrentOwnerRequest(token, ownerGeneration) && loading) loading.classList.remove('active');
         }
     }
 
@@ -116,11 +136,12 @@ class UserPanes {
         if (loading) loading.classList.add('active');
 
         const requestId = ++this._wantlistReqId;
+        const ownerGeneration = this._ownerGeneration;
         const requestOffset = this._wantlistOffset;
         try {
             const data = await window.apiClient.getUserWantlist(token, this._pageSize, requestOffset);
             // A newer request has since been issued — discard this stale response.
-            if (requestId !== this._wantlistReqId) return;
+            if (requestId !== this._wantlistReqId || !this._isCurrentOwnerRequest(token, ownerGeneration)) return;
             if (!data) {
                 this._renderWantlistEmpty(body, 'Failed to load wantlist.');
                 return;
@@ -131,9 +152,9 @@ class UserPanes {
             // A network-level fetch rejection (offline, DNS, CORS) — not an
             // HTTP error status — still needs to surface the same failure
             // state instead of leaving the pane blank/stale.
-            if (requestId === this._wantlistReqId) this._renderWantlistEmpty(body, 'Failed to load wantlist.');
+            if (requestId === this._wantlistReqId && this._isCurrentOwnerRequest(token, ownerGeneration)) this._renderWantlistEmpty(body, 'Failed to load wantlist.');
         } finally {
-            if (requestId === this._wantlistReqId && loading) loading.classList.remove('active');
+            if (requestId === this._wantlistReqId && this._isCurrentOwnerRequest(token, ownerGeneration) && loading) loading.classList.remove('active');
         }
     }
 
@@ -188,15 +209,19 @@ class UserPanes {
         const body = document.getElementById('recommendationsBody');
         if (loading) loading.classList.add('active');
 
+        const requestId = ++this._recommendationsReqId;
+        const ownerGeneration = this._ownerGeneration;
+
         try {
             const data = await window.apiClient.getUserRecommendations(token, 50);
+            if (requestId !== this._recommendationsReqId || !this._isCurrentOwnerRequest(token, ownerGeneration)) return;
             this._renderRecommendations(body, data);
         } catch {
             // A network-level fetch rejection — _renderRecommendations already
             // renders the "failed to load" state for a null/falsy data value.
-            this._renderRecommendations(body, null);
+            if (requestId === this._recommendationsReqId && this._isCurrentOwnerRequest(token, ownerGeneration)) this._renderRecommendations(body, null);
         } finally {
-            if (loading) loading.classList.remove('active');
+            if (requestId === this._recommendationsReqId && this._isCurrentOwnerRequest(token, ownerGeneration) && loading) loading.classList.remove('active');
         }
     }
 
@@ -419,13 +444,16 @@ class UserPanes {
     async loadCollectionStats() {
         const token = window.authManager.getToken();
         if (!token) return;
+        const requestId = ++this._statsReqId;
+        const ownerGeneration = this._ownerGeneration;
         try {
             const stats = await window.apiClient.getUserCollectionStats(token);
+            if (requestId !== this._statsReqId || !this._isCurrentOwnerRequest(token, ownerGeneration)) return;
             this._renderCollectionStats(stats);
         } catch {
             // A network-level fetch rejection — _renderCollectionStats already
             // no-ops on a falsy stats value, leaving whatever was last rendered.
-            this._renderCollectionStats(null);
+            if (requestId === this._statsReqId && this._isCurrentOwnerRequest(token, ownerGeneration)) this._renderCollectionStats(null);
         }
     }
 
@@ -474,8 +502,10 @@ class UserPanes {
     async startDiscogsOAuth() {
         const token = window.authManager.getToken();
         if (!token) return;
+        const ownerGeneration = this._ownerGeneration;
 
         const data = await window.apiClient.authorizeDiscogs(token);
+        if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
         if (!data || !data.authorize_url) {
             alert('Could not start Discogs authorization. Please try again.');
             return;
@@ -496,13 +526,13 @@ class UserPanes {
         );
 
         if (useCallback) {
-            this._registerDiscogsOAuthMessageListener(popup);
+            this._registerDiscogsOAuthMessageListener(popup, ownerGeneration);
         } else {
             Alpine.store('modals').discogsOpen = true;
         }
     }
 
-    _registerDiscogsOAuthMessageListener(popup) {
+    _registerDiscogsOAuthMessageListener(popup, ownerGeneration) {
         // Tear down any previous listener so repeated attempts don't stack up
         if (this._discogsOAuthMessageHandler) {
             window.removeEventListener('message', this._discogsOAuthMessageHandler);
@@ -527,12 +557,13 @@ class UserPanes {
             }
 
             const token = window.authManager.getToken();
-            if (!token || data.oauth_token !== this._discogsOAuthState) {
+            if (!token || !this._isCurrentOwnerRequest(token, ownerGeneration) || data.oauth_token !== this._discogsOAuthState) {
                 this._discogsOAuthState = null;
                 return;
             }
 
             const result = await window.apiClient.verifyDiscogs(token, data.oauth_token, data.oauth_verifier);
+            if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
             if (!result || !result.connected) {
                 this._discogsOAuthState = null;
                 alert('Discogs verification failed. Please try again.');
@@ -540,6 +571,7 @@ class UserPanes {
             }
 
             const status = await window.apiClient.getDiscogsStatus(token);
+            if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
             window.authManager.setDiscogsStatus(status);
             this._discogsOAuthState = null;
             window.authManager.notify();
@@ -551,6 +583,7 @@ class UserPanes {
 
     async submitDiscogsVerifier() {
         const token = window.authManager.getToken();
+        const ownerGeneration = this._ownerGeneration;
         const verifier = document.getElementById('discogsVerifierInput')?.value?.trim();
         const errorEl = document.getElementById('discogsVerifierError');
 
@@ -567,6 +600,7 @@ class UserPanes {
         if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Connecting...'; }
 
         const result = await window.apiClient.verifyDiscogs(token, this._discogsOAuthState, verifier);
+        if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
         if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Connect'; }
 
         if (!result || !result.connected) {
@@ -576,6 +610,7 @@ class UserPanes {
 
         // Update auth manager with new Discogs status
         const status = await window.apiClient.getDiscogsStatus(token);
+        if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
         window.authManager.setDiscogsStatus(status);
 
         // Close modal and notify
@@ -590,9 +625,11 @@ class UserPanes {
     async disconnectDiscogs() {
         const token = window.authManager.getToken();
         if (!token) return;
+        const ownerGeneration = this._ownerGeneration;
         if (!confirm('Disconnect your Discogs account?')) return;
 
         await window.apiClient.revokeDiscogs(token);
+        if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
         window.authManager.setDiscogsStatus({ connected: false });
         this.clearTasteCache();
         window.authManager.notify();
@@ -605,15 +642,18 @@ class UserPanes {
     async triggerSync() {
         const token = window.authManager.getToken();
         if (!token) return;
+        const ownerGeneration = this._ownerGeneration;
 
         const btn = document.getElementById('syncBtn');
         if (btn) { btn.classList.add('syncing'); btn.disabled = true; }
 
         try {
             const result = await window.apiClient.triggerSync(token);
+            if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
             if (result.ok) {
                 // Reload panes after a short delay to allow sync to start
                 setTimeout(() => {
+                    if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
                     this.loadCollection(true);
                     this.loadWantlist(true);
                     this.clearTasteCache();
@@ -640,6 +680,7 @@ class UserPanes {
     async loadTasteFingerprint() {
         const token = window.authManager.getToken();
         if (!token) return;
+        const ownerGeneration = this._ownerGeneration;
         const discogsStatus = window.authManager.getDiscogsStatus();
         if (!discogsStatus?.connected) return;
 
@@ -655,6 +696,7 @@ class UserPanes {
         // Guard against concurrent fetches
         if (this._tasteLoading) return;
         this._tasteLoading = true;
+        const requestId = ++this._tasteReqId;
 
         // Show loading placeholder
         strip.replaceChildren();
@@ -664,6 +706,7 @@ class UserPanes {
 
         try {
             const data = await window.apiClient.getTasteFingerprint(token);
+            if (requestId !== this._tasteReqId || !this._isCurrentOwnerRequest(token, ownerGeneration)) return;
             if (!data) {
                 // 422 (< 10 items), 503, or error — hide strip
                 strip.replaceChildren();
@@ -672,9 +715,9 @@ class UserPanes {
             this._tasteCache = data;
             this._renderTasteStrip(data);
         } catch {
-            strip.replaceChildren();
+            if (requestId === this._tasteReqId && this._isCurrentOwnerRequest(token, ownerGeneration)) strip.replaceChildren();
         } finally {
-            this._tasteLoading = false;
+            if (requestId === this._tasteReqId) this._tasteLoading = false;
         }
     }
 
@@ -917,6 +960,7 @@ class UserPanes {
     async _downloadTasteCard(btn) {
         const token = window.authManager.getToken();
         if (!token) return;
+        const ownerGeneration = this._ownerGeneration;
 
         const resetBtn = () => {
             btn.disabled = false;
@@ -938,6 +982,7 @@ class UserPanes {
             // null-return failure path below so the button always recovers.
             blob = null;
         }
+        if (!this._isCurrentOwnerRequest(token, ownerGeneration)) return;
         if (!blob) {
             btn.textContent = 'Download failed';
             setTimeout(resetBtn, 2000);
@@ -1001,11 +1046,13 @@ class UserPanes {
         if (loading) loading.classList.add('active');
 
         const requestId = ++this._gapReqId;
+        const ownerGeneration = this._ownerGeneration;
         const requestOffset = this._gapOffset;
         try {
             // Load the collection's media taxonomy for the filter (once)
             if (!this._gapMediaTaxonomy) {
                 const mediaData = await window.apiClient.getCollectionMedia(token);
+                if (requestId !== this._gapReqId || !this._isCurrentOwnerRequest(token, ownerGeneration)) return;
                 this._gapMediaTaxonomy = {
                     families: mediaData?.families || [],
                     mediums: mediaData?.mediums || [],
@@ -1018,6 +1065,7 @@ class UserPanes {
                 media: this._gapMedia,
                 excludeWantlist: this._gapExcludeWantlist,
             });
+            if (requestId !== this._gapReqId || !this._isCurrentOwnerRequest(token, ownerGeneration)) return;
             // A newer request has since been issued — discard this stale response.
             if (requestId !== this._gapReqId) return;
             if (!data) {
@@ -1030,9 +1078,9 @@ class UserPanes {
             // A network-level fetch rejection (offline, DNS, CORS) — not an
             // HTTP error status — still needs to surface the same failure
             // state instead of leaving the pane blank/stale.
-            if (requestId === this._gapReqId) this._renderGapsEmpty(body, 'Failed to load gap analysis.');
+            if (requestId === this._gapReqId && this._isCurrentOwnerRequest(token, ownerGeneration)) this._renderGapsEmpty(body, 'Failed to load gap analysis.');
         } finally {
-            if (requestId === this._gapReqId && loading) loading.classList.remove('active');
+            if (requestId === this._gapReqId && this._isCurrentOwnerRequest(token, ownerGeneration) && loading) loading.classList.remove('active');
         }
     }
 

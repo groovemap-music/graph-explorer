@@ -537,6 +537,32 @@ describe('SettingsPane — Delete account card', () => {
         expect(receiptBanner.textContent).toContain('Your account has been deleted');
     });
 
+    it('keeps the receipt through its own logout, then clears it when another account signs in', async () => {
+        await erase();
+        expect(receiptBanner.hidden).toBe(false);
+        expect(receiptBanner.querySelector('#erasureId').textContent).toBe('era-42');
+
+        localStorage.clear();
+        loadScript('auth.js');
+        loadScript('application-lifecycle.js');
+        const app = {
+            _bindEvents: vi.fn(),
+            _initAuth: async () => false,
+            _restoreFromUrl: vi.fn(),
+            _updateAuthUI: vi.fn(),
+            _onAccountChange: (account) => window.settingsPane.resetForAccountChange(account),
+        };
+        const lifecycle = new window.ApplicationLifecycle(app);
+        await lifecycle.start();
+        window.authManager.setToken('account-b-token');
+
+        expect(receiptBanner.hidden).toBe(true);
+        expect(receiptBanner.textContent).toBe('');
+        window.settingsPane._renderErasureReceiptBanner();
+        expect(receiptBanner.hidden).toBe(true);
+        lifecycle.destroy();
+    });
+
     it('carries the partial-failure notice onto the signed-out view', async () => {
         window.apiClient.requestErasure.mockResolvedValue({
             ok: true,

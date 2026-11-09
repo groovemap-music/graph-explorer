@@ -2,10 +2,25 @@ class ApiTransport {
     constructor(fetchImplementation = (...args) => window.fetch(...args)) {
         this._fetchImplementation = fetchImplementation;
         this._sessions = new Set();
+        this._requestTokens = new WeakMap();
     }
 
     fetch(resource, options) {
-        return this._fetchImplementation(resource, options);
+        const requestToken = this._bearerToken(options) ?? window.authManager?.getToken?.() ?? null;
+        return Promise.resolve(this._fetchImplementation(resource, options)).then((response) => {
+            if (response && (typeof response === 'object' || typeof response === 'function')) {
+                this._requestTokens.set(response, requestToken);
+            }
+            return response;
+        });
+    }
+
+    _bearerToken(options) {
+        const headers = options?.headers;
+        let value = null;
+        if (headers && typeof headers.get === 'function') value = headers.get('Authorization');
+        else if (headers) value = headers.Authorization ?? headers.authorization ?? null;
+        return typeof value === 'string' ? value.replace(/^Bearer\s+/i, '') : null;
     }
 
     readJson(response) {
@@ -39,6 +54,9 @@ class ApiTransport {
      */
     checkAuthResponse(response, { credentialRecheck = false } = {}) {
         if (response?.status !== 401 || !window.authManager?.isLoggedIn()) return;
+        const requestToken = this._requestTokens.get(response);
+        const currentToken = window.authManager.getToken?.();
+        if (requestToken !== undefined && currentToken !== undefined && requestToken !== currentToken) return;
         if (credentialRecheck && !this._isSessionInvalid(response)) return;
         window.authManager.clear();
         window.authManager.notify();

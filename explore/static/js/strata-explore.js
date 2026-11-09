@@ -486,6 +486,7 @@ export class StrataExplore {
         this.message = null;
         this.active = false;
         this.requestId = 0;
+        this.ownerGeneration = 0;
         this.bind();
         if (observeTheme && typeof MutationObserver === 'function') {
             this.themeObserver = new MutationObserver(() => this.refreshColors());
@@ -529,6 +530,34 @@ export class StrataExplore {
         this.axisHint = null;
         this.recordedAsOf = null;
         if (this.active && next) this.load();
+    }
+
+    /** Drop graph facts tied to the prior principal, then read the current public/owner view. */
+    resetForAccountChange() {
+        this.ownerGeneration += 1;
+        this.requestId += 1;
+        this.graph = null;
+        this.view = null;
+        this.layout = null;
+        this.selected = null;
+        this.cursor = { focus: null, page: 0 };
+        this.trail = [];
+        this.onlyCollected = false;
+        this.recordedAsOf = null;
+        this.axisHint = null;
+        this.rows = [];
+        this.rowById.clear();
+        this.byId = new Map();
+        this.table?.setRows([], { selected: null });
+        this.ui.selection?.replaceChildren();
+        this.ui.summary?.replaceChildren();
+        this.ui.trail?.replaceChildren();
+        if (this.ui.tableStatus) this.ui.tableStatus.textContent = '';
+        this.showMessage(null);
+        this.renderer?.resetLayout?.();
+        this.renderControls();
+        if (this.active && this.artist) this.load();
+        else this.setLoading(false);
     }
 
     /**
@@ -737,7 +766,7 @@ export class StrataExplore {
 
     renderControls() {
         const { ui, graph } = this;
-        const signedIn = graph.signedIn;
+        const signedIn = !!graph?.signedIn;
         if (ui.onlyCollected) {
             ui.onlyCollected.disabled = !signedIn;
             ui.onlyCollected.title = signedIn ? '' : 'Sign in to see what you collect';
@@ -958,8 +987,10 @@ export class StrataExplore {
 
     async syncNow() {
         const token = this.auth?.getToken?.();
+        const ownerGeneration = this.ownerGeneration;
         this.setStatus('Starting a Discogs sync…');
         const result = await this.api.triggerSync(token);
+        if (ownerGeneration !== this.ownerGeneration || token !== this.auth?.getToken?.()) return;
         if (result?.ok) this.setStatus('Sync started. States change only when Discogs reports them; reopen the view when it finishes.');
         else if (result?.status === 429) this.setStatus('A sync started less than a minute ago. Try again shortly.');
         else this.setStatus(result?.body?.error || result?.body?.detail || 'The sync could not be started. Is Discogs connected?');
@@ -1014,7 +1045,10 @@ export class StrataExplore {
             return false;
         }
         const token = this.auth?.getToken?.();
+        const ownerGeneration = this.ownerGeneration;
+        const selected = this.selected;
         const result = await this.api.createObservation(token, copyId, { kind, value: text, source: 'user' });
+        if (ownerGeneration !== this.ownerGeneration || token !== this.auth?.getToken?.() || selected !== this.selected) return false;
         this.setStatus(result?.ok ? 'Observation recorded.' : result?.body?.detail || result?.body?.error || 'The observation could not be recorded.');
         return !!result?.ok;
     }

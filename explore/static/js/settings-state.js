@@ -48,6 +48,19 @@ class SettingsState {
         // drops it the way it drops a half-entered 2FA setup.
         this._deleteView = 'idle';
     }
+
+    resetForAccountChange() {
+        this.clearTransientSecrets();
+        this._twoFaState = 'disabled';
+        this._activeTokens = [];
+        this._revokedTokens = [];
+        this._consentPurposes = [];
+        this._consentPending = null;
+        this._consentError = '';
+        this._exportState = 'idle';
+        this._exportError = '';
+        this._erasureResult = null;
+    }
 }
 
 window.SettingsState = SettingsState;

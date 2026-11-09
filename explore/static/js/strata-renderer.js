@@ -307,6 +307,30 @@ export class StrataRenderer extends EventTarget {
         if (dropped) this.emit('select', null);
     }
 
+    /** Clear every rendered node and owner-derived layout fact before a new account is read. */
+    resetLayout() {
+        this.clearLayout();
+        this.layout = null;
+        this.hullTags = [];
+        this.links.main.geometry.dispose();
+        this.links.main.geometry = positions([]);
+        this.links.lit.geometry.dispose();
+        this.links.lit.geometry = positions([]);
+        this.links.main.material.opacity = 0.32;
+        this.byId = new Map();
+        this.selected = null;
+        this.selection = null;
+        this.hovered = null;
+        this.layoutVersion++;
+        this.linksKey = null;
+        this.candidatesKey = null;
+        this.candidates = [];
+        this.planeLabels.forEach(({ count }) => { count.textContent = '0'; });
+        this.placeRing(this.selectRing, null);
+        this.placeRing(this.hoverRing, null);
+        this.invalidate();
+    }
+
     /** The node a pointer at client coordinates means, by resolve picking, or null. */
     pick(clientX, clientY) {
         return this.hitsAt(clientX, clientY).node;
