@@ -4,7 +4,7 @@ const USER_PANE_STATE_FIELDS = [
     '_discogsOAuthState', '_discogsOAuthMessageHandler',
     '_tasteCache', '_tasteLoading',
     '_collectionReqId', '_wantlistReqId', '_gapReqId',
-    '_recommendationsReqId', '_statsReqId', '_tasteReqId', '_ownerGeneration',
+    '_recommendationsReqId', '_statsReqId', '_tasteReqId', '_ownerGeneration', '_previewReqId',
     '_gapEntityId', '_gapEntityType', '_gapExcludeWantlist',
     '_gapMedia', '_gapMediaTaxonomy', '_gapOffset', '_gapTotal',
 ];
@@ -27,6 +27,7 @@ class UserPaneState {
         this._statsReqId = 0;
         this._tasteReqId = 0;
         this._ownerGeneration = 0;
+        this._previewReqId = 0;
         this._gapOffset = 0;
         this._gapTotal = 0;
         this._gapEntityType = null;
@@ -51,6 +52,7 @@ class UserPaneState {
         this._collectionReqId += 1;
         this._wantlistReqId += 1;
         this._gapReqId += 1;
+        this._previewReqId += 1;
         this._recommendationsReqId += 1;
         this._statsReqId += 1;
         this._tasteReqId += 1;

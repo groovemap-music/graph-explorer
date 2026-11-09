@@ -107,8 +107,9 @@ before. A selected pressing offers at most these actions:
   to see what changed.
 - **Record an observation** is offered on a pressing you own, and only while **Recorded as of** is *now*.
   It saves a note about your copy: a matrix or run-out inscription, a grading, a purchase price, or a free
-  note. It is recorded against your earliest-acquired copy of that pressing, which GrooveMap already
-  knows from the view, so nothing reads your collection to find it. If the copy has no GrooveMap identity
+  note. Choose the physical copy explicitly from the IDs returned with the pressing; the synced list
+  has unknown completeness. Its separate timeline shows observed time and recorded time. Nothing
+  reads your collection to find a copy. If the copy has no GrooveMap identity
   yet, the button is off and the panel asks you to run **Sync now** and reload the view. If GrooveMap
   could not read your copy's identity just now, the button is off and says so. An observation is a note
   about the copy. It does not add or remove anything from Discogs.
