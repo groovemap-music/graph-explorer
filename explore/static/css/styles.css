@@ -3529,3 +3529,16 @@ select option {
         transition: none;
     }
 }
+
+/* Private copy evidence shares the Collection and Strata homes. */
+.collection-copy-detail, .strata-copy-detail, #missingPreview {
+    padding: 1rem;
+    margin-block: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+    overflow-wrap: anywhere;
+}
+.copy-select { display: block; max-width: 100%; margin-block: 0.5rem; }
+.copy-timeline li { margin-block: 0.75rem; }
+.collection-copy-detail .strata-field { display: block; margin-block: 0.5rem; }
+.collection-copy-detail .strata-field input { display: block; max-width: 100%; }

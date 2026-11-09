@@ -18,6 +18,7 @@ class UserPanes {
     }
 
     destroy() {
+        this._copyEvidence?.destroy();
         this._state.invalidateRequests();
         if (this._discogsOAuthMessageHandler) {
             window.removeEventListener('message', this._discogsOAuthMessageHandler);
@@ -29,6 +30,7 @@ class UserPanes {
     }
 
     resetForAccountChange() {
+        this._copyEvidence?.destroy();
         this._state.resetForAccountChange();
         if (this._discogsOAuthMessageHandler) {
             window.removeEventListener('message', this._discogsOAuthMessageHandler);
@@ -54,6 +56,7 @@ class UserPanes {
     async loadCollection(reset = false) {
         const token = window.authManager.getToken();
         if (!token) return;
+        this._copyEvidence?.destroy();
         if (reset) this._collectionOffset = 0;
 
         const loading = document.getElementById('collectionLoading');
@@ -1518,6 +1521,33 @@ class UserPanes {
     // Shared table builder
     // ------------------------------------------------------------------ //
 
+    async _openCollectionCopies(release, wrap) {
+        this._copyEvidence?.destroy();
+        wrap.querySelector('.collection-copy-detail')?.remove();
+        const container = document.createElement('section');
+        container.className = 'collection-copy-detail';
+        wrap.appendChild(container);
+        if (!release.gm_item_id) {
+            container.textContent = 'Physical copies unavailable. Native item identity is unknown.';
+            return;
+        }
+        const generation = this._ownerGeneration;
+        const token = window.authManager.getToken();
+        const evidence = new window.CopyEvidence({ container, api: window.apiClient, auth: window.authManager,
+            isCurrent: () => this._isCurrentOwnerRequest(token, generation),
+            onSelection: copy => {
+                container.querySelector('.copy-record')?.remove();
+                if (!copy) return;
+                const record = document.createElement('button');
+                record.type = 'button'; record.className = 'copy-record'; record.textContent = 'Record an observation';
+                record.addEventListener('click', () => evidence.openForm());
+                container.appendChild(record);
+            },
+        });
+        this._copyEvidence = evidence;
+        await evidence.loadItem(release.gm_item_id);
+    }
+
     _buildReleaseTable(title, iconClass, releases, total, offset, refreshBtnId, onPageChange, hasMore) {
         const currentPage = Math.floor(offset / this._pageSize);
         const totalPages = Math.ceil(total / this._pageSize);
@@ -1610,6 +1640,14 @@ class UserPanes {
             const tdTitle = document.createElement('td');
             tdTitle.className = 'release-list-title';
             tdTitle.textContent = r.title || '(Unknown title)';
+            if (refreshBtnId === 'collectionRefreshBtn') {
+                const detail = document.createElement('button');
+                detail.type = 'button';
+                detail.textContent = 'Physical copies';
+                detail.setAttribute('aria-label', `Physical copies of ${r.title || 'this release'}`);
+                detail.addEventListener('click', () => this._openCollectionCopies(r, wrap));
+                tdTitle.appendChild(detail);
+            }
 
             const tdLabel = document.createElement('td');
             tdLabel.textContent = r.label || '';
