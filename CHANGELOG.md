@@ -3,6 +3,16 @@
 All notable changes to this repository will be recorded here by Commitizen from
 Conventional Commits.
 
+## v0.7.0 (2026-11-10)
+
+### Release notes
+
+Label explore, expand and path send the label's node id along with its name (gm-graph-explorer-vag6). With catalog-api v0.14.1, which ignores the id there, they keep working by name. With catalog-api v0.14.2 (gm-catalog-api-ntnw), labels that share a name each resolve to the right label, and an ambiguous name lets the user pick from the candidates instead of failing. Deploy before or with catalog-api v0.14.2.
+
+### Feat
+
+- **explore**: send the label id so labels sharing a name resolve
+
 ## v0.6.0 (2026-11-10)
 
 ### Release notes
