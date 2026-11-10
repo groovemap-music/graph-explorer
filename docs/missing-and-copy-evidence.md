@@ -8,14 +8,15 @@ or a release/deployment result. Browser examples are synthetic route responses.
 ## Producer contract and source proof
 
 The promoted [source record](../contracts/catalog-api/graph-explorer/v1/source.json) pins
-`catalog-api` commit `fab7e993384f032a0ea78817cbdcba798a2e97f8`, with routes SHA-256
-`3726ff54d5d76ee3c0bc91d1b0c40314e9fa63def7c1ce7017c06f53569c69d7`.
-That immutable producer commit is an ancestor of integrated producer main
-`d4fbafae66e32c4ce48d5a68dea060c7921ecde8`. No consumer source import or runtime dependency
+`catalog-api` commit `842e6cd15660b2e52a162c32087b7215a9211b19`, with routes SHA-256
+`5d506c96888c25a3cd09a01ee3bbae34d96d287c96e326c26beb2ecf9e39d9f4`.
+That immutable producer commit is on integrated producer main. The Missing and owner-copy
+operations are unchanged from the earlier pin `fab7e993384f032a0ea78817cbdcba798a2e97f8`;
+the later pin adds only the `node_label` operation. No consumer source import or runtime dependency
 on the producer checkout is introduced. With sibling source checkouts, reproduce the proof:
 
 ```sh
-git -C ../catalog-api merge-base --is-ancestor fab7e993384f032a0ea78817cbdcba798a2e97f8 d4fbafae66e32c4ce48d5a68dea060c7921ecde8
+git -C ../catalog-api merge-base --is-ancestor 842e6cd15660b2e52a162c32087b7215a9211b19 main
 uv run python scripts/check-contracts.py --producer-repo ../catalog-api
 just check
 just e2e
