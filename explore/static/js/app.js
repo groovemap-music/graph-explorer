@@ -378,6 +378,9 @@ class ExploreApp {
     constructor() {
         this.searchType = 'artist';
         this.currentQuery = '';
+        // Node id of the current label query (type=label only). Sent with the name so a label that shares
+        // its name with another is looked up by its own id.
+        this.currentQueryId = null;
         this.activePane = 'explore';
         // The Explore pane's view: 'graph', 'strata' (Discography Strata, strata-explore.js, which
         // StrataInit attaches as this.strata), or 'table' (the same entries as rows). Strata and the
@@ -412,9 +415,9 @@ class ExploreApp {
         this.timeline.onCompareExit = () => this._onCompareExit();
 
         // Wire up callbacks
-        this.autocomplete.onSelect = (name) => this._onSearch(name);
+        this.autocomplete.onSelect = (name, id) => this._onSearch(name, id);
         this.graph.onNodeClick = (nodeId, type) => this._onNodeClick(nodeId, type);
-        this.graph.onNodeExpand = (name, type) => this._onNodeExpand(name, type);
+        this.graph.onNodeExpand = (name, type, id) => this._onNodeExpand(name, type, id);
 
         this.lifecycle = new window.ApplicationLifecycle(this);
         this.lifecycle.start();
@@ -997,7 +1000,7 @@ class ExploreApp {
         } else if (pane === 'trends') {
             // The labels timeline shows with or without a searched entity.
             window.labelTimeline?.activate();
-            if (this.currentQuery) this._loadTrends(this.currentQuery, this.searchType);
+            if (this.currentQuery) this._loadTrends(this.currentQuery, this.searchType, this.currentQueryId);
         } else if (pane === 'collection' && window.authManager.isLoggedIn()) {
             this.userPanes.loadCollection(true);
             this.userPanes.loadCollectionStats();
@@ -1039,14 +1042,15 @@ class ExploreApp {
     // Search & graph
     // ------------------------------------------------------------------ //
 
-    async _onSearch(name) {
+    async _onSearch(name, id = null) {
         this.currentQuery = name;
-        this._pushState(name, this.searchType);
+        this.currentQueryId = this.searchType === 'label' ? id : null;
+        this._pushState(name, this.searchType, this.currentQueryId);
 
         if (this.activePane === 'explore') {
             await this._loadExplore(name, this.searchType);
         } else {
-            await this._loadTrends(name, this.searchType);
+            await this._loadTrends(name, this.searchType, this.currentQueryId);
         }
     }
 
@@ -1271,7 +1275,7 @@ class ExploreApp {
         }
     }
 
-    async _loadTrends(name, type) {
+    async _loadTrends(name, type, id = null) {
         // Guard against out-of-order responses (migration-regression-5fg0): mirrors
         // _nodeClickRequestId — bail before touching the chart if a newer
         // trends request has since been issued.
@@ -1279,8 +1283,13 @@ class ExploreApp {
         const loading = document.getElementById('trendsLoading');
         loading.classList.add('active');
         try {
-            const data = await window.apiClient.getTrends(name, type);
+            const data = await window.apiClient.getTrends(name, type, id);
             if (requestId !== this._trendsRequestId) return;
+            if (data?.ambiguous) {
+                this._showAmbiguousLabel(data);
+                return;
+            }
+            this._hideAmbiguousLabel();
             if (data) {
                 if (this.compareMode && this.primaryTrendsData) {
                     this.trends.addComparison(data);
@@ -1304,6 +1313,43 @@ class ExploreApp {
         }
     }
 
+    /**
+     * A bare label name matched several labels, so no chart can be drawn. List the candidates; picking one
+     * reloads the trends for that label by its id.
+     */
+    _showAmbiguousLabel(data) {
+        this.trends.clear();
+        // clear() brings the placeholder back; the picker takes its place, centred on the same spot.
+        document.getElementById('trendsPlaceholder').classList.add('hidden');
+        document.getElementById('compareBtn').classList.add('hidden');
+        document.getElementById('compareHint').classList.add('hidden');
+        const box = document.getElementById('trendsAmbiguous');
+        const heading = document.createElement('p');
+        heading.className = 'text-text-mid';
+        heading.textContent = data.candidates.length
+            ? `${data.candidates.length} labels are named "${data.name}". Pick the one you mean:`
+            : `Several labels are named "${data.name}", and the API did not list them.`;
+        const list = document.createElement('div');
+        list.className = 'trends-ambiguous-list';
+        for (const candidate of data.candidates) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'btn-outline-secondary btn-sm';
+            button.textContent = `${candidate.name || data.name} (id ${candidate.id})`;
+            button.addEventListener('click', () => this._onSearch(data.name, candidate.id));
+            list.appendChild(button);
+        }
+        box.replaceChildren(heading, list);
+        box.classList.remove('hidden');
+    }
+
+    _hideAmbiguousLabel() {
+        const box = document.getElementById('trendsAmbiguous');
+        if (!box) return;
+        box.replaceChildren();
+        box.classList.add('hidden');
+    }
+
     _enableCompareMode() {
         if (!this.primaryTrendsData) return;
         this.compareMode = true;
@@ -1319,8 +1365,8 @@ class ExploreApp {
         document.getElementById('compareInfo').classList.add('hidden');
     }
 
-    _pushState(name, type) {
-        const params = new URLSearchParams({ name, type });
+    _pushState(name, type, id = null) {
+        const params = new URLSearchParams(id ? { name, type, id } : { name, type });
         history.pushState({ name, type }, '', `?${params}`);
     }
 
@@ -1333,10 +1379,11 @@ class ExploreApp {
         }
         const name = params.get('name');
         const type = params.get('type');
+        const id = params.get('id');
         if (name && type) {
             this._setSearchType(type);
             document.getElementById('searchInput').value = name;
-            this._onSearch(name);
+            this._onSearch(name, id);
         }
     }
 
@@ -1421,18 +1468,19 @@ class ExploreApp {
         const exploreBtn = body.querySelector('.explore-node-btn');
         if (exploreBtn) {
             exploreBtn.addEventListener('click', () => {
-                this._onNodeExpand(exploreBtn.dataset.name, exploreBtn.dataset.type);
+                this._onNodeExpand(exploreBtn.dataset.name, exploreBtn.dataset.type, exploreBtn.dataset.id);
                 panel.classList.remove('open');
             });
         }
     }
 
-    async _onNodeExpand(name, type) {
+    async _onNodeExpand(name, type, id = null) {
         const explorableTypes = ['artist', 'genre', 'label', 'style'];
         if (!explorableTypes.includes(type)) return;
 
         this._setSearchType(type);
         this.currentQuery = name;
+        this.currentQueryId = type === 'label' ? (id || null) : null;
         document.getElementById('searchInput').value = name;
         await this._loadExplore(name, type);
     }
@@ -1448,6 +1496,7 @@ class ExploreApp {
             const btn = document.createElement('button');
             btn.className = 'btn-outline-primary btn-sm w-full mb-3 explore-node-btn';
             btn.dataset.name = details.name;
+            if (nodeId) btn.dataset.id = nodeId;
             btn.dataset.type = type;
             const icon = document.createElement('i');
             icon.className = 'material-symbols-outlined mr-1'; icon.textContent = 'hub'; icon.style.fontSize = '18px';

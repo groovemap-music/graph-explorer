@@ -116,7 +116,17 @@ describe('Autocomplete', () => {
             instance._selectItem(0);
 
             expect(instance.input.value).toBe('Pink Floyd');
-            expect(onSelect).toHaveBeenCalledWith('Pink Floyd');
+            expect(onSelect).toHaveBeenCalledWith('Pink Floyd', undefined);
+        });
+
+        it('should pass the selected result id so a label is looked up by its own id', () => {
+            const onSelect = vi.fn();
+            instance.onSelect = onSelect;
+            instance.results = [{ id: 'label-42', name: 'Factory' }];
+
+            instance._selectItem(0);
+
+            expect(onSelect).toHaveBeenCalledWith('Factory', 'label-42');
         });
 
         it('should do nothing for invalid index', () => {
@@ -223,7 +233,7 @@ describe('Autocomplete', () => {
             const e = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true });
             instance._onKeydown(e);
 
-            expect(onSelect).toHaveBeenCalledWith('B');
+            expect(onSelect).toHaveBeenCalledWith('B', undefined);
         });
 
         it('should call onSelect with typed value on Enter when no item selected and dropdown hidden', () => {

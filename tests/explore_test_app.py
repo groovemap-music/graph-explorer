@@ -33,7 +33,17 @@ MOCK_AUTOCOMPLETE_RESULTS: dict[str, list[dict[str, Any]]] = {
     "label": [
         {"id": "100", "name": "Warp Records", "score": 9.0},
         {"id": "101", "name": "Warp", "score": 7.0},
+        # Two labels share the name "808": a bare name is ambiguous and only the id picks one.
+        {"id": "808-a", "name": "808", "score": 5.0},
+        {"id": "808-b", "name": "808", "score": 5.0},
     ],
+}
+
+# Label trends by id. The producer answers a bare name shared by several labels with 409 and the candidates.
+MOCK_SHARED_LABEL_NAME = "808"
+MOCK_LABEL_TRENDS: dict[str, list[dict[str, int]]] = {
+    "808-a": [{"year": 1990, "count": 4}, {"year": 1994, "count": 2}],
+    "808-b": [{"year": 2008, "count": 9}, {"year": 2011, "count": 6}],
 }
 
 MOCK_EXPLORE_RESULTS: dict[str, dict[str, Any]] = {
@@ -876,7 +886,20 @@ def create_test_app() -> FastAPI:
     async def get_trends(
         name: str = Query(...),
         type: str = Query("artist"),
+        id: str | None = Query(None),
     ) -> JSONResponse:
+        if type.lower() == "label":
+            if id is not None:
+                return JSONResponse(content={"name": name, "type": "label", "data": MOCK_LABEL_TRENDS.get(id, [])})
+            if name == MOCK_SHARED_LABEL_NAME:
+                candidates = [{"id": row["id"], "name": row["name"]} for row in MOCK_AUTOCOMPLETE_RESULTS["label"] if row["name"] == name]
+                return JSONResponse(
+                    content={
+                        "error": f"Label name '{name}' is ambiguous: {len(candidates)} labels share it. Retry with id=<label id>.",
+                        "candidates": candidates,
+                    },
+                    status_code=409,
+                )
         return JSONResponse(
             content={
                 "name": name,
