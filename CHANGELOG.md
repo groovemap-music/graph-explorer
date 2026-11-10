@@ -3,6 +3,16 @@
 All notable changes to this repository will be recorded here by Commitizen from
 Conventional Commits.
 
+## v0.6.0 (2026-11-10)
+
+### Release notes
+
+Label trends send the label's node id along with its name (gm-graph-explorer-toyc). With catalog-api v0.14.0, which ignores the id, trends keep working by name. With the catalog-api release carrying gm-catalog-api-1whr, labels that share a name each get their own trends, and an ambiguous name lists the candidate labels instead of a blank chart. The trends consumer contract is pinned to catalog-api ecb6408. Safe to deploy before or with that catalog-api release.
+
+### Feat
+
+- **trends**: send the label id so labels sharing a name chart their own trends
+
 ## v0.5.0 (2026-11-10)
 
 ### Release notes
