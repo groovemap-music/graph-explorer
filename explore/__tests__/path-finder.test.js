@@ -288,6 +288,7 @@ describe('initPathFinder', () => {
         fromInput.value = 'Rad';
         window.apiClient.autocomplete.mockResolvedValue([{ name: 'Radiohead' }]);
 
+        fromInput.focus();
         fromInput.dispatchEvent(new Event('input'));
         vi.advanceTimersByTime(250);
         await vi.runAllTimersAsync();
@@ -301,6 +302,7 @@ describe('initPathFinder', () => {
     it('should not show dropdown for short queries', () => {
         vi.useFakeTimers();
         document.getElementById('pathFromInput').value = 'Ra';
+        document.getElementById('pathFromInput').focus();
         document.getElementById('pathFromInput').dispatchEvent(new Event('input'));
         vi.advanceTimersByTime(250);
 
@@ -326,6 +328,7 @@ describe('initPathFinder', () => {
         fromInput.value = 'Rad';
         window.apiClient.autocomplete.mockResolvedValue([{ name: 'Radiohead' }]);
 
+        fromInput.focus();
         fromInput.dispatchEvent(new Event('input'));
         vi.advanceTimersByTime(250);
         await vi.runAllTimersAsync();
@@ -344,6 +347,7 @@ describe('initPathFinder', () => {
         fromInput.value = 'Zzz';
         window.apiClient.autocomplete.mockResolvedValue([]);
 
+        fromInput.focus();
         fromInput.dispatchEvent(new Event('input'));
         vi.advanceTimersByTime(250);
         await vi.runAllTimersAsync();
@@ -416,6 +420,7 @@ describe('initPathFinder', () => {
             const fromInput = document.getElementById('pathFromInput');
             fromInput.value = '808';
             window.apiClient.autocomplete.mockResolvedValue([{ name: '808', id: '808-b' }]);
+            fromInput.focus();
             fromInput.dispatchEvent(new Event('input'));
             vi.advanceTimersByTime(250);
             await vi.runAllTimersAsync();
@@ -437,12 +442,14 @@ describe('initPathFinder', () => {
             const fromInput = document.getElementById('pathFromInput');
             fromInput.value = '808';
             window.apiClient.autocomplete.mockResolvedValue([{ name: '808', id: '808-b' }]);
+            fromInput.focus();
             fromInput.dispatchEvent(new Event('input'));
             vi.advanceTimersByTime(250);
             await vi.runAllTimersAsync();
             document.querySelector('#pathFromDropdown .autocomplete-item')
                 .dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
             fromInput.value = '808 x';
+            fromInput.focus();
             fromInput.dispatchEvent(new Event('input'));
             vi.useRealTimers();
 

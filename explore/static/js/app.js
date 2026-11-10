@@ -1886,6 +1886,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (q.length < 3) return;
             debounceTimer = setTimeout(async () => {
                 const results = await window.apiClient.autocomplete(q, getType(), 8);
+                // The visitor may have tabbed or tapped on while this was in flight. A list that opens now
+                // would stay over the buttons below, Connect included.
+                if (document.activeElement !== input) return;
                 if (!results.length) return;
                 dropdown.textContent = '';
                 results.forEach(r => {
@@ -1905,6 +1908,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }, 220);
         });
         input.addEventListener('blur', () => {
+            clearTimeout(debounceTimer);
             setTimeout(() => { dropdown.classList.remove('show'); }, 150);
         });
     }

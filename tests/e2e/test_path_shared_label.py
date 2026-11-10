@@ -7,6 +7,7 @@ sent to /api/path, and what the Find Path pane showed.
 
 from __future__ import annotations
 
+import re
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -112,4 +113,26 @@ def test_typing_after_a_pick_drops_the_id_so_the_next_connect_sends_the_name_alo
 
     expect(page.locator("#pathAmbiguous")).to_be_visible()
     assert "from_id" not in paths[-1], f"a stale id was sent after typing: {paths[-1]}"
+    assert errors == [], f"the browser reported page errors: {errors}"
+
+
+def test_a_suggestion_list_still_loading_when_the_visitor_moves_on_does_not_open_over_connect(page: Page, explore_url: str) -> None:
+    # The suggestions for a name arrive after the visitor has tabbed or tapped on, as on a slow network.
+    # A list that opens then must not stay over the Connect button.
+    def slow_autocomplete(route) -> None:
+        page.wait_for_timeout(600)
+        route.continue_()
+
+    page.route("**/api/autocomplete*", slow_autocomplete)
+    errors = _open_path_pane_with_label_end(page, explore_url, "to")
+
+    page.locator("#pathFromInput").fill("Radiohead")
+    page.locator("#pathToInput").fill("808")
+    page.locator("#pathToInput").blur()  # the visitor taps away from the To field; its open list would cover Connect on a phone
+    page.wait_for_timeout(1500)  # longer than the suggestion debounce plus the slow response
+    expect(page.locator("#pathFromDropdown")).not_to_have_class(re.compile(r"\bshow\b"))
+    expect(page.locator("#pathToDropdown")).not_to_have_class(re.compile(r"\bshow\b"))
+    page.locator("#pathConnectBtn").click()
+    expect(page.locator("#pathAmbiguous")).to_be_visible()  # the bare shared name got its 409 picker: Connect ran
+
     assert errors == [], f"the browser reported page errors: {errors}"
