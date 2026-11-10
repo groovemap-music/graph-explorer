@@ -844,6 +844,35 @@ def create_test_app() -> FastAPI:
             }
         )
 
+    @app.get("/api/path")
+    async def find_path(
+        from_name: str = Query(...),
+        from_type: str = Query("artist"),
+        to_name: str = Query(...),
+        to_type: str = Query("artist"),
+        max_depth: int = Query(10, ge=1, le=15),
+        from_id: str | None = Query(None),
+        to_id: str | None = Query(None),
+    ) -> JSONResponse:
+        # As the producer does: a bare shared label name is a 409 with the candidates, and a label id picks one.
+        ends = []
+        for name, entity_type, label_id in ((from_name, from_type.lower(), from_id), (to_name, to_type.lower(), to_id)):
+            if entity_type == "label" and name == MOCK_SHARED_LABEL_NAME:
+                if label_id is None:
+                    return _shared_label_ambiguous()
+                if label_id not in MOCK_SHARED_LABEL_EXPLORE:
+                    return JSONResponse(content={"error": "Label not found"}, status_code=404)
+                ends.append({"id": label_id, "name": name, "type": entity_type})
+            else:
+                ends.append({"id": name, "name": name, "type": entity_type})
+        return JSONResponse(
+            content={
+                "found": True,
+                "length": 1,
+                "path": [ends[0], {**ends[1], "rel": "RELEASED_ON"}],
+            }
+        )
+
     @app.get("/api/explore/year-range")
     async def explore_year_range() -> JSONResponse:
         return JSONResponse(content=MOCK_YEAR_RANGE)

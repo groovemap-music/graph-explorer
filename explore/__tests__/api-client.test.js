@@ -1528,7 +1528,7 @@ describe('ApiClient', () => {
             expect(result).toEqual({ ambiguous: true, name: '808', candidates });
         });
 
-        it('path keeps sending names only, since /api/path has no id parameter', async () => {
+        it('path sends names only when no label id is passed', async () => {
             const urls = captureFetch(200, { found: false, length: null, path: [] });
 
             await window.apiClient.findPath('808', 'label', 'Radiohead', 'artist');
@@ -1536,6 +1536,29 @@ describe('ApiClient', () => {
             expect(urls[0].get('from_type')).toBe('label');
             expect(urls[0].get('to_name')).toBe('Radiohead');
             expect([...urls[0].keys()].some(k => k.endsWith('id'))).toBe(false);
+        });
+
+        it('path sends the label id with the name for a label end, and keeps the name', async () => {
+            const urls = captureFetch(200, { found: false, length: null, path: [] });
+
+            await window.apiClient.findPath('808', 'label', 'Radiohead', 'artist', 10, { fromId: '808-b', toId: 'ignored' });
+            expect(urls[0].get('from_name')).toBe('808');
+            expect(urls[0].get('from_id')).toBe('808-b');
+            expect(urls[0].get('to_name')).toBe('Radiohead');
+            expect(urls[0].has('to_id')).toBe(false);
+        });
+
+        it('path sends a to-end id for a label to-end, and no ids for other types or unknown ids', async () => {
+            const urls = captureFetch(200, { found: false, length: null, path: [] });
+
+            await window.apiClient.findPath('808', 'label', '808', 'label', 10, { fromId: null, toId: '808-b' });
+            await window.apiClient.findPath('Radiohead', 'artist', '808', 'label', 10, { fromId: 'artist-7', toId: '808-a' });
+            await window.apiClient.findPath('808', 'label', 'Radiohead', 'artist');
+            expect(urls[0].has('from_id')).toBe(false);
+            expect(urls[0].get('to_id')).toBe('808-b');
+            expect(urls[1].has('from_id')).toBe(false);
+            expect(urls[1].get('to_id')).toBe('808-a');
+            expect(urls[2].has('from_id') || urls[2].has('to_id')).toBe(false);
         });
 
         it('path resolves a 409 to an ambiguity result carrying the producer message and candidates', async () => {

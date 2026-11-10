@@ -35,7 +35,7 @@ function setupPathFinderDOM() {
         'pathFromInput', 'pathToInput', 'pathFromTypeBtn', 'pathToTypeBtn',
         'pathFromDropdown', 'pathToDropdown', 'pathConnectBtn',
         'pathLoading', 'pathPlaceholder', 'pathResult', 'pathResultSummary',
-        'pathChain', 'pathError',
+        'pathChain', 'pathError', 'pathAmbiguous',
     ];
 
     const inputIds = new Set([
@@ -389,5 +389,114 @@ describe('initPathFinder', () => {
 
         const edges = document.getElementById('pathChain').querySelectorAll('.path-edge');
         expect(edges[0].querySelector('.path-edge-label').textContent).toBe('RELEASED_ON');
+    });
+
+    describe('shared label names', () => {
+        const sharedCandidates = [{ id: '808-a', name: '808' }, { id: '808-b', name: '808' }];
+        const foundPath = {
+            found: true, length: 1,
+            path: [{ name: '808', type: 'label' }, { name: 'Radiohead', type: 'artist', rel: 'RELEASED' }],
+        };
+
+        function chooseType(linkSelector) {
+            document.querySelector(linkSelector).click();
+        }
+
+        beforeEach(() => {
+            document.getElementById('pathAmbiguous').replaceChildren();
+            document.getElementById('pathAmbiguous').classList.add('hidden');
+            // Earlier tests leave the type selectors where they put them; start both ends at artist.
+            chooseType('[data-path-from-type="artist"]');
+            chooseType('[data-path-to-type="artist"]');
+        });
+
+        it('sends the label id picked from autocomplete, with the name, for a label end', async () => {
+            vi.useFakeTimers();
+            chooseType('[data-path-from-type="label"]');
+            const fromInput = document.getElementById('pathFromInput');
+            fromInput.value = '808';
+            window.apiClient.autocomplete.mockResolvedValue([{ name: '808', id: '808-b' }]);
+            fromInput.dispatchEvent(new Event('input'));
+            vi.advanceTimersByTime(250);
+            await vi.runAllTimersAsync();
+            document.querySelector('#pathFromDropdown .autocomplete-item')
+                .dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+            vi.useRealTimers();
+
+            document.getElementById('pathToInput').value = 'Radiohead';
+            window.apiClient.findPath.mockResolvedValue(foundPath);
+            document.getElementById('pathConnectBtn').click();
+            await new Promise(r => setTimeout(r, 10));
+
+            expect(window.apiClient.findPath).toHaveBeenCalledWith('808', 'label', 'Radiohead', 'artist', 10, { fromId: '808-b', toId: null });
+        });
+
+        it('drops the picked id once the visitor types again', async () => {
+            vi.useFakeTimers();
+            chooseType('[data-path-from-type="label"]');
+            const fromInput = document.getElementById('pathFromInput');
+            fromInput.value = '808';
+            window.apiClient.autocomplete.mockResolvedValue([{ name: '808', id: '808-b' }]);
+            fromInput.dispatchEvent(new Event('input'));
+            vi.advanceTimersByTime(250);
+            await vi.runAllTimersAsync();
+            document.querySelector('#pathFromDropdown .autocomplete-item')
+                .dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+            fromInput.value = '808 x';
+            fromInput.dispatchEvent(new Event('input'));
+            vi.useRealTimers();
+
+            document.getElementById('pathToInput').value = 'Radiohead';
+            window.apiClient.findPath.mockResolvedValue(foundPath);
+            document.getElementById('pathConnectBtn').click();
+            await new Promise(r => setTimeout(r, 10));
+
+            expect(window.apiClient.findPath.mock.calls.at(-1)[5]).toEqual({ fromId: null, toId: null });
+        });
+
+        it('a 409 shows the picker for the ambiguous label, and picking one retries by its id', async () => {
+            chooseType('[data-path-from-type="label"]');
+            document.getElementById('pathFromInput').value = '808';
+            document.getElementById('pathToInput').value = 'Radiohead';
+            window.apiClient.findPath
+                .mockResolvedValueOnce({ ambiguous: true, error: "Label name '808' is ambiguous", candidates: sharedCandidates })
+                .mockResolvedValueOnce(foundPath);
+
+            document.getElementById('pathConnectBtn').click();
+            await new Promise(r => setTimeout(r, 10));
+
+            const picker = document.getElementById('pathAmbiguous');
+            expect(picker.classList.contains('hidden')).toBe(false);
+            expect(picker.querySelectorAll('button')).toHaveLength(2);
+            expect(document.getElementById('pathError').classList.contains('hidden')).toBe(true);
+
+            picker.querySelector('button')
+                .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            await new Promise(r => setTimeout(r, 10));
+
+            expect(window.apiClient.findPath).toHaveBeenLastCalledWith('808', 'label', 'Radiohead', 'artist', 10, { fromId: '808-a', toId: null });
+            expect(picker.classList.contains('hidden')).toBe(true);
+            expect(document.getElementById('pathResultSummary').textContent).toContain('1 hop');
+        });
+
+        it('a 409 on the to end lists that end and retries with its id', async () => {
+            chooseType('[data-path-to-type="label"]');
+            document.getElementById('pathFromInput').value = 'Radiohead';
+            document.getElementById('pathToInput').value = '808';
+            window.apiClient.findPath
+                .mockResolvedValueOnce({ ambiguous: true, error: "Label name '808' is ambiguous", candidates: sharedCandidates })
+                .mockResolvedValueOnce(foundPath);
+
+            document.getElementById('pathConnectBtn').click();
+            await new Promise(r => setTimeout(r, 10));
+
+            const picker = document.getElementById('pathAmbiguous');
+            expect(picker.textContent).toContain('"808"');
+            picker.querySelectorAll('button')[1]
+                .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            await new Promise(r => setTimeout(r, 10));
+
+            expect(window.apiClient.findPath).toHaveBeenLastCalledWith('Radiohead', 'artist', '808', 'label', 10, { fromId: null, toId: '808-b' });
+        });
     });
 });
