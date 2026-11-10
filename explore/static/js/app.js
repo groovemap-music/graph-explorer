@@ -1476,6 +1476,7 @@ class ExploreApp {
             nodes.push(...this._releaseCredits(details.companies));
         } else if (type === 'label') {
             nodes.push(this._detailStat('Releases', details.release_count || 0));
+            nodes.push(this._labelLongevityBlock(details, nodeId));
             if (window.authManager.isLoggedIn() && details.id) {
                 nodes.push(this._gapAnalysisButton('label', details.id, entityName));
             }
@@ -1549,6 +1550,91 @@ class ExploreApp {
             section.appendChild(row);
         });
         return section;
+    }
+
+    /**
+     * How long a label has been active, from the label-details response (computed by label id,
+     * so two labels sharing a name show their own values). A placeholder label (Not On Label and
+     * the like) gets the placeholder explanation instead; the producer's is_placeholder decides,
+     * no name test lives here. The rank is filled in once the stored top 50 is known.
+     * Every value goes in through textContent, so no label text is parsed as HTML.
+     * @param {Object} details - Label details from /api/node/{id}?type=label
+     * @param {string} nodeId - Node id, used when the payload carries no id
+     * @returns {HTMLElement}
+     */
+    _labelLongevityBlock(details, nodeId) {
+        const block = document.createElement('div');
+        block.className = 'label-longevity';
+        const heading = document.createElement('div');
+        heading.className = 'label-longevity-title';
+        heading.textContent = 'Longevity';
+        block.appendChild(heading);
+
+        const note = (className, text) => {
+            const p = document.createElement('p');
+            p.className = className;
+            p.textContent = text;
+            block.appendChild(p);
+        };
+
+        if (details.is_placeholder) {
+            const text = typeof InsightsPanel !== 'undefined' ? InsightsPanel.PLACEHOLDER_NOTE : '';
+            block.classList.add('label-longevity-placeholder');
+            note('label-longevity-note text-text-mid', text);
+            return block;
+        }
+        if (details.first_year == null) {
+            note('label-longevity-note text-text-mid', 'No dated releases');
+            return block;
+        }
+
+        const last = details.last_year == null ? 'present' : String(details.last_year);
+        block.appendChild(this._detailStat('Active', `${details.first_year}\u2013${last}`));
+        if (details.years_active != null) block.appendChild(this._detailStat('Years active', details.years_active));
+        if (details.peak_decade != null) block.appendChild(this._detailStat('Peak decade', `${details.peak_decade}s`));
+
+        const rank = this._detailStat('Rank', '\u2026');
+        rank.classList.add('label-longevity-rank');
+        block.appendChild(rank);
+        const value = rank.querySelector('.value');
+        const labelId = String(details.id ?? nodeId);
+        block._rankReady = this._labelTopFifty().then((ranks) => {
+            if (!ranks) {
+                rank.remove();
+            } else if (ranks.has(labelId)) {
+                value.textContent = `#${ranks.get(labelId)} of the top 50`;
+            } else {
+                value.textContent = 'outside the top 50';
+            }
+        });
+        return block;
+    }
+
+    /**
+     * Ranks of the stored top 50 longest-running real labels, by label id. One fetch serves every
+     * label viewed for a few minutes; a failed fetch is not cached.
+     * @returns {Promise<Map<string, number>|null>} label id to rank, or null when unavailable
+     */
+    _labelTopFifty() {
+        const now = Date.now();
+        if (this._labelTopFiftyCache && now - this._labelTopFiftyCache.at < 5 * 60 * 1000) {
+            return this._labelTopFiftyCache.promise;
+        }
+        const promise = (async () => {
+            let data = null;
+            try {
+                data = await window.apiClient.getInsightsLabelLongevity(50, false);
+            } catch {
+                data = null;
+            }
+            if (!Array.isArray(data?.items)) return null;
+            return new Map(data.items.filter(item => item.label_id != null).map(item => [String(item.label_id), item.rank]));
+        })();
+        this._labelTopFiftyCache = { at: now, promise };
+        promise.then((ranks) => {
+            if (!ranks && this._labelTopFiftyCache?.promise === promise) this._labelTopFiftyCache = null;
+        });
+        return promise;
     }
 
     _detailStat(label, value) {

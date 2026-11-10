@@ -352,6 +352,8 @@ beforeAll(() => {
     loadScriptDirect('graph.js');
     loadScript('chart-theme.js');
     loadScriptDirect('trends.js');
+    loadScriptDirect('label-longevity-state.js');
+    loadScriptDirect('insights.js');
     loadScriptDirect('user-pane-state.js');
     loadScriptDirect('user-panes.js');
     loadScriptDirect('application-lifecycle.js');
@@ -1582,6 +1584,104 @@ describe('ExploreApp helper methods', () => {
 
             const gapBtn = nodes.find(n => n.classList && n.classList.contains('gap-analysis-btn'));
             expect(gapBtn).toBeUndefined();
+        });
+    });
+
+    describe('ExploreApp label longevity block', () => {
+        const top50 = (...ids) => ({
+            items: ids.map((id, i) => ({ rank: i + 1, label_id: id, label_name: `Label ${id}` })),
+            count: ids.length,
+        });
+        const real = (over = {}) => ({
+            id: '1', name: 'Columbia', release_count: 1200, is_placeholder: false,
+            first_year: 1889, last_year: 2001, years_active: 112, total_releases: 1200, peak_decade: 1960,
+            ...over,
+        });
+        const block = (app, details) => app._renderDetails(details, 'label', details.id ?? 'x')
+            .find(n => n.classList?.contains('label-longevity'));
+        const stats = (el) => Object.fromEntries(
+            [...el.querySelectorAll('.detail-stat')].map(s => [s.querySelector('.label').textContent, s.querySelector('.value').textContent]),
+        );
+
+        beforeEach(() => {
+            window.authManager.isLoggedIn.mockReturnValue(false);
+            window.apiClient.getInsightsLabelLongevity = vi.fn().mockResolvedValue(top50('9', '1'));
+        });
+
+        it('shows span, years active, peak decade and the stored rank', async () => {
+            const el = block(new ExploreApp(), real());
+            await el._rankReady;
+
+            expect(stats(el)).toEqual({
+                Active: '1889\u20132001', 'Years active': '112', 'Peak decade': '1960s', Rank: '#2 of the top 50',
+            });
+        });
+
+        it('says present for a label with no last year', async () => {
+            const el = block(new ExploreApp(), real({ last_year: null }));
+            await el._rankReady;
+            expect(stats(el).Active).toBe('1889\u2013present');
+        });
+
+        it('says outside the top 50 for a label that is not in the stored list', async () => {
+            const el = block(new ExploreApp(), real({ id: '777' }));
+            await el._rankReady;
+            expect(stats(el).Rank).toBe('outside the top 50');
+        });
+
+        it('matches the rank by label id, not by name', async () => {
+            window.apiClient.getInsightsLabelLongevity = vi.fn().mockResolvedValue({
+                items: [{ rank: 1, label_id: '9', label_name: 'Columbia' }], count: 1,
+            });
+            const app = new ExploreApp();
+            const mine = block(app, real({ id: '1' }));
+            const other = block(app, real({ id: '9', first_year: 1950, last_year: 1960, years_active: 10, peak_decade: 1950 }));
+            await Promise.all([mine._rankReady, other._rankReady]);
+
+            expect(stats(mine)).toMatchObject({ Active: '1889\u20132001', 'Years active': '112', Rank: 'outside the top 50' });
+            expect(stats(other)).toMatchObject({ Active: '1950\u20131960', 'Years active': '10', 'Peak decade': '1950s', Rank: '#1 of the top 50' });
+        });
+
+        it('shows the placeholder explanation, from is_placeholder, instead of a span', () => {
+            const el = block(new ExploreApp(), real({ id: '0', name: 'Not On Label', is_placeholder: true }));
+
+            expect(el.textContent).toContain(InsightsPanel.PLACEHOLDER_NOTE);
+            expect(el.querySelector('.detail-stat')).toBeNull();
+            expect(window.apiClient.getInsightsLabelLongevity).not.toHaveBeenCalled();
+        });
+
+        it('does not call a label a placeholder because of its name', async () => {
+            const el = block(new ExploreApp(), real({ name: 'Not On Label' }));
+            await el._rankReady;
+            expect(el.textContent).not.toContain(InsightsPanel.PLACEHOLDER_NOTE);
+            expect(stats(el).Active).toBe('1889\u20132001');
+        });
+
+        it('shows an empty state for a label with no dated releases', () => {
+            const el = block(new ExploreApp(), real({
+                first_year: null, last_year: null, years_active: 0, peak_decade: null, total_releases: 0,
+            }));
+
+            expect(el.textContent).toContain('No dated releases');
+            expect(el.querySelector('.detail-stat')).toBeNull();
+            expect(window.apiClient.getInsightsLabelLongevity).not.toHaveBeenCalled();
+        });
+
+        it('fetches the top 50 once for several labels and drops the rank row when it is unavailable', async () => {
+            const app = new ExploreApp();
+            await Promise.all([block(app, real({ id: '1' }))._rankReady, block(app, real({ id: '2' }))._rankReady]);
+            expect(window.apiClient.getInsightsLabelLongevity).toHaveBeenCalledTimes(1);
+            expect(window.apiClient.getInsightsLabelLongevity).toHaveBeenCalledWith(50, false);
+
+            window.apiClient.getInsightsLabelLongevity = vi.fn().mockResolvedValue(null);
+            const failing = new ExploreApp();
+            const el = block(failing, real());
+            await el._rankReady;
+            expect(stats(el).Rank).toBeUndefined();
+            expect(stats(el).Active).toBe('1889\u20132001');
+            // A failure is not cached: the next view asks again.
+            await block(failing, real())._rankReady;
+            expect(window.apiClient.getInsightsLabelLongevity).toHaveBeenCalledTimes(2);
         });
     });
 
