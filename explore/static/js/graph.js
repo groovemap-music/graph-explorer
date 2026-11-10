@@ -13,6 +13,9 @@ class GraphVisualization {
         // Callbacks
         this.onNodeClick = null;
         this.onNodeExpand = null;
+        // Called with { name, candidates } when a label name matches several labels and the
+        // expand cannot pick one (the app shows the candidates; picking one re-centers on it).
+        this.onAmbiguousLabel = null;
         this.onExpandsComplete = null;
 
         this._initSvg();
@@ -224,11 +227,15 @@ class GraphVisualization {
         // Expand all categories concurrently, render once when all are done
         this._pendingExpands = expandable.length;
         expandable.forEach(cat => {
-            this._expandCategory(gen, cat.id, center.name, center.type, cat.category);
+            this._expandCategory(gen, cat.id, center.name, center.type, cat.category, center.id);
         });
     }
 
-    async _expandCategory(gen, categoryId, parentName, parentType, category) {
+    _reportAmbiguousLabel(data) {
+        if (this.onAmbiguousLabel) this.onAmbiguousLabel(data);
+    }
+
+    async _expandCategory(gen, categoryId, parentName, parentType, category, parentId = null) {
         if (this.expandedCategories.has(categoryId)) {
             if (gen === this._generation) {
                 this._pendingExpands--;
@@ -239,16 +246,21 @@ class GraphVisualization {
         this.expandedCategories.add(categoryId);
 
         try {
-            const data = await window.apiClient.expand(parentName, parentType, category, 30, 0, this.beforeYear);
+            const data = await window.apiClient.expand(parentName, parentType, category, 30, 0, this.beforeYear, parentId);
             // Stale response: a newer setExploreData/setBeforeYear/etc. has
             // superseded this session — discard rather than corrupt it.
             if (gen !== this._generation) return;
+            if (data.ambiguous) {
+                this._reportAmbiguousLabel(data);
+                return;
+            }
             const { children, total, limit, has_more } = data;
 
             // Store pagination state for this category
             this._categoryMeta.set(categoryId, {
                 parentName,
                 parentType,
+                parentId,
                 category,
                 offset: children.length,
                 limit,
@@ -312,10 +324,14 @@ class GraphVisualization {
         this._loadingCategories.add(d.categoryId);
 
         try {
-            const { parentName, parentType, category, offset, limit, total } = meta;
-            const data = await window.apiClient.expand(parentName, parentType, category, limit, offset, this.beforeYear);
+            const { parentName, parentType, parentId, category, offset, limit, total } = meta;
+            const data = await window.apiClient.expand(parentName, parentType, category, limit, offset, this.beforeYear, parentId ?? null);
             // Stale response: a newer session has superseded this one.
             if (gen !== this._generation) return;
+            if (data.ambiguous) {
+                this._reportAmbiguousLabel(data);
+                return;
+            }
             const { children, has_more } = data;
 
             // Remove the load-more node and its link
@@ -741,20 +757,24 @@ class GraphVisualization {
         }
 
         for (const cat of categories) {
-            this._expandCategoryFiltered(gen, cat.catId, cat.parentName, cat.parentType, cat.category);
+            this._expandCategoryFiltered(gen, cat.catId, cat.parentName, cat.parentType, cat.category, cat.parentId ?? null);
         }
     }
 
-    async _expandCategoryFiltered(gen, categoryId, parentName, parentType, category) {
+    async _expandCategoryFiltered(gen, categoryId, parentName, parentType, category, parentId = null) {
         this.expandedCategories.add(categoryId);
         try {
-            const data = await window.apiClient.expand(parentName, parentType, category, 30, 0, this.beforeYear);
+            const data = await window.apiClient.expand(parentName, parentType, category, 30, 0, this.beforeYear, parentId);
             // Stale response: a newer session has superseded this one.
             if (gen !== this._generation) return;
+            if (data.ambiguous) {
+                this._reportAmbiguousLabel(data);
+                return;
+            }
             const { children, total, limit, has_more } = data;
 
             this._categoryMeta.set(categoryId, {
-                parentName, parentType, category,
+                parentName, parentType, parentId, category,
                 offset: children.length, limit, total,
             });
 
@@ -842,22 +862,22 @@ class GraphVisualization {
         }
 
         for (const cat of categories) {
-            this._fetchComparisonData(gen, cat.catId, cat.parentName, cat.parentType, cat.category);
+            this._fetchComparisonData(gen, cat.catId, cat.parentName, cat.parentType, cat.category, cat.parentId ?? null);
         }
     }
 
     /**
      * Fetch data for both years and diff, then insert merged nodes.
      */
-    async _fetchComparisonData(gen, categoryId, parentName, parentType, category) {
+    async _fetchComparisonData(gen, categoryId, parentName, parentType, category, parentId = null) {
         this.expandedCategories.add(categoryId);
         try {
             // Parallel fetch for both years
             let dataA, dataB;
             try {
                 [dataA, dataB] = await Promise.all([
-                    window.apiClient.expand(parentName, parentType, category, 30, 0, this.compareYearA),
-                    window.apiClient.expand(parentName, parentType, category, 30, 0, this.compareYearB),
+                    window.apiClient.expand(parentName, parentType, category, 30, 0, this.compareYearA, parentId),
+                    window.apiClient.expand(parentName, parentType, category, 30, 0, this.compareYearB, parentId),
                 ]);
             } catch {
                 // Show toast and abort
@@ -873,6 +893,10 @@ class GraphVisualization {
 
             // Stale response: a newer session has superseded this one.
             if (gen !== this._generation) return;
+            if (dataA.ambiguous || dataB.ambiguous) {
+                this._reportAmbiguousLabel(dataA.ambiguous ? dataA : dataB);
+                return;
+            }
 
             // Build lookup maps keyed by composite type:id
             const mapA = new Map();
@@ -896,7 +920,7 @@ class GraphVisualization {
 
             // Store pagination metadata (use yearB totals for display)
             this._categoryMeta.set(categoryId, {
-                parentName, parentType, category,
+                parentName, parentType, parentId, category,
                 offset: allKeys.size, limit: 30, total: dataB.total,
             });
 

@@ -2412,7 +2412,7 @@ describe('ExploreApp helper methods', () => {
 
             await app._loadExplore('Radiohead', 'artist');
 
-            expect(window.apiClient.explore).toHaveBeenCalledWith('Radiohead', 'artist');
+            expect(window.apiClient.explore).toHaveBeenCalledWith('Radiohead', 'artist', null);
             expect(app.graph.setExploreData).toHaveBeenCalledWith(exploreData);
         });
 
@@ -2865,7 +2865,7 @@ describe('ExploreApp helper methods', () => {
             expect(app.searchType).toBe('artist');
             expect(app.currentQuery).toBe('Radiohead');
             expect(document.getElementById('searchInput').value).toBe('Radiohead');
-            expect(window.apiClient.explore).toHaveBeenCalledWith('Radiohead', 'artist');
+            expect(window.apiClient.explore).toHaveBeenCalledWith('Radiohead', 'artist', null);
         });
     });
 

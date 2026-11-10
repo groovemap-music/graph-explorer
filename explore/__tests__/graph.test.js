@@ -221,7 +221,7 @@ describe('GraphVisualization', () => {
             graph.setExploreData(dataWithCount);
             await new Promise(r => setTimeout(r, 10));
 
-            expect(window.apiClient.expand).toHaveBeenCalledWith('Radiohead', 'artist', 'releases', 30, 0, null);
+            expect(window.apiClient.expand).toHaveBeenCalledWith('Radiohead', 'artist', 'releases', 30, 0, null, 'radiohead');
         });
 
         it('should reset a stale beforeYear from a prior timeline scrub (regression migration-regression-cu2.38)', async () => {
@@ -240,7 +240,7 @@ describe('GraphVisualization', () => {
             await new Promise(r => setTimeout(r, 10));
             // The new entity's category expansion must not silently inherit
             // the previous session's year filter.
-            expect(window.apiClient.expand).toHaveBeenCalledWith('Radiohead', 'artist', 'releases', 30, 0, null);
+            expect(window.apiClient.expand).toHaveBeenCalledWith('Radiohead', 'artist', 'releases', 30, 0, null, 'radiohead');
         });
 
         it('should discard a stale category expansion from a superseded search (migration-regression-5fg0)', async () => {
@@ -631,6 +631,50 @@ describe('GraphVisualization', () => {
         });
     });
 
+    describe('shared label names', () => {
+        const labelData = {
+            center: { id: 'label-42', name: '808', type: 'label' },
+            categories: [
+                { id: 'cat-releases', name: 'Releases', category: 'releases', count: 5 },
+            ],
+        };
+
+        it('expands a label category by the centre label id, and keeps the name', async () => {
+            window.apiClient.expand.mockResolvedValue({ children: [], total: 0, limit: 30, has_more: false });
+
+            graph.setExploreData(labelData);
+            await new Promise(r => setTimeout(r, 10));
+
+            expect(window.apiClient.expand).toHaveBeenCalledWith('808', 'label', 'releases', 30, 0, null, 'label-42');
+        });
+
+        it('keeps the parent id for load-more so the next page is the same label', async () => {
+            window.apiClient.expand.mockResolvedValue({ children: [], total: 0, limit: 30, has_more: false });
+
+            graph.setExploreData(labelData);
+            await new Promise(r => setTimeout(r, 10));
+            window.apiClient.expand.mockClear();
+            window.apiClient.expand.mockResolvedValue({ children: [], total: 60, limit: 30, has_more: true, offset: 30 });
+
+            await graph._loadMoreCategory({ id: 'load-more-cat-releases', categoryId: 'cat-releases' });
+
+            expect(window.apiClient.expand).toHaveBeenCalledWith('808', 'label', 'releases', 30, 0, null, 'label-42');
+        });
+
+        it('hands an ambiguous expand to onAmbiguousLabel and adds no children', async () => {
+            const candidates = [{ id: 'label-1', name: '808' }, { id: 'label-2', name: '808' }];
+            const ambiguous = { ambiguous: true, name: '808', candidates };
+            window.apiClient.expand.mockResolvedValueOnce(ambiguous);
+            graph.onAmbiguousLabel = vi.fn();
+
+            graph.setExploreData({ ...labelData, center: { ...labelData.center, id: null } });
+            await new Promise(r => setTimeout(r, 10));
+
+            expect(graph.onAmbiguousLabel).toHaveBeenCalledWith(ambiguous);
+            expect(graph.nodes.filter(n => n.id.startsWith('child-'))).toHaveLength(0);
+        });
+    });
+
     describe('_loadMoreCategory', () => {
         it('should load more children and update category label', async () => {
             graph._categoryMeta.set('cat-releases', {
@@ -878,7 +922,7 @@ describe('GraphVisualization', () => {
             graph._pendingExpands = 1;
             await graph._expandCategoryFiltered(graph._generation, 'cat-releases', 'Radiohead', 'artist', 'releases');
 
-            expect(window.apiClient.expand).toHaveBeenCalledWith('Radiohead', 'artist', 'releases', 30, 0, 1990);
+            expect(window.apiClient.expand).toHaveBeenCalledWith('Radiohead', 'artist', 'releases', 30, 0, 1990, null);
             expect(graph.nodes.find(n => n.id === 'child-release-1')).toBeDefined();
             const catNode = graph.nodes.find(n => n.id === 'cat-releases');
             expect(catNode.name).toBe('Releases (1)');
@@ -1501,7 +1545,7 @@ describe('GraphVisualization', () => {
 
             await graph.setBeforeYear(1990);
 
-            expect(window.apiClient.expand).toHaveBeenCalledWith('Radiohead', 'artist', 'releases', 30, 0, 1990);
+            expect(window.apiClient.expand).toHaveBeenCalledWith('Radiohead', 'artist', 'releases', 30, 0, 1990, null);
             expect(graph.beforeYear).toBe(1990);
         });
     });

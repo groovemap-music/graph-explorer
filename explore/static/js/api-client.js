@@ -39,15 +39,41 @@ class ApiClient {
 
     /**
      * Explore an entity (center node + categories).
+     *
+     * For type=label the label's node id is sent with the name whenever it is known, so a label that
+     * shares its name with another is explored by its own id. The name is still sent for APIs that
+     * predate the id parameter. A 409 (a bare label name matched several labels) resolves to
+     * `{ ambiguous: true, name, candidates: [{id, name}] }`.
+     *
      * @param {string} name - Entity name
      * @param {string} type - Entity type
-     * @returns {Promise<Object|null>} Explore data
+     * @param {string|null} [id] - Label node id (type=label only)
+     * @returns {Promise<Object|null>} Explore data, an ambiguity result, or null
      */
-    async explore(name, type) {
-        const params = new URLSearchParams({ name, type });
+    async explore(name, type, id = null) {
+        const params = new URLSearchParams(this._labelQuery({ name, type }, type, id));
         const response = await this._transport.fetch(`/api/explore?${params}`);
+        if (response.status === 409) return this._readAmbiguity(response, name);
         if (!response.ok) return null;
         return this._transport.readJson(response);
+    }
+
+    /**
+     * Add the label id to query params for type=label. Other types never send one.
+     * @private
+     */
+    _labelQuery(query, type, id) {
+        if (type === 'label' && id) return { ...query, id };
+        return query;
+    }
+
+    /**
+     * Read a 409 body into an ambiguity result. An unreadable body still resolves, with no candidates.
+     * @private
+     */
+    async _readAmbiguity(response, name) {
+        const body = await Promise.resolve(this._transport.readJson(response)).catch(() => null);
+        return { ambiguous: true, name, candidates: Array.isArray(body?.candidates) ? body.candidates : [] };
     }
 
     /**
@@ -85,20 +111,25 @@ class ApiClient {
      * @param {string} category - Category to expand
      * @param {number} limit - Max results per page
      * @param {number} offset - Number of results to skip
-     * @returns {Promise<{children: Array, total: number, offset: number, limit: number, has_more: boolean}>}
+     * @param {number|null} [beforeYear] - Upper year bound
+     * @param {string|null} [id] - Parent label node id (type=label only). node_id stays the name.
+     * @returns {Promise<{children: Array, total: number, offset: number, limit: number, has_more: boolean}|{ambiguous: true, name: string, candidates: Array}>}
+     *   A 409 (the parent name matches several labels) resolves to an ambiguity result.
      */
-    async expand(nodeId, type, category, limit = 50, offset = 0, beforeYear = null) {
-        const params = new URLSearchParams({
+    async expand(nodeId, type, category, limit = 50, offset = 0, beforeYear = null, id = null) {
+        const query = this._labelQuery({
             node_id: nodeId,
             type,
             category,
             limit: String(limit),
             offset: String(offset),
-        });
+        }, type, id);
+        const params = new URLSearchParams(query);
         if (beforeYear !== null) {
             params.set('before_year', String(beforeYear));
         }
         const response = await this._transport.fetch(`/api/expand?${params}`);
+        if (response.status === 409) return this._readAmbiguity(response, nodeId);
         if (!response.ok) return { children: [], total: 0, offset, limit, has_more: false };
         return this._transport.readJson(response);
     }
@@ -203,7 +234,10 @@ class ApiClient {
      * @param {string} toName - Target entity name
      * @param {string} toType - Target entity type
      * @param {number} maxDepth - Max traversal depth (1-15, default 10)
-     * @returns {Promise<{found: boolean, length: number|null, path: Array}|{notFound: boolean, error: string}|null>}
+     * /api/path takes names only (catalog-api 573cb02): it has no id parameter, so a shared label name
+     * cannot be picked here. A 409 resolves to an ambiguity result listing the candidates.
+     *
+     * @returns {Promise<{found: boolean, length: number|null, path: Array}|{notFound: boolean, error: string}|{ambiguous: true, name: string, candidates: Array}|null>}
      */
     async findPath(fromName, fromType, toName, toType, maxDepth = 10) {
         const params = new URLSearchParams({
@@ -214,6 +248,14 @@ class ApiClient {
             max_depth: String(maxDepth),
         });
         const response = await this._transport.fetch(`/api/path?${params}`);
+        if (response.status === 409) {
+            const body = await Promise.resolve(this._transport.readJson(response)).catch(() => null);
+            return {
+                ambiguous: true,
+                error: body?.error || 'A label name matches several labels.',
+                candidates: Array.isArray(body?.candidates) ? body.candidates : [],
+            };
+        }
         if (response.status === 404) {
             const data = await this._transport.readJson(response);
             return { notFound: true, error: data.error || 'Entity not found' };

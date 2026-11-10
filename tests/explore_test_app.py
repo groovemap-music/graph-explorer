@@ -45,6 +45,32 @@ MOCK_LABEL_TRENDS: dict[str, list[dict[str, int]]] = {
     "808-a": [{"year": 1990, "count": 4}, {"year": 1994, "count": 2}],
     "808-b": [{"year": 2008, "count": 9}, {"year": 2011, "count": 6}],
 }
+# Explore and expand by label id. Each label of the shared name has its own centre and its own releases.
+MOCK_SHARED_LABEL_EXPLORE: dict[str, dict[str, Any]] = {
+    "808-a": {"id": "808-a", "name": "808", "release_count": 4, "artist_count": 2, "genre_count": 1},
+    "808-b": {"id": "808-b", "name": "808", "release_count": 6, "artist_count": 3, "genre_count": 1},
+}
+MOCK_SHARED_LABEL_RELEASES: dict[str, list[dict[str, str]]] = {
+    "808-a": [{"id": "a-1", "name": "808 Alpha Release", "type": "release"}],
+    "808-b": [{"id": "b-1", "name": "808 Bravo Release", "type": "release"}],
+}
+
+
+def _shared_label_candidates() -> list[dict[str, str]]:
+    """The labels that share MOCK_SHARED_LABEL_NAME, as the producer lists them in a 409."""
+    return [{"id": row["id"], "name": row["name"]} for row in MOCK_AUTOCOMPLETE_RESULTS["label"] if row["name"] == MOCK_SHARED_LABEL_NAME]
+
+
+def _shared_label_ambiguous() -> JSONResponse:
+    candidates = _shared_label_candidates()
+    return JSONResponse(
+        content={
+            "error": f"Label name '{MOCK_SHARED_LABEL_NAME}' is ambiguous: {len(candidates)} labels share it. Retry with id=<label id>.",
+            "candidates": candidates,
+        },
+        status_code=409,
+    )
+
 
 MOCK_EXPLORE_RESULTS: dict[str, dict[str, Any]] = {
     "artist": {
@@ -780,11 +806,16 @@ def create_test_app() -> FastAPI:
     async def explore(
         name: str = Query(...),
         type: str = Query("artist"),
+        id: str | None = Query(None),
     ) -> JSONResponse:
         entity_type = type.lower()
         result = MOCK_EXPLORE_RESULTS.get(entity_type)
         if entity_type == "artist":
             result = MOCK_STRATA_ARTISTS.get(name.lower(), result)
+        if entity_type == "label" and name == MOCK_SHARED_LABEL_NAME:
+            if id is None:
+                return _shared_label_ambiguous()
+            result = MOCK_SHARED_LABEL_EXPLORE.get(id)
         if not result:
             return JSONResponse(content={"error": "Not found"}, status_code=404)
 
@@ -844,7 +875,12 @@ def create_test_app() -> FastAPI:
         type: str = Query(...),
         category: str = Query(...),
         limit: int = Query(50, ge=1, le=200),
+        id: str | None = Query(None),
     ) -> JSONResponse:
+        if type.lower() == "label" and node_id == MOCK_SHARED_LABEL_NAME:
+            if id is None:
+                return _shared_label_ambiguous()
+            return JSONResponse(content={"children": MOCK_SHARED_LABEL_RELEASES.get(id, [])})
         return JSONResponse(
             content={
                 "children": [
