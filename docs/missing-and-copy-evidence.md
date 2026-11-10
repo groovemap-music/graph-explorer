@@ -8,15 +8,15 @@ or a release/deployment result. Browser examples are synthetic route responses.
 ## Producer contract and source proof
 
 The promoted [source record](../contracts/catalog-api/graph-explorer/v1/source.json) pins
-`catalog-api` commit `842e6cd15660b2e52a162c32087b7215a9211b19`, with routes SHA-256
-`5d506c96888c25a3cd09a01ee3bbae34d96d287c96e326c26beb2ecf9e39d9f4`.
+`catalog-api` commit `a378a885969bb8df6a96bd919be57bb767af70a7`, with routes SHA-256
+`76fefc73281f42d9995de15a081480b32d969e53edf16e75db4e9020dba5653e`.
 That immutable producer commit is on integrated producer main. The Missing and owner-copy
 operations are unchanged from the earlier pin `fab7e993384f032a0ea78817cbdcba798a2e97f8`;
-the later pin adds only the `node_label` operation. No consumer source import or runtime dependency
+the later pins add only the `node_label` operation, and the `longevity_rank` and `longevity_rank_of` response fields (`842e6cd` then `a378a88`). No consumer source import or runtime dependency
 on the producer checkout is introduced. With sibling source checkouts, reproduce the proof:
 
 ```sh
-git -C ../catalog-api merge-base --is-ancestor 842e6cd15660b2e52a162c32087b7215a9211b19 main
+git -C ../catalog-api merge-base --is-ancestor a378a885969bb8df6a96bd919be57bb767af70a7 main
 uv run python scripts/check-contracts.py --producer-repo ../catalog-api
 just check
 just e2e

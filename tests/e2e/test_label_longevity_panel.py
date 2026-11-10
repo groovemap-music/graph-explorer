@@ -2,8 +2,9 @@
 
 The label-details and label-longevity endpoints are stood in for with Playwright routes, so what is asserted is
 what the real browser rendered from the bodies it was sent: the span and peak decade of that exact label (two
-labels share a name here), its rank when it is in the stored top 50, the placeholder explanation, and an empty
-state for a label with no dated releases.
+labels share a name here), its full-catalog rank when the producer stamped it (#N of M, with separators), its rank
+from the stored top 50 when it did not (the older-API fallback), the placeholder explanation with no rank even when
+the producer sent a total, and an empty state for a label with no dated releases.
 """
 
 from __future__ import annotations
@@ -39,7 +40,14 @@ _COLUMBIA_SAME_NAME = {
     "total_releases": 12,
     "peak_decade": 2000,
 }
-_NOT_ON_LABEL = {**_COLUMBIA_OLD, "id": "0", "name": "Not On Label", "is_placeholder": True}
+_NOT_ON_LABEL = {
+    **_COLUMBIA_OLD,
+    "id": "0",
+    "name": "Not On Label",
+    "is_placeholder": True,
+    "longevity_rank": None,
+    "longevity_rank_of": 929239,
+}
 _UNDATED = {
     "id": "3",
     "name": "<b>Undated</b> & Co",
@@ -51,7 +59,21 @@ _UNDATED = {
     "total_releases": 0,
     "peak_decade": None,
 }
-_NODES = {node["id"]: node for node in (_COLUMBIA_OLD, _COLUMBIA_SAME_NAME, _NOT_ON_LABEL, _UNDATED)}
+# Polydor is stamped by the producer (sweep v4): its full-catalog rank replaces the top-50 lookup.
+_POLYDOR = {
+    **_COLUMBIA_OLD,
+    "id": "4",
+    "name": "Polydor",
+    "release_count": 88412,
+    "first_year": 1610,
+    "last_year": None,
+    "years_active": 416,
+    "total_releases": 88412,
+    "peak_decade": 1970,
+    "longevity_rank": 15,
+    "longevity_rank_of": 929239,
+}
+_NODES = {node["id"]: node for node in (_COLUMBIA_OLD, _COLUMBIA_SAME_NAME, _NOT_ON_LABEL, _UNDATED, _POLYDOR)}
 _TOP_50 = [
     {
         "rank": 1,
@@ -109,14 +131,22 @@ def test_label_panel_shows_its_own_longevity_by_id(page: Page, explore_url: str)
     expect(block).to_contain_text("2000s")
     expect(block.locator(".label-longevity-rank .value")).to_have_text("outside the top 50")
 
+    # A stamped rank is shown as #N of M with separators, and the top-50 list is not needed for it.
+    _open_label(page, "4")
+    expect(page.locator("#infoPanelTitle")).to_have_text("Polydor")
+    expect(block).to_contain_text(re.compile(r"1610.present"))
+    expect(block).to_contain_text("1970s")
+    expect(block.locator(".label-longevity-rank .value")).to_have_text("#15 of 929,239")
+
     _open_label(page, "0")
     expect(block).to_contain_text("usually white labels, bootlegs or test pressings")
     expect(block.locator(".detail-stat")).to_have_count(0)
+    expect(block).not_to_contain_text("929")  # the producer's total is never shown for a placeholder
 
     _open_label(page, "3")
     expect(block).to_contain_text("No dated releases")
     expect(body.locator("b")).to_have_count(0)  # the label name is never parsed as HTML
 
-    assert len(longevity_requests) == 1, f"the top 50 is fetched once, not per label: {longevity_requests}"
+    assert len(longevity_requests) == 1, f"the top 50 is fetched once, for the fallback labels only: {longevity_requests}"
     assert "limit=50" in longevity_requests[0]
     assert errors == [], f"the browser reported page errors: {errors}"

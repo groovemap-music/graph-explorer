@@ -1617,6 +1617,51 @@ describe('ExploreApp helper methods', () => {
             });
         });
 
+        it('shows the stamped full-catalog rank as #N of M with separators and skips the top-50 lookup', async () => {
+            const el = block(new ExploreApp(), real({ longevity_rank: 15, longevity_rank_of: 929239 }));
+            await el._rankReady;
+
+            expect(stats(el).Rank).toBe('#15 of 929,239');
+            expect(el.querySelector('.label-longevity-rank')).not.toBeNull();
+            expect(window.apiClient.getInsightsLabelLongevity).not.toHaveBeenCalled();
+        });
+
+        it('shows rank 1 of the catalog for the longest-running label', () => {
+            const el = block(new ExploreApp(), real({ id: '1', longevity_rank: 1, longevity_rank_of: 929239 }));
+            expect(stats(el).Rank).toBe('#1 of 929,239');
+        });
+
+        it('falls back to the top-50 lookup when longevity_rank is null', async () => {
+            const el = block(new ExploreApp(), real({ id: '1', longevity_rank: null, longevity_rank_of: 929239 }));
+            await el._rankReady;
+
+            expect(stats(el).Rank).toBe('#2 of the top 50');
+            expect(window.apiClient.getInsightsLabelLongevity).toHaveBeenCalledTimes(1);
+        });
+
+        it('never shows a rank for a placeholder, even when rank_of is present', () => {
+            const el = block(new ExploreApp(), real({
+                id: '0', name: 'Not On Label', is_placeholder: true, longevity_rank: null, longevity_rank_of: 929239,
+            }));
+
+            expect(el.textContent).toContain(InsightsPanel.PLACEHOLDER_NOTE);
+            expect(el.textContent).not.toContain('929');
+            expect(el.querySelector('.label-longevity-rank')).toBeNull();
+            expect(window.apiClient.getInsightsLabelLongevity).not.toHaveBeenCalled();
+        });
+
+        it('never shows a rank for an undated label, even when rank_of is present', () => {
+            const el = block(new ExploreApp(), real({
+                first_year: null, last_year: null, years_active: 0, peak_decade: null, total_releases: 0,
+                longevity_rank: null, longevity_rank_of: 929239,
+            }));
+
+            expect(el.textContent).toContain('No dated releases');
+            expect(el.textContent).not.toContain('929');
+            expect(el.querySelector('.label-longevity-rank')).toBeNull();
+            expect(window.apiClient.getInsightsLabelLongevity).not.toHaveBeenCalled();
+        });
+
         it('says present for a label with no last year', async () => {
             const el = block(new ExploreApp(), real({ last_year: null }));
             await el._rankReady;
