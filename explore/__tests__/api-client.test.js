@@ -796,6 +796,66 @@ describe('ApiClient', () => {
             await window.apiClient.getTrends('Radiohead', 'artist');
             expect(capturedUrl).toContain('name=Radiohead');
             expect(capturedUrl).toContain('type=artist');
+            expect(capturedUrl).not.toContain('id=');
+        });
+
+        it('should send the label id together with the name for type=label', async () => {
+            let capturedUrl;
+            vi.stubGlobal('fetch', async (url) => {
+                capturedUrl = url;
+                return { ok: true, json: async () => ({ name: '808' }) };
+            });
+
+            await window.apiClient.getTrends('808', 'label', 'label-42');
+            const params = new URL(capturedUrl, 'http://localhost').searchParams;
+            expect(params.get('name')).toBe('808');
+            expect(params.get('type')).toBe('label');
+            expect(params.get('id')).toBe('label-42');
+        });
+
+        it('should not send an id for a non-label type even when one is given', async () => {
+            let capturedUrl;
+            vi.stubGlobal('fetch', async (url) => {
+                capturedUrl = url;
+                return { ok: true, json: async () => ({}) };
+            });
+
+            await window.apiClient.getTrends('Radiohead', 'artist', 'artist-7');
+            expect(capturedUrl).not.toContain('id=');
+        });
+
+        it('should omit the id param for a label whose id is not known', async () => {
+            let capturedUrl;
+            vi.stubGlobal('fetch', async (url) => {
+                capturedUrl = url;
+                return { ok: true, json: async () => ({}) };
+            });
+
+            await window.apiClient.getTrends('Factory', 'label', null);
+            expect(capturedUrl).not.toContain('id=');
+            expect(capturedUrl).toContain('name=Factory');
+        });
+
+        it('should resolve a 409 to an ambiguity result with the candidates', async () => {
+            const candidates = [{ id: 'label-1', name: '808' }, { id: 'label-2', name: '808' }];
+            const mockFetch = createMockFetch({
+                '/api/trends': { status: 409, data: { error: 'ambiguous', candidates } },
+            });
+            vi.stubGlobal('fetch', mockFetch);
+
+            const result = await window.apiClient.getTrends('808', 'label');
+            expect(result).toEqual({ ambiguous: true, name: '808', candidates });
+        });
+
+        it('should resolve a 409 with an unreadable body to an empty candidate list', async () => {
+            vi.stubGlobal('fetch', async () => ({
+                ok: false,
+                status: 409,
+                json: async () => { throw new SyntaxError('bad json'); },
+            }));
+
+            const result = await window.apiClient.getTrends('808', 'label');
+            expect(result).toEqual({ ambiguous: true, name: '808', candidates: [] });
         });
     });
 

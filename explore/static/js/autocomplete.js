@@ -133,7 +133,7 @@ class Autocomplete {
             this.input.value = item.name;
             this.close();
             if (this.onSelect) {
-                this.onSelect(item.name);
+                this.onSelect(item.name, item.id);
             }
         }
     }

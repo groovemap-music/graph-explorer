@@ -118,13 +118,28 @@ class ApiClient {
 
     /**
      * Get time-series trends data.
+     *
+     * For type=label the label's node id is sent alongside the name whenever it is known: the id picks
+     * one label when several share the name, and the name is still sent so an API that predates the id
+     * parameter keeps working. Other types send the name only.
+     *
+     * A 409 means a bare label name matched several labels. It resolves to
+     * `{ ambiguous: true, name, candidates: [{id, name}] }` so the caller can ask which one was meant.
+     *
      * @param {string} name - Entity name
      * @param {string} type - Entity type
-     * @returns {Promise<Object|null>} Trends data
+     * @param {string|null} [id] - Label node id (type=label only)
+     * @returns {Promise<Object|null>} Trends data, an ambiguity result, or null
      */
-    async getTrends(name, type) {
-        const params = new URLSearchParams({ name, type });
+    async getTrends(name, type, id = null) {
+        const query = { name, type };
+        if (type === 'label' && id) query.id = id;
+        const params = new URLSearchParams(query);
         const response = await this._transport.fetch(`/api/trends?${params}`);
+        if (response.status === 409) {
+            const body = await Promise.resolve(this._transport.readJson(response)).catch(() => null);
+            return { ambiguous: true, name, candidates: Array.isArray(body?.candidates) ? body.candidates : [] };
+        }
         if (!response.ok) return null;
         return this._transport.readJson(response);
     }

@@ -62,7 +62,7 @@ function setupAppDOM() {
         'searchInput', 'searchTypeBtn', 'searchBtn',
         'autocompleteDropdown', 'timelineToggleBtn',
         'graphContainer', 'graphSvg', 'graphPlaceholder', 'graphLoading',
-        'trendsChart', 'trendsPlaceholder', 'trendsLoading',
+        'trendsChart', 'trendsPlaceholder', 'trendsLoading', 'trendsAmbiguous',
         'infoPanel', 'infoPanelBody', 'infoPanelTitle',
         'closePanelBtn',
         'compareBtn', 'clearCompareBtn', 'compareBadge', 'compareInfo', 'compareHint',
@@ -2663,6 +2663,101 @@ describe('ExploreApp helper methods', () => {
         });
     });
 
+    describe('ExploreApp label trends by id', () => {
+        beforeEach(() => {
+            history.replaceState(null, '', '/');
+            window.apiClient.getTrends.mockReset();
+        });
+
+        it('passes the label id to getTrends alongside the name', async () => {
+            window.apiClient.getTrends.mockResolvedValue({ name: '808', data: [] });
+            const app = new ExploreApp();
+
+            await app._loadTrends('808', 'label', 'label-42');
+
+            expect(window.apiClient.getTrends).toHaveBeenCalledWith('808', 'label', 'label-42');
+        });
+
+        it('_onSearch keeps the id for a label search and loads that label', async () => {
+            window.apiClient.getTrends.mockResolvedValue({ name: '808', data: [] });
+            const app = new ExploreApp();
+            app.searchType = 'label';
+            app.activePane = 'trends';
+
+            await app._onSearch('808', 'label-42');
+
+            expect(app.currentQueryId).toBe('label-42');
+            expect(window.apiClient.getTrends).toHaveBeenCalledWith('808', 'label', 'label-42');
+            expect(new URLSearchParams(window.location.search).get('id')).toBe('label-42');
+        });
+
+        it('_onSearch drops a supplied id when the search type is not label', async () => {
+            window.apiClient.getTrends.mockResolvedValue({ name: 'Radiohead', data: [] });
+            const app = new ExploreApp();
+            app.searchType = 'artist';
+            app.activePane = 'trends';
+
+            await app._onSearch('Radiohead', 'artist-7');
+
+            expect(app.currentQueryId).toBeNull();
+            expect(window.apiClient.getTrends).toHaveBeenCalledWith('Radiohead', 'artist', null);
+        });
+
+        it('shows the candidates for an ambiguous label name instead of a blank chart', async () => {
+            window.apiClient.getTrends.mockResolvedValue({
+                ambiguous: true,
+                name: '808',
+                candidates: [{ id: 'label-1', name: '808' }, { id: 'label-2', name: '808' }],
+            });
+            const app = new ExploreApp();
+            app.primaryTrendsData = null;
+            app.trends.clear = vi.fn();
+            app.trends.render = vi.fn();
+
+            await app._loadTrends('808', 'label');
+
+            const box = document.getElementById('trendsAmbiguous');
+            expect(box.classList.contains('hidden')).toBe(false);
+            const buttons = [...box.querySelectorAll('button')];
+            expect(buttons.map(b => b.textContent)).toEqual(['808 (id label-1)', '808 (id label-2)']);
+            expect(app.trends.clear).toHaveBeenCalled();
+            expect(document.getElementById('trendsPlaceholder').classList.contains('hidden')).toBe(true);
+            expect(app.trends.render).not.toHaveBeenCalled();
+            expect(app.primaryTrendsData).toBeNull();
+        });
+
+        it('choosing a candidate reloads the trends for that label id', async () => {
+            window.apiClient.getTrends.mockResolvedValue({
+                ambiguous: true,
+                name: '808',
+                candidates: [{ id: 'label-1', name: '808' }, { id: 'label-2', name: '808' }],
+            });
+            const app = new ExploreApp();
+            app.searchType = 'label';
+            app.activePane = 'trends';
+            await app._loadTrends('808', 'label');
+
+            window.apiClient.getTrends.mockResolvedValue({ name: '808', data: [{ year: 1999, count: 3 }] });
+            const second = [...document.getElementById('trendsAmbiguous').querySelectorAll('button')][1];
+            second.click();
+            await new Promise(resolve => setTimeout(resolve, 0));
+
+            expect(window.apiClient.getTrends).toHaveBeenLastCalledWith('808', 'label', 'label-2');
+            expect(document.getElementById('trendsAmbiguous').classList.contains('hidden')).toBe(true);
+        });
+
+        it('a candidate picker with no candidates still explains why nothing is charted', async () => {
+            window.apiClient.getTrends.mockResolvedValue({ ambiguous: true, name: '808', candidates: [] });
+            const app = new ExploreApp();
+
+            await app._loadTrends('808', 'label');
+
+            const box = document.getElementById('trendsAmbiguous');
+            expect(box.textContent).toContain('Several labels are named "808"');
+            expect(box.querySelectorAll('button')).toHaveLength(0);
+        });
+    });
+
     describe('ExploreApp._loadTrends - compare mode', () => {
         it('should add comparison when in compare mode with primary data', async () => {
             const trendsData = { name: 'Radiohead', data: [{ year: 1993, count: 1 }] };
@@ -2847,7 +2942,7 @@ describe('ExploreApp helper methods', () => {
             app.searchType = 'artist';
             app._switchPane('trends');
 
-            expect(window.apiClient.getTrends).toHaveBeenCalledWith('Radiohead', 'artist');
+            expect(window.apiClient.getTrends).toHaveBeenCalledWith('Radiohead', 'artist', null);
         });
 
         it('should not load trends when switching to trends without query', () => {

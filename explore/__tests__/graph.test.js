@@ -492,7 +492,17 @@ describe('GraphVisualization', () => {
             const event = { stopPropagation: vi.fn(), preventDefault: vi.fn() };
             graph._onNodeDblClicked(event, { isCategory: false, isCenter: false, name: 'Radiohead', type: 'artist' });
 
-            expect(onNodeExpand).toHaveBeenCalledWith('Radiohead', 'artist');
+            expect(onNodeExpand).toHaveBeenCalledWith('Radiohead', 'artist', undefined);
+        });
+
+        it('should pass the node id to onNodeExpand so a label is explored by its own id', () => {
+            const onNodeExpand = vi.fn();
+            graph.onNodeExpand = onNodeExpand;
+
+            const event = { stopPropagation: vi.fn(), preventDefault: vi.fn() };
+            graph._onNodeDblClicked(event, { isCategory: false, isCenter: false, name: 'Factory', type: 'label', nodeId: 'label-42' });
+
+            expect(onNodeExpand).toHaveBeenCalledWith('Factory', 'label', 'label-42');
         });
     });
 

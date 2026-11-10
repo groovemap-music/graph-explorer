@@ -601,7 +601,7 @@ class GraphVisualization {
         if (d.isCategory || d.isCenter || d.unnamed) return;
 
         if (this.onNodeExpand) {
-            this.onNodeExpand(d.name, d.type);
+            this.onNodeExpand(d.name, d.type, d.nodeId);
         }
     }
 
