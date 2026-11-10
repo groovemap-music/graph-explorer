@@ -39,14 +39,17 @@ def check(producer_repo: Path | None = None) -> None:
         print(f"verified {producer_path} at {source['producer_commit']} ({source['contract_sha256']})")
 
     # An operation carries its method and path, and may carry the query parameters the producer
-    # promised this consumer. The key set is checked rather than ignored so a producer that
+    # promised this consumer, the fixed query values that select it and the response fields it promised. The key set is checked rather than ignored so a producer that
     # starts publishing a field this checker does not understand is a loud failure here rather
     # than a silently unverified promise.
-    operation_keys = {"method", "path", "parameters"}
+    operation_keys = {"method", "path", "parameters", "query", "response_fields"}
     for name, operation in contract["operations"].items():
         assert set(operation) <= operation_keys, f"unknown keys in operation {name}: {sorted(set(operation) - operation_keys)}"
         assert {"method", "path"} <= set(operation), f"operation {name} is missing method or path"
         assert all(isinstance(parameter, str) for parameter in operation.get("parameters", ()))
+        # A fixed query value is only meaningful for a parameter the operation declares.
+        assert set(operation.get("query", {})) <= set(operation.get("parameters", ())), f"operation {name} fixes an undeclared query parameter"
+        assert all(isinstance(field, str) for field in operation.get("response_fields", ()))
 
     patterns = [route_pattern(operation["path"]) for operation in contract["operations"].values()]
     literal_pattern = re.compile(r"['\"`](/api/[^'\"`? ]+)")
