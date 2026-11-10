@@ -3,6 +3,38 @@
 All notable changes to this repository will be recorded here by Commitizen from
 Conventional Commits.
 
+## v0.4.0 (2026-11-09)
+
+### Release notes
+
+Needs catalog-api v0.13.0 (the label-details longevity fields, the label-longevity operation, and the Missing preview and copy listing routes); with an older API those panels show no data.
+
+- **Label longevity:** a label's detail panel shows its first and last year, years active, dated releases and peak decade (gm-graph-explorer-uhnz), and Trends gains a longest-running-labels timeline that shares the placeholder-label toggle (gm-graph-explorer-oehx), built on the longest-running-labels insight (gm-graph-explorer-yulr).
+- **Missing and collection** (gm-graph-explorer-qgzv, operator-authorized for release 2026-11-09): a transient, scoped Missing preview that shows its evidence limits and refuses contradictory or incomplete completeness, and physical-copy selection with independent copy timelines in Collection; owner state is invalidated on account changes.
+- Contracts promoted from catalog-api: node_label, label-longevity, and the Missing and copy read routes.
+
+### Feat
+
+- **explore**: show a label's longevity on its detail panel
+- **contracts**: promote node_label from catalog-api 842e6cd
+- **trends**: add longest-running labels timeline sharing the placeholder toggle
+- **collection**: select physical copies and read independent timelines
+- **missing**: render transient scoped preview with evidence limits
+- **api-client**: promote Missing and copy read contracts
+- **contracts**: promote the label-longevity operation from catalog-api
+- **insights**: list the longest-running labels, with placeholder labels opt-in
+
+### Fix
+
+- **trends**: escape label names in the timeline's tick and hover text
+- **collection**: keep physical copy controls reachable on mobile
+- **missing**: validate complete denominator evidence before percentage
+- **missing**: reject contradictory completeness and verify account changes
+- **auth**: invalidate owner state on account changes
+- **contracts**: narrow route provenance checks
+- **insights**: never send a label longevity limit outside 1..200
+- **release**: keep breaking changes below 1.0 with major_version_zero
+
 ## v0.3.3 (2026-11-06)
 
 ### Release notes
