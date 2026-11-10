@@ -1578,7 +1578,8 @@ class ExploreApp {
      * How long a label has been active, from the label-details response (computed by label id,
      * so two labels sharing a name show their own values). A placeholder label (Not On Label and
      * the like) gets the placeholder explanation instead; the producer's is_placeholder decides,
-     * no name test lives here. The rank is filled in once the stored top 50 is known.
+     * no name test lives here. A stamped longevity_rank is shown as "#N of M" with no lookup; otherwise
+     * the rank is filled in once the stored top 50 is known.
      * Every value goes in through textContent, so no label text is parsed as HTML.
      * @param {Object} details - Label details from /api/node/{id}?type=label
      * @param {string} nodeId - Node id, used when the payload carries no id
@@ -1614,6 +1615,16 @@ class ExploreApp {
         block.appendChild(this._detailStat('Active', `${details.first_year}\u2013${last}`));
         if (details.years_active != null) block.appendChild(this._detailStat('Years active', details.years_active));
         if (details.peak_decade != null) block.appendChild(this._detailStat('Peak decade', `${details.peak_decade}s`));
+
+        if (typeof details.longevity_rank === 'number') {
+            // The producer stamped the full-catalog rank: show it without the top-50 lookup.
+            const of = typeof details.longevity_rank_of === 'number' ? ` of ${details.longevity_rank_of.toLocaleString()}` : '';
+            const ranked = this._detailStat('Rank', `#${details.longevity_rank.toLocaleString()}${of}`);
+            ranked.classList.add('label-longevity-rank');
+            block.appendChild(ranked);
+            block._rankReady = Promise.resolve();
+            return block;
+        }
 
         const rank = this._detailStat('Rank', '\u2026');
         rank.classList.add('label-longevity-rank');
