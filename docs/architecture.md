@@ -90,7 +90,7 @@ Outcome posts are fire-and-forget and never gate an interaction — see
 
 | Authority | Revision | Local evidence |
 | --- | --- | --- |
-| `catalog-api` graph-explorer route contract | `652e9fba8b46a249fd0476f12f5c79204925c602` (`routes.json` SHA-256 `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`) | [`contracts/catalog-api/graph-explorer/v1/source.json`](../contracts/catalog-api/graph-explorer/v1/source.json) and [`routes.json`](../contracts/catalog-api/graph-explorer/v1/routes.json) |
+| `catalog-api` graph-explorer route contract | `652e9fba8b46a249fd0476f12f5c79204925c602` (`routes.json` SHA-256 `14bb13af4cfce04f83ed90b7b44251481d1d7bceeed09d756a8c7feac13d0e3a`) | [`contracts/catalog-api/graph-explorer/v1/source.json`](../contracts/catalog-api/graph-explorer/v1/source.json) and [`routes.json`](../contracts/catalog-api/graph-explorer/v1/routes.json) |
 | `python-libraries` runtime package | `6d0425f908e01a446b040e2993045e2afe30460e` | [`pyproject.toml`](../pyproject.toml) and `uv.lock` |
 | `design` generated brand assets | `41be7cbe738f40df0c75ad7065475e91d6cc2aa4` | [`explore/static/brand/source.json`](../explore/static/brand/source.json) |
 
