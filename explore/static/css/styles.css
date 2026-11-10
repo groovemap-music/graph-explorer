@@ -845,6 +845,7 @@ select option {
     padding: 20px;
     display: flex;
     flex-direction: column;
+    overflow-y: auto;
 }
 
 .trends-toolbar {
@@ -859,8 +860,41 @@ select option {
 
 #trendsChart {
     width: 100%;
-    flex: 1;
+    flex: 1 0 320px;
     min-height: 0;
+}
+
+/* Longest-running labels timeline (Trends pane) */
+.label-timeline {
+    flex-shrink: 0;
+    margin-top: 16px;
+}
+
+.label-timeline-summary {
+    cursor: pointer;
+}
+
+.label-timeline-summary .insights-section-title {
+    margin-bottom: 0;
+}
+
+.label-timeline-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 16px;
+    margin: 12px 0;
+}
+
+#labelTimelineChart {
+    width: 100%;
+}
+
+@media (max-width: 640px) {
+    .trends-container {
+        padding: 12px;
+    }
 }
 
 /* D3 node styles */
