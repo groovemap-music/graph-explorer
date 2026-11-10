@@ -3,6 +3,20 @@
 All notable changes to this repository will be recorded here by Commitizen from
 Conventional Commits.
 
+## v0.8.0 (2026-11-10)
+
+### Release notes
+
+Path finding sends `from_id` and `to_id` for label ends (gm-graph-explorer-zl42), so a path to or from a label that shares a name resolves to the label the visitor picked. catalog-api v0.14.2 and later serve these parameters. Also fixes a tablet layout bug: leaving a path field cancels its pending suggestion request and drops a late response, so a stale suggestion list can no longer cover the Connect button.
+
+### Feat
+
+- **path**: send label ids to /api/path so a path to a shared-name label resolves
+
+### Fix
+
+- **explore**: close a path suggestion list the visitor has left
+
 ## v0.7.0 (2026-11-10)
 
 ### Release notes
