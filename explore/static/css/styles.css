@@ -837,6 +837,26 @@ select option {
     font-weight: 600;
 }
 
+/* Label longevity block in the label detail panel */
+.label-longevity {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-color);
+}
+
+.label-longevity-title {
+    color: var(--text-mid);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.label-longevity-note {
+    margin: 6px 0 0;
+    font-size: 13px;
+}
+
 /* Trends container */
 .trends-container {
     width: 100%;
