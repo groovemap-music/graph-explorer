@@ -8,19 +8,19 @@ or a release/deployment result. Browser examples are synthetic route responses.
 ## Producer contract and source proof
 
 The promoted [source record](../contracts/catalog-api/graph-explorer/v1/source.json) pins
-`catalog-api` commit `ecb64086bbec843afe088ebb376bcd9d4aabda2f`, with routes SHA-256
+`catalog-api` commit `573cb02881b9910e30624c1f727071b7200c69a4`, with routes SHA-256
 `76fefc73281f42d9995de15a081480b32d969e53edf16e75db4e9020dba5653e`.
-That pin moves from `a378a88` without changing the routes bytes: `catalog-api` ecb6408 adds the
-`id` query parameter to `/api/trends` for label trends (gm-catalog-api-1whr), and the
-promoted route contract does not yet list it. The consumer sends `id` only for label trends and
-keeps sending the name for older APIs.
+That pin moves from `ecb6408` without changing the routes bytes. `catalog-api` 573cb02 (gm-catalog-api-ntnw)
+adds the `id` query parameter to `/api/explore` and `/api/expand` for type=label, and the promoted
+route contract does not yet list it. The consumer sends `id` only for label explore and expand, and keeps
+sending the name for older APIs. `/api/path` has no id parameter at this pin.
 That immutable producer commit is on integrated producer main. The Missing and owner-copy
 operations are unchanged from the earlier pin `fab7e993384f032a0ea78817cbdcba798a2e97f8`;
 the later pins add only the `node_label` operation, and the `longevity_rank` and `longevity_rank_of` response fields (`842e6cd` then `a378a88`). No consumer source import or runtime dependency
 on the producer checkout is introduced. With sibling source checkouts, reproduce the proof:
 
 ```sh
-git -C ../catalog-api merge-base --is-ancestor ecb64086bbec843afe088ebb376bcd9d4aabda2f main
+git -C ../catalog-api merge-base --is-ancestor 573cb02881b9910e30624c1f727071b7200c69a4 main
 uv run python scripts/check-contracts.py --producer-repo ../catalog-api
 just check
 just e2e

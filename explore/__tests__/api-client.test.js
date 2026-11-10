@@ -1459,6 +1459,97 @@ describe('ApiClient', () => {
         });
     });
 
+    describe('shared label names: explore, expand and path', () => {
+        // Captures the URL of every fetch made; answers with the given status and body.
+        function captureFetch(status = 200, body = {}) {
+            const urls = [];
+            vi.stubGlobal('fetch', async (url) => {
+                urls.push(new URL(String(url), 'http://localhost').searchParams);
+                return {
+                    ok: status >= 200 && status < 300,
+                    status,
+                    json: async () => body,
+                };
+            });
+            return urls;
+        }
+
+        const candidates = [{ id: 'label-1', name: '808' }, { id: 'label-2', name: '808' }];
+
+        it('explore sends the label id alongside the name for type=label', async () => {
+            const urls = captureFetch(200, { center: { id: 'label-2' }, categories: [] });
+
+            await window.apiClient.explore('808', 'label', 'label-2');
+            expect(urls[0].get('name')).toBe('808');
+            expect(urls[0].get('type')).toBe('label');
+            expect(urls[0].get('id')).toBe('label-2');
+        });
+
+        it('explore sends the name only when the label id is unknown or the type is not label', async () => {
+            const urls = captureFetch(200, {});
+
+            await window.apiClient.explore('808', 'label');
+            await window.apiClient.explore('Radiohead', 'artist', 'artist-7');
+            expect(urls[0].has('id')).toBe(false);
+            expect(urls[1].get('name')).toBe('Radiohead');
+            expect(urls[1].has('id')).toBe(false);
+        });
+
+        it('explore resolves a 409 to the candidates instead of null', async () => {
+            captureFetch(409, { error: 'ambiguous', candidates });
+
+            const result = await window.apiClient.explore('808', 'label');
+            expect(result).toEqual({ ambiguous: true, name: '808', candidates });
+        });
+
+        it('expand sends the parent id for type=label and keeps node_id as the name', async () => {
+            const urls = captureFetch(200, { children: [], total: 0 });
+
+            await window.apiClient.expand('808', 'label', 'releases', 30, 0, null, 'label-2');
+            expect(urls[0].get('node_id')).toBe('808');
+            expect(urls[0].get('id')).toBe('label-2');
+            expect(urls[0].get('type')).toBe('label');
+        });
+
+        it('expand sends the name only for other types, and when no parent id is known', async () => {
+            const urls = captureFetch(200, { children: [], total: 0 });
+
+            await window.apiClient.expand('Radiohead', 'artist', 'releases', 30, 0, null, 'artist-7');
+            await window.apiClient.expand('808', 'label', 'releases', 30, 0, null, null);
+            expect(urls[0].has('id')).toBe(false);
+            expect(urls[1].get('node_id')).toBe('808');
+            expect(urls[1].has('id')).toBe(false);
+        });
+
+        it('expand resolves a 409 to the candidates instead of an empty page', async () => {
+            captureFetch(409, { error: 'ambiguous', candidates });
+
+            const result = await window.apiClient.expand('808', 'label', 'releases');
+            expect(result).toEqual({ ambiguous: true, name: '808', candidates });
+        });
+
+        it('path keeps sending names only, since /api/path has no id parameter', async () => {
+            const urls = captureFetch(200, { found: false, length: null, path: [] });
+
+            await window.apiClient.findPath('808', 'label', 'Radiohead', 'artist');
+            expect(urls[0].get('from_name')).toBe('808');
+            expect(urls[0].get('from_type')).toBe('label');
+            expect(urls[0].get('to_name')).toBe('Radiohead');
+            expect([...urls[0].keys()].some(k => k.endsWith('id'))).toBe(false);
+        });
+
+        it('path resolves a 409 to an ambiguity result carrying the producer message and candidates', async () => {
+            captureFetch(409, { error: "Label name '808' is ambiguous", candidates });
+
+            const result = await window.apiClient.findPath('808', 'label', 'Radiohead', 'artist');
+            expect(result).toEqual({
+                ambiguous: true,
+                error: "Label name '808' is ambiguous",
+                candidates,
+            });
+        });
+    });
+
     describe('search - extended', () => {
         it('should return null on HTTP error', async () => {
             const mockFetch = createMockFetch({

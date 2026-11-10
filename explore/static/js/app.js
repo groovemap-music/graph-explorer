@@ -418,6 +418,10 @@ class ExploreApp {
         this.autocomplete.onSelect = (name, id) => this._onSearch(name, id);
         this.graph.onNodeClick = (nodeId, type) => this._onNodeClick(nodeId, type);
         this.graph.onNodeExpand = (name, type, id) => this._onNodeExpand(name, type, id);
+        // An expand of a label whose name is shared: list the labels, and picking one re-centers on it by id.
+        this.graph.onAmbiguousLabel = (data) => this._renderLabelPicker(
+            'graphAmbiguous', data, (candidate) => this._onNodeExpand(data.name, 'label', candidate.id),
+        );
 
         this.lifecycle = new window.ApplicationLifecycle(this);
         this.lifecycle.start();
@@ -1048,13 +1052,13 @@ class ExploreApp {
         this._pushState(name, this.searchType, this.currentQueryId);
 
         if (this.activePane === 'explore') {
-            await this._loadExplore(name, this.searchType);
+            await this._loadExplore(name, this.searchType, this.currentQueryId);
         } else {
             await this._loadTrends(name, this.searchType, this.currentQueryId);
         }
     }
 
-    async _loadExplore(name, type) {
+    async _loadExplore(name, type, id = null) {
         // Guard against out-of-order responses: mirrors the _nodeClickRequestId
         // pattern (migration-regression-5fg0) so a slower earlier explore load can
         // never clobber a faster, more recent one.
@@ -1063,8 +1067,14 @@ class ExploreApp {
         loading.classList.add('active');
         let loaded = false;
         try {
-            const data = await window.apiClient.explore(name, type);
+            const data = await window.apiClient.explore(name, type, id);
             if (requestId !== this._exploreRequestId) return;
+            if (data?.ambiguous) {
+                // Several labels share the name: list them; picking one explores that label by id.
+                this._renderLabelPicker('graphAmbiguous', data, (candidate) => this._onSearch(data.name, candidate.id));
+                return;
+            }
+            this._clearLabelPicker('graphAmbiguous');
             if (data) {
                 await new Promise((resolve) => {
                     // Set callback BEFORE setExploreData to avoid race where
@@ -1323,7 +1333,20 @@ class ExploreApp {
         document.getElementById('trendsPlaceholder').classList.add('hidden');
         document.getElementById('compareBtn').classList.add('hidden');
         document.getElementById('compareHint').classList.add('hidden');
-        const box = document.getElementById('trendsAmbiguous');
+        this._renderLabelPicker('trendsAmbiguous', data, (candidate) => this._onSearch(data.name, candidate.id));
+    }
+
+    _hideAmbiguousLabel() {
+        this._clearLabelPicker('trendsAmbiguous');
+    }
+
+    /**
+     * Fill a picker box with one button per label that shares the searched name. Explore, expand and
+     * trends all use it; `onPick(candidate)` runs when the visitor chooses one.
+     */
+    _renderLabelPicker(boxId, data, onPick) {
+        const box = document.getElementById(boxId);
+        if (!box) return;
         const heading = document.createElement('p');
         heading.className = 'text-text-mid';
         heading.textContent = data.candidates.length
@@ -1336,15 +1359,15 @@ class ExploreApp {
             button.type = 'button';
             button.className = 'btn-outline-secondary btn-sm';
             button.textContent = `${candidate.name || data.name} (id ${candidate.id})`;
-            button.addEventListener('click', () => this._onSearch(data.name, candidate.id));
+            button.addEventListener('click', () => onPick(candidate));
             list.appendChild(button);
         }
         box.replaceChildren(heading, list);
         box.classList.remove('hidden');
     }
 
-    _hideAmbiguousLabel() {
-        const box = document.getElementById('trendsAmbiguous');
+    _clearLabelPicker(boxId) {
+        const box = document.getElementById(boxId);
         if (!box) return;
         box.replaceChildren();
         box.classList.add('hidden');
@@ -1482,7 +1505,7 @@ class ExploreApp {
         this.currentQuery = name;
         this.currentQueryId = type === 'label' ? (id || null) : null;
         document.getElementById('searchInput').value = name;
-        await this._loadExplore(name, type);
+        await this._loadExplore(name, type, this.currentQueryId);
     }
 
     _renderDetails(details, type, nodeId) {
@@ -1972,6 +1995,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (data.notFound) {
                 showError(data.error || 'One or both entities not found.');
+                return;
+            }
+            if (data.ambiguous) {
+                // /api/path has no id parameter yet, so it cannot pick one of several same-named labels.
+                // Say so and list them; it does not retry.
+                const names = data.candidates.map(c => `${c.name} (id ${c.id})`).join(', ');
+                showError(`Several labels share a name in this search: ${names || 'the API did not list them'}. `
+                    + 'Path search cannot choose between them yet.');
                 return;
             }
             if (!data.found) {
