@@ -234,12 +234,15 @@ class ApiClient {
      * @param {string} toName - Target entity name
      * @param {string} toType - Target entity type
      * @param {number} maxDepth - Max traversal depth (1-15, default 10)
-     * /api/path takes names only (catalog-api 573cb02): it has no id parameter, so a shared label name
-     * cannot be picked here. A 409 resolves to an ambiguity result listing the candidates.
+     * @param {{fromId?: string|null, toId?: string|null}} [ids] - Label node ids for the ends that are
+     *   labels. An end that is a label with a known id sends `from_id`/`to_id` with its name, so a label
+     *   that shares its name with another resolves to the one picked. Other ends send the name only.
+     *   The name is always sent, for APIs that predate the id parameter.
+     *   A 409 (a bare label name matched several labels) resolves to an ambiguity result listing the candidates.
      *
-     * @returns {Promise<{found: boolean, length: number|null, path: Array}|{notFound: boolean, error: string}|{ambiguous: true, name: string, candidates: Array}|null>}
+     * @returns {Promise<{found: boolean, length: number|null, path: Array}|{notFound: boolean, error: string}|{ambiguous: true, error: string, candidates: Array}|null>}
      */
-    async findPath(fromName, fromType, toName, toType, maxDepth = 10) {
+    async findPath(fromName, fromType, toName, toType, maxDepth = 10, { fromId = null, toId = null } = {}) {
         const params = new URLSearchParams({
             from_name: fromName,
             from_type: fromType,
@@ -247,6 +250,8 @@ class ApiClient {
             to_type: toType,
             max_depth: String(maxDepth),
         });
+        if (fromType === 'label' && fromId) params.set('from_id', String(fromId));
+        if (toType === 'label' && toId) params.set('to_id', String(toId));
         const response = await this._transport.fetch(`/api/path?${params}`);
         if (response.status === 409) {
             const body = await Promise.resolve(this._transport.readJson(response)).catch(() => null);

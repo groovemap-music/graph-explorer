@@ -14,7 +14,7 @@ def test_promoted_contract_pins_the_producer_routes_and_digest() -> None:
     routes_path = CONTRACT_DIR / "routes.json"
     routes = json.loads(routes_path.read_text())
 
-    assert source["producer_commit"] == "573cb02881b9910e30624c1f727071b7200c69a4"
+    assert source["producer_commit"] == "af8b22b4dd3590c8957025d3eaaf0119ae5f894a"
     assert source["contract_sha256"] == sha256(routes_path.read_bytes()).hexdigest()
     assert routes["operations"]["user_missing_preview"] == {
         "method": "POST",

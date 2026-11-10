@@ -349,6 +349,39 @@ class TimelineScrubber {
     }
 }
 
+/**
+ * Fill a picker box with one button per label that shares the searched name. Explore, expand, trends
+ * and the path finder all use it; `onPick(candidate)` runs when the visitor chooses one.
+ */
+function renderLabelPicker(boxId, data, onPick) {
+    const box = document.getElementById(boxId);
+    if (!box) return;
+    const heading = document.createElement('p');
+    heading.className = 'text-text-mid';
+    heading.textContent = data.candidates.length
+        ? `${data.candidates.length} labels are named "${data.name}". Pick the one you mean:`
+        : `Several labels are named "${data.name}", and the API did not list them.`;
+    const list = document.createElement('div');
+    list.className = 'trends-ambiguous-list';
+    for (const candidate of data.candidates) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn-outline-secondary btn-sm';
+        button.textContent = `${candidate.name || data.name} (id ${candidate.id})`;
+        button.addEventListener('click', () => onPick(candidate));
+        list.appendChild(button);
+    }
+    box.replaceChildren(heading, list);
+    box.classList.remove('hidden');
+}
+
+function clearLabelPicker(boxId) {
+    const box = document.getElementById(boxId);
+    if (!box) return;
+    box.replaceChildren();
+    box.classList.add('hidden');
+}
+
 // The Explore pane's views, and the key the last one chosen is remembered under.
 const EXPLORE_VIEWS = ['graph', 'strata', 'table'];
 const EXPLORE_VIEW_KEY = 'explore.view';
@@ -1345,32 +1378,11 @@ class ExploreApp {
      * trends all use it; `onPick(candidate)` runs when the visitor chooses one.
      */
     _renderLabelPicker(boxId, data, onPick) {
-        const box = document.getElementById(boxId);
-        if (!box) return;
-        const heading = document.createElement('p');
-        heading.className = 'text-text-mid';
-        heading.textContent = data.candidates.length
-            ? `${data.candidates.length} labels are named "${data.name}". Pick the one you mean:`
-            : `Several labels are named "${data.name}", and the API did not list them.`;
-        const list = document.createElement('div');
-        list.className = 'trends-ambiguous-list';
-        for (const candidate of data.candidates) {
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = 'btn-outline-secondary btn-sm';
-            button.textContent = `${candidate.name || data.name} (id ${candidate.id})`;
-            button.addEventListener('click', () => onPick(candidate));
-            list.appendChild(button);
-        }
-        box.replaceChildren(heading, list);
-        box.classList.remove('hidden');
+        renderLabelPicker(boxId, data, onPick);
     }
 
     _clearLabelPicker(boxId) {
-        const box = document.getElementById(boxId);
-        if (!box) return;
-        box.replaceChildren();
-        box.classList.add('hidden');
+        clearLabelPicker(boxId);
     }
 
     _enableCompareMode() {
@@ -1830,17 +1842,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const summaryEl    = document.getElementById('pathResultSummary');
     const chainEl      = document.getElementById('pathChain');
     const errorEl      = document.getElementById('pathError');
+    const ambiguousEl  = document.getElementById('pathAmbiguous');
 
     if (!fromInput) return;  // pane not in DOM
 
     let fromType = 'artist';
     let toType   = 'artist';
+    // Label node ids for the ends. An autocomplete pick sets one; typing or changing the type drops it,
+    // because the id belongs to the name that was picked.
+    let fromId = null;
+    let toId   = null;
 
     // Type selectors
     document.querySelectorAll('[data-path-from-type]').forEach(link => {
         link.addEventListener('click', e => {
             e.preventDefault();
             fromType = e.currentTarget.dataset.pathFromType;
+            fromId = null;
             fromTypeBtn.textContent = fromType.charAt(0).toUpperCase() + fromType.slice(1);
         });
     });
@@ -1848,6 +1866,7 @@ document.addEventListener('DOMContentLoaded', () => {
         link.addEventListener('click', e => {
             e.preventDefault();
             toType = e.currentTarget.dataset.pathToType;
+            toId = null;
             toTypeBtn.textContent = toType.charAt(0).toUpperCase() + toType.slice(1);
         });
     });
@@ -1856,16 +1875,20 @@ document.addEventListener('DOMContentLoaded', () => {
     // Autocomplete wiring
     // ----------------------------------------------------------------
 
-    function wireAutocomplete(input, dropdown, getType) {
+    function wireAutocomplete(input, dropdown, getType, setId) {
         let debounceTimer;
         input.addEventListener('input', () => {
             clearTimeout(debounceTimer);
+            setId(null);
             const q = input.value.trim();
             dropdown.textContent = '';
             dropdown.classList.remove('show');
             if (q.length < 3) return;
             debounceTimer = setTimeout(async () => {
                 const results = await window.apiClient.autocomplete(q, getType(), 8);
+                // The visitor may have tabbed or tapped on while this was in flight. A list that opens now
+                // would stay over the buttons below, Connect included.
+                if (document.activeElement !== input) return;
                 if (!results.length) return;
                 dropdown.textContent = '';
                 results.forEach(r => {
@@ -1875,6 +1898,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     item.addEventListener('mousedown', e => {
                         e.preventDefault();
                         input.value = r.name;
+                        setId(r.id ?? null);
                         dropdown.textContent = '';
                         dropdown.classList.remove('show');
                     });
@@ -1884,12 +1908,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }, 220);
         });
         input.addEventListener('blur', () => {
+            clearTimeout(debounceTimer);
             setTimeout(() => { dropdown.classList.remove('show'); }, 150);
         });
     }
 
-    wireAutocomplete(fromInput, fromDropdown, () => fromType);
-    wireAutocomplete(toInput,   toDropdown,   () => toType);
+    wireAutocomplete(fromInput, fromDropdown, () => fromType, (id) => { fromId = id; });
+    wireAutocomplete(toInput,   toDropdown,   () => toType,   (id) => { toId = id; });
 
     // ----------------------------------------------------------------
     // Render helpers
@@ -1985,9 +2010,10 @@ document.addEventListener('DOMContentLoaded', () => {
         setVisible(errorEl, false);
         setVisible(loadingEl, true);
         connectBtn.disabled = true;
+        clearLabelPicker('pathAmbiguous');
 
         try {
-            const data = await window.apiClient.findPath(fromName, fromType, toName, toType);
+            const data = await window.apiClient.findPath(fromName, fromType, toName, toType, 10, { fromId, toId });
 
             if (!data) {
                 showError('An error occurred. Please try again.');
@@ -1998,11 +2024,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             if (data.ambiguous) {
-                // /api/path has no id parameter yet, so it cannot pick one of several same-named labels.
-                // Say so and list them; it does not retry.
-                const names = data.candidates.map(c => `${c.name} (id ${c.id})`).join(', ');
-                showError(`Several labels share a name in this search: ${names || 'the API did not list them'}. `
-                    + 'Path search cannot choose between them yet.');
+                // A bare label name matched several labels. Work out which end it is (the candidates carry the
+                // name), list them in the picker, and retry with the id of the one picked.
+                const fromAmbiguous = fromType === 'label'
+                    && (!data.candidates.length || data.candidates.some(c => c.name === fromName));
+                const end = (fromAmbiguous || toType !== 'label') ? 'from' : 'to';
+                const name = end === 'from' ? fromName : toName;
+                if (!ambiguousEl) {
+                    showError(data.error || 'A label name matches several labels.');
+                    return;
+                }
+                setVisible(loadingEl, false);
+                setVisible(placeholder, false);
+                setVisible(resultEl, false);
+                setVisible(errorEl, false);
+                renderLabelPicker('pathAmbiguous', { name, candidates: data.candidates }, (candidate) => {
+                    if (end === 'from') fromId = candidate.id;
+                    else toId = candidate.id;
+                    handleConnect();
+                });
                 return;
             }
             if (!data.found) {
