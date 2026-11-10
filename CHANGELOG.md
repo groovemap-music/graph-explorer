@@ -3,6 +3,17 @@
 All notable changes to this repository will be recorded here by Commitizen from
 Conventional Commits.
 
+## v0.5.0 (2026-11-10)
+
+### Release notes
+
+Needs catalog-api v0.14.0 (label details' `longevity_rank` and `longevity_rank_of`). A label's detail panel shows its full-catalog longevity rank as "#N of M". The rank comes from discogs-graph-enricher v0.9.0's stored ranking, which matches the longest-running-labels order (gm-graph-explorer-ugpg, part of gm-graph-explorer-i51p). Placeholder labels show no rank. When the API returns no rank (an older API, or stats not yet at version 4), the panel falls back to the top-50 lookup as before. The node_label contract is promoted from catalog-api a378a88.
+
+### Feat
+
+- **explore**: show the full-catalog longevity rank as #N of M
+- **contracts**: promote node_label longevity rank from catalog-api a378a88
+
 ## v0.4.0 (2026-11-09)
 
 ### Release notes
