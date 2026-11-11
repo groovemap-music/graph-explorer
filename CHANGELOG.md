@@ -3,6 +3,16 @@
 All notable changes to this repository will be recorded here by Commitizen from
 Conventional Commits.
 
+## v0.8.1 (2026-11-10)
+
+### Release notes
+
+Accent colours now come from design's promoted brand tokens (design 46763e4, gm-graph-explorer-stsq) instead of hand-copied hex values. The brass and oxblood 700 shades are unchanged. The 900 tints differ slightly, but nothing renders them, so there is no visible change.
+
+### Fix
+
+- **brand**: take accent shades from design's promoted tokens
+
 ## v0.8.0 (2026-11-10)
 
 ### Release notes
