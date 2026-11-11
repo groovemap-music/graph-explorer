@@ -61,6 +61,32 @@ describe('Label web brand adoption', () => {
         }
     });
 
+    it('takes the accent shades from the promoted design tokens, not hand-derived values', () => {
+        const css = read(staticDir, 'css', 'styles.css');
+        const tokens = read(staticDir, 'brand', 'tokens.css');
+        const expected = {
+            '--cyan-700:': ['var(--groovemap-accent-brass-700)', '#8a6f1f'],
+            '--cyan-900:': ['var(--groovemap-accent-brass-tint)', '#3a2f12'],
+        };
+        const lightExpected = {
+            '--cyan-700:': ['var(--groovemap-accent-oxblood-700)', '#6b1027'],
+            '--cyan-900:': ['var(--groovemap-accent-oxblood-tint)', '#f3e3e6'],
+        };
+        const [dark, light] = css.split(':root:not(.dark) {');
+        for (const [block, table] of [[dark, expected], [light, lightExpected]]) {
+            for (const [name, [ref]] of Object.entries(table)) {
+                expect(block, `${name} must reference the design token`).toContain(`${name} ${ref};`);
+            }
+        }
+        const tokenValue = (name) => tokens.match(new RegExp(`${name}:\\s*(#[0-9a-f]{6});`, 'i'))?.[1];
+        for (const [, [ref, hex]] of [...Object.entries(expected), ...Object.entries(lightExpected)]) {
+            const name = ref.match(/var\((--[a-z0-9-]+)\)/)[1];
+            expect(tokenValue(name), `${name} in tokens.css`).toBe(hex);
+        }
+        expect(css).not.toMatch(/--cyan-(700|900):\s*#/);
+        expect(css).not.toMatch(/--purple-(700|900):\s*#/);
+    });
+
     it('uses the shared secondary data colors', () => {
         const css = read(staticDir, 'css', 'styles.css');
         expect(css).toContain('--accent-secondary: #96c0a7;');

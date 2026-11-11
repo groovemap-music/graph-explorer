@@ -11,9 +11,9 @@
     "og-image.svg": "57e52bdf2e94a0e760c46cd3265fb9869572d19b1ae727f7d95aea42c67c3d31",
     "site.webmanifest": "bbb5a3a8484e898bc964bdcda33a5c174a678cd1029728405ec3445cf55bf4f1",
     "social-banner.svg": "9625126e6e29b0b60c8d2a6c542e423568141747502966ccfe11e6b35ec77c06",
-    "tokens.css": "beb1fa2357e884cc702a0cf19176203de88f614f3ae10ce983699bea5353a92c"
+    "tokens.css": "92f0d76c8c5417a4bd0a5fe3f97a2d7085866946eebf86f7fc688b87b774aead"
   },
-  "producer_commit": "41be7cbe738f40df0c75ad7065475e91d6cc2aa4",
+  "producer_commit": "46763e413dcd326a5b44e68a48b82bb9278b67eb",
   "producer_path": "brand/assets",
   "producer_repository": "https://github.com/groovemap-music/design"
 }
