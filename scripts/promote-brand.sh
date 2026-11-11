@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 design_repo="${GROOVEMAP_DESIGN_REPO:-../design}"
-expected="41be7cbe738f40df0c75ad7065475e91d6cc2aa4"
+expected="46763e413dcd326a5b44e68a48b82bb9278b67eb"
 test -e "${design_repo}/.git"
 test "$(git -C "${design_repo}" rev-parse HEAD)" = "${expected}"
 test -z "$(git -C "${design_repo}" status --short)"

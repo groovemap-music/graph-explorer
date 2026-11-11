@@ -24,7 +24,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BRAND = ROOT / "explore/static/brand"
 PRODUCER_REPOSITORY = "https://github.com/groovemap-music/design"
-PRODUCER_COMMIT = "41be7cbe738f40df0c75ad7065475e91d6cc2aa4"
+PRODUCER_COMMIT = "46763e413dcd326a5b44e68a48b82bb9278b67eb"
 PRODUCER_PATH = "brand/assets"
 RECORD = "source.json"
 

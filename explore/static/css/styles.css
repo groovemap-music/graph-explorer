@@ -25,8 +25,8 @@
 
     /* Primary accent: brass in dark, oxblood in light. The legacy --cyan-*, --purple-* and
        --blue-accent names are kept as aliases so existing markup follows the brand tokens. */
-    --cyan-900: color-mix(in srgb, var(--groovemap-brass) 24%, var(--groovemap-void)); /* brass tint */
-    --cyan-700: #8a6f1f; /* brass 700 */
+    --cyan-900: var(--groovemap-accent-brass-tint); /* brass tint, from design tokens */
+    --cyan-700: var(--groovemap-accent-brass-700); /* brass 700, from design tokens */
     --cyan-500: var(--groovemap-brass);
     --cyan-glow: var(--groovemap-brass);
     --cyan-bright: var(--groovemap-text); /* a lighter brass sits within 13 dE2000 of the genre yellow */
@@ -110,8 +110,8 @@
     --text-muted: #8f8577;
 
     /* Cyan — primary accent (deepened for AA contrast on light backgrounds) */
-    --cyan-900: color-mix(in srgb, var(--groovemap-oxblood) 10%, var(--groovemap-light-background)); /* oxblood tint */
-    --cyan-700: #6b1027; /* oxblood 700 */
+    --cyan-900: var(--groovemap-accent-oxblood-tint); /* oxblood tint, from design tokens */
+    --cyan-700: var(--groovemap-accent-oxblood-700); /* oxblood 700, from design tokens */
     --cyan-500: var(--groovemap-oxblood);
     --cyan-glow: var(--groovemap-oxblood);
     --cyan-bright: var(--groovemap-oxblood);
