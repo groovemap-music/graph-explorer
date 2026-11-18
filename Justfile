@@ -81,7 +81,7 @@ license-check:
 
 audit:
     uv run pip-audit
-    npm --prefix explore audit --audit-level=high
+    cd explore && npm exec --yes --package=audit-ci@7.1.0 -- audit-ci --config ../audit-ci.json
 
 prepare-runtime-wheel:
     bash scripts/prepare-runtime-wheel.sh
